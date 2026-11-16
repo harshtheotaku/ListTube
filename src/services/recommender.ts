@@ -1,6 +1,7 @@
 import { Anime, LibraryState, ListStatus, MediaType, ScoredAnime } from '../types';
 import { animeStore } from './animeStore';
 import { resolveMalUrl } from './platform';
+import { fetchMalEdgeHtml } from './supabase';
 import { fetchMALTop } from './jikan';
 import {
   currentSeason,
@@ -213,16 +214,20 @@ async function fetchMalUserRecs(malId: number, mediaType: MediaType): Promise<An
   if (hit) return hit;
 
   const typeSeg = mediaType === 'MANGA' ? 'manga' : 'anime';
-  const url = resolveMalUrl(`/${typeSeg}/${malId}/_/userrecs`);
-  if (!url) return [];
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5500);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    if (!res.ok) return [];
-    const html = await res.text();
+    let html = await fetchMalEdgeHtml(typeSeg, malId, 'userrecs');
+    if (!html) {
+      const url = resolveMalUrl(`/${typeSeg}/${malId}/_/userrecs`);
+      if (!url) return [];
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5500);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      if (!res.ok) return [];
+      html = await res.text();
+    }
+    if (!html) return [];
 
     const regex = new RegExp(`/recommendations/${typeSeg}/(\\d+)-(\\d+)`, 'g');
     const orderedIds: number[] = [];

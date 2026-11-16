@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, ImagePlus, User, X } from 'lucide-react';
 import { BUILT_IN_AVATARS, profileStore, useProfile } from '../services/profile';
+import { cloudSync, useCloudSync } from '../services/cloudSync';
 import { toast } from './Toast';
 
 interface ProfileModalProps {
@@ -39,9 +40,11 @@ function resizeImageToDataUrl(file: File): Promise<string> {
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
   const profile = useProfile();
+  const cloud = useCloudSync();
   const fileRef = useRef<HTMLInputElement>(null);
   const [nameInput, setNameInput] = useState(profile.name);
   const [handleInput, setHandleInput] = useState(profile.handle.replace(/^@/, ''));
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -59,14 +62,27 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setUploading(true);
     try {
+      if (cloud.userId) {
+        try {
+          const publicUrl = await cloudSync.uploadAvatar(file);
+          profileStore.setCustomAvatar(publicUrl);
+          toast('Profile picture uploaded to cloud');
+          return;
+        } catch {
+          // Fall back to compressed local/vault data URL if bucket upload fails
+        }
+      }
       const dataUrl = await resizeImageToDataUrl(file);
       profileStore.setCustomAvatar(dataUrl);
-      toast('Profile picture updated');
+      toast(cloud.isLinked ? 'Profile picture updated & synced' : 'Profile picture updated');
     } catch {
       toast('Could not load image file');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
     }
-    e.target.value = '';
   };
 
   return (
@@ -123,11 +139,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
             />
             <button
               type="button"
+              disabled={uploading}
               onClick={() => fileRef.current?.click()}
-              className="flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[11.5px] font-bold text-white transition hover:bg-white/20"
+              className="flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[11.5px] font-bold text-white transition hover:bg-white/20 disabled:opacity-50"
             >
               <ImagePlus className="h-3.5 w-3.5" />
-              Upload
+              {uploading ? 'Uploading…' : 'Upload'}
             </button>
           </div>
 

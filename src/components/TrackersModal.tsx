@@ -1,10 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Check,
+  Cloud,
+  Copy,
   Download,
   FileUp,
+  KeyRound,
   Loader2,
   LogOut,
+  Mail,
   Sparkles,
   X,
 } from 'lucide-react';
@@ -18,6 +22,7 @@ import {
 } from '../services/trackers';
 import { animeStore } from '../services/animeStore';
 import { library } from '../services/library';
+import { cloudSync, useCloudSync } from '../services/cloudSync';
 import { toast } from './Toast';
 
 interface TrackersModalProps {
@@ -28,12 +33,6 @@ interface TrackersModalProps {
 }
 
 type Provider = 'anilist' | 'mal';
-const GOOGLE_PROFILE_KEY = 'anitube.google.profile.v1';
-
-interface LocalProfile {
-  name: string;
-  email: string;
-}
 
 const PROVIDERS: { id: Provider; name: string; hint: string; accent: string }[] = [
   {
@@ -56,20 +55,18 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
   trackers,
   onImported,
 }) => {
+  const cloud = useCloudSync();
   const [provider, setProvider] = useState<Provider>('anilist');
   const [username, setUsername] = useState('');
   const [showPrivateOption, setShowPrivateOption] = useState(false);
   const [anilistToken, setAnilistToken] = useState('');
-  const [googleEmail, setGoogleEmail] = useState('');
-  const [googleFormOpen, setGoogleFormOpen] = useState(false);
-  const [savedProfile, setSavedProfile] = useState<LocalProfile | null>(() => {
-    try {
-      const raw = localStorage.getItem(GOOGLE_PROFILE_KEY);
-      return raw ? (JSON.parse(raw) as LocalProfile) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [cloudTab, setCloudTab] = useState<'vault' | 'email'>('vault');
+  const [vaultCodeInput, setVaultCodeInput] = useState('');
+  const [cloudEmail, setCloudEmail] = useState('');
+  const [cloudPassword, setCloudPassword] = useState('');
+  const [cloudAuthMode, setCloudAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [cloudBusy, setCloudBusy] = useState(false);
+  const [cloudNotice, setCloudNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TrackerImport | null>(null);
@@ -78,10 +75,10 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setError(null);
+    setCloudNotice(null);
     setResult(null);
     setBusy(false);
     setShowPrivateOption(false);
-    setGoogleFormOpen(false);
     const existing = trackers[0];
     if (existing) {
       setProvider(existing.provider);
@@ -138,6 +135,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
     setError(null);
     try {
       const imported = await importAniListWithToken(anilistToken);
+      cloudSync.setAniListWritebackToken(anilistToken);
       commitImport(imported);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'AniList token sync failed.');
@@ -171,34 +169,86 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
     }
   };
 
-  const handleGoogleClick = () => {
-    const clientId = (import.meta as unknown as { env?: Record<string, string> }).env
-      ?.VITE_GOOGLE_CLIENT_ID;
-    if (clientId) {
-      const redirectUri = window.location.origin;
-      const scope = encodeURIComponent('openid email profile');
-      window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
-        clientId
-      )}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${scope}`;
-      return;
+  const handleCreateVault = async () => {
+    setCloudBusy(true);
+    setCloudNotice(null);
+    setError(null);
+    try {
+      const code = await cloudSync.createSyncCode();
+      try {
+        await navigator.clipboard?.writeText(code);
+        toast(`Cloud Sync Code created & copied: ${code}`);
+      } catch {
+        toast(`Cloud Sync Code created: ${code}`);
+      }
+      setCloudNotice(`Vault active (${code}) — paste this code on any other device to sync!`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create vault');
+    } finally {
+      setCloudBusy(false);
     }
-    setGoogleFormOpen(true);
   };
 
-  const submitGoogleProfile = (event: React.FormEvent) => {
+  const handleLinkVault = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!googleEmail.trim().includes('@')) {
-      setError('Enter a valid Google email address.');
+    if (!vaultCodeInput.trim()) return;
+    setCloudBusy(true);
+    setCloudNotice(null);
+    setError(null);
+    try {
+      await cloudSync.linkSyncCode(vaultCodeInput);
+      setVaultCodeInput('');
+      toast('Synced with Cloud Vault!');
+      setCloudNotice('Vault linked & merged with your library!');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid Sync Code');
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
+  const handleEmailAuth = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!cloudEmail.trim().includes('@')) {
+      setError('Enter a valid email address.');
       return;
     }
-    const profile: LocalProfile = {
-      name: googleEmail.split('@')[0],
-      email: googleEmail.trim(),
-    };
-    localStorage.setItem(GOOGLE_PROFILE_KEY, JSON.stringify(profile));
-    setSavedProfile(profile);
-    toast(`Signed in as ${profile.name}`);
-    onClose();
+    setCloudBusy(true);
+    setCloudNotice(null);
+    setError(null);
+    try {
+      if (cloudAuthMode === 'signup') {
+        const res = await cloudSync.signUpWithEmail(cloudEmail, cloudPassword);
+        setCloudNotice(res.message);
+        if (res.activeSession) toast('Cloud Account created & synced');
+      } else {
+        await cloudSync.signInWithEmail(cloudEmail, cloudPassword);
+        toast(`Signed in as ${cloudEmail}`);
+        setCloudNotice('Signed in & synced with Cloud Account!');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Cloud sign-in failed.');
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
+  const handleMagicLink = async () => {
+    if (!cloudEmail.trim().includes('@')) {
+      setError('Enter your email first for a magic link.');
+      return;
+    }
+    setCloudBusy(true);
+    setError(null);
+    try {
+      const msg = await cloudSync.sendMagicLink(cloudEmail);
+      setCloudNotice(msg);
+      toast('Magic sign-in link sent');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not send magic link');
+    } finally {
+      setCloudBusy(false);
+    }
   };
 
   const handleDisconnect = (providerToDisconnect: Provider) => {
@@ -413,76 +463,190 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
               {/* Clean Divider */}
               <div className="relative flex items-center py-1">
                 <div className="flex-grow border-t border-white/[0.1]" />
-                <span className="mx-3 text-[11px] font-bold uppercase text-[#AAAAAA]">or</span>
+                <span className="mx-3 flex items-center gap-1 text-[10.5px] font-bold uppercase text-[#AAAAAA]">
+                  <Cloud className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                  ListTube Cloud Sync
+                </span>
                 <div className="flex-grow border-t border-white/[0.1]" />
               </div>
 
-              {/* Google Account Directly Below */}
-              {savedProfile ? (
-                <div className="flex items-center justify-between rounded-2xl border border-white/[0.1] bg-[#272727] p-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#4285F4] text-xs font-black text-white">
-                      {savedProfile.name.slice(0, 1).toUpperCase()}
-                    </div>
+              {cloud.anilistWritebackToken && (
+                <div className="flex items-center justify-between rounded-xl border border-[#02A9FF]/30 bg-[#02A9FF]/10 px-3 py-2 text-[11px]">
+                  <span className="font-semibold text-[#7DD3FC]">
+                    AniList 2-way write-back enabled
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      cloudSync.setAniListWritebackToken('');
+                      toast('Disabled AniList write-back');
+                    }}
+                    className="font-bold text-rose-400 hover:underline"
+                  >
+                    Disable
+                  </button>
+                </div>
+              )}
+
+              {/* Cloud Tabs: 1-Tap Vault Code vs Email Account */}
+              <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-[#141414] p-1">
+                <button
+                  type="button"
+                  onClick={() => setCloudTab('vault')}
+                  className={`flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11.5px] font-bold transition ${
+                    cloudTab === 'vault' ? 'bg-[#272727] text-white' : 'text-[#AAAAAA] hover:text-white'
+                  }`}
+                >
+                  <KeyRound className="h-3.5 w-3.5 text-emerald-400" />
+                  1-Tap Sync Code
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCloudTab('email')}
+                  className={`flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11.5px] font-bold transition ${
+                    cloudTab === 'email' ? 'bg-[#272727] text-white' : 'text-[#AAAAAA] hover:text-white'
+                  }`}
+                >
+                  <Mail className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                  Email Account
+                </button>
+              </div>
+
+              {cloudTab === 'vault' ? (
+                cloud.syncCode ? (
+                  <div className="flex items-center justify-between rounded-2xl border border-emerald-500/30 bg-[#272727] p-3">
                     <div className="min-w-0">
-                      <p className="truncate text-[13px] font-bold text-white">{savedProfile.name}</p>
-                      <p className="truncate text-[11px] text-[#AAAAAA]">{savedProfile.email}</p>
+                      <p className="text-[10.5px] font-bold uppercase tracking-wider text-emerald-400">
+                        Vault Linked (v{cloud.syncVersion})
+                      </p>
+                      <p className="font-mono text-[13.5px] font-black text-white">
+                        {cloud.syncCode}
+                      </p>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!cloud.syncCode) return;
+                          await navigator.clipboard?.writeText(cloud.syncCode);
+                          toast('Sync Code copied');
+                        }}
+                        className="rounded-lg bg-white/10 p-1.5 text-white hover:bg-white/20"
+                        title="Copy Sync Code"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          cloudSync.unlinkSyncCode();
+                          toast('Unlinked Vault');
+                        }}
+                        className="text-[11px] font-bold text-rose-400 hover:underline"
+                      >
+                        Unlink
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    <button
+                      type="button"
+                      disabled={cloudBusy}
+                      onClick={handleCreateVault}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-[12.5px] font-bold text-black transition hover:bg-neutral-200 disabled:opacity-50"
+                    >
+                      {cloudBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                      Generate 1-Tap Sync Code (No Login Needed)
+                    </button>
+                    <form onSubmit={handleLinkVault} className="flex gap-2">
+                      <input
+                        value={vaultCodeInput}
+                        onChange={(e) => setVaultCodeInput(e.target.value.toUpperCase())}
+                        placeholder="Paste LT-XXXX-XXXX-XXXX from another device"
+                        className="h-10 flex-1 rounded-xl border border-white/15 bg-[#121212] px-3 font-mono text-[16px] text-white placeholder:font-sans placeholder:text-[12px] outline-none focus:border-[#3EA6FF] lg:text-[12px]"
+                      />
+                      <button
+                        type="submit"
+                        disabled={cloudBusy || vaultCodeInput.trim().length < 8}
+                        className="rounded-xl bg-[#272727] px-4 text-[12.5px] font-bold text-white transition hover:bg-[#383838] disabled:opacity-40"
+                      >
+                        Link
+                      </button>
+                    </form>
+                  </div>
+                )
+              ) : cloud.userEmail ? (
+                <div className="flex items-center justify-between rounded-2xl border border-emerald-500/30 bg-[#272727] p-3">
+                  <div className="min-w-0">
+                    <p className="text-[10.5px] font-bold uppercase tracking-wider text-emerald-400">
+                      Signed In &amp; Synced
+                    </p>
+                    <p className="truncate text-[13px] font-bold text-white">{cloud.userEmail}</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
-                      localStorage.removeItem(GOOGLE_PROFILE_KEY);
-                      setSavedProfile(null);
-                      toast('Signed out');
+                      void cloudSync.signOut();
+                      toast('Signed out of Cloud Account');
                     }}
                     className="text-[11px] font-bold text-rose-400 hover:underline"
                   >
                     Sign out
                   </button>
                 </div>
-              ) : googleFormOpen ? (
-                <form onSubmit={submitGoogleProfile} className="flex gap-2">
+              ) : (
+                <form onSubmit={handleEmailAuth} className="space-y-2">
                   <input
                     type="email"
-                    value={googleEmail}
-                    onChange={(e) => setGoogleEmail(e.target.value)}
-                    placeholder="Enter Google email (you@gmail.com)"
-                    className="h-10 flex-1 rounded-xl border border-white/15 bg-[#121212] px-3 text-[16px] text-white placeholder:text-[12.5px] outline-none focus:border-[#4285F4] lg:text-[12.5px]"
+                    value={cloudEmail}
+                    onChange={(e) => setCloudEmail(e.target.value)}
+                    placeholder="Email address (you@example.com)"
+                    className="h-10 w-full rounded-xl border border-white/15 bg-[#121212] px-3 text-[16px] text-white placeholder:text-[12.5px] outline-none focus:border-[#3EA6FF] lg:text-[12.5px]"
                   />
+                  <input
+                    type="password"
+                    value={cloudPassword}
+                    onChange={(e) => setCloudPassword(e.target.value)}
+                    placeholder="Password (min 6 chars)"
+                    className="h-10 w-full rounded-xl border border-white/15 bg-[#121212] px-3 text-[16px] text-white placeholder:text-[12.5px] outline-none focus:border-[#3EA6FF] lg:text-[12.5px]"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="submit"
+                      disabled={cloudBusy || !cloudEmail.trim() || cloudPassword.length < 6}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white py-2.5 text-[12.5px] font-bold text-black transition hover:bg-neutral-200 disabled:opacity-40"
+                    >
+                      {cloudBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {cloudAuthMode === 'signin' ? 'Sign In' : 'Create Account'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={cloudBusy}
+                      onClick={handleMagicLink}
+                      className="rounded-xl bg-[#272727] px-3 py-2.5 text-[11.5px] font-bold text-white transition hover:bg-[#383838]"
+                    >
+                      Magic Link
+                    </button>
+                  </div>
                   <button
-                    type="submit"
-                    className="rounded-xl bg-white px-4 text-[12.5px] font-bold text-black hover:bg-neutral-200"
+                    type="button"
+                    onClick={() =>
+                      setCloudAuthMode((m) => (m === 'signin' ? 'signup' : 'signin'))
+                    }
+                    className="text-[11px] font-medium text-[#AAAAAA] hover:text-white"
                   >
-                    Save
+                    {cloudAuthMode === 'signin'
+                      ? 'New to ListTube Cloud? Switch to Create Account'
+                      : 'Already have an account? Switch to Sign In'}
                   </button>
                 </form>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleGoogleClick}
-                  className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-white py-2.5 text-[13px] font-bold text-black shadow-sm transition hover:bg-neutral-200"
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      fill="#4285F4"
-                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"
-                    />
-                  </svg>
-                  Continue with Google
-                </button>
+              )}
+
+              {cloudNotice && (
+                <p className="rounded-xl bg-emerald-500/15 px-3 py-2 text-[11.5px] font-medium text-emerald-300">
+                  {cloudNotice}
+                </p>
               )}
             </>
           )}
@@ -492,7 +656,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
           <button type="button" onClick={onClose} className="font-medium hover:text-white">
             Continue without connecting
           </button>
-          <span>AniList · MAL · Google</span>
+          <span>AniList · MAL · Supabase Cloud</span>
         </div>
       </div>
     </div>

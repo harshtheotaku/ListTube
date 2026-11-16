@@ -1,5 +1,6 @@
 import { Anime, MediaType, RelatedTitle, ScheduleItem, StreamingLink } from '../types';
 import { animeStore } from './animeStore';
+import { edgeAniList } from './supabase';
 
 const ENDPOINT = 'https://graphql.anilist.co';
 
@@ -333,6 +334,13 @@ export function mapMedia(media: AniListMedia, fallbackType: MediaType = 'ANIME')
 }
 
 async function request<T>(query: string, variables: Record<string, unknown>, attempt = 0): Promise<T> {
+  if (attempt === 0) {
+    try {
+      return await edgeAniList<T>(query, variables);
+    } catch {
+      // Fallback directly to AniList GraphQL if Edge Gateway is unreachable
+    }
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 14000);
   try {

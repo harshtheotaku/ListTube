@@ -245,6 +245,20 @@ export const library = {
     commit(emptyState());
   },
 
+  replaceFromCloud(next: LibraryState): void {
+    state = {
+      entries: next.entries ?? {},
+      notInterested: next.notInterested ?? [],
+      events: next.events ?? [],
+      trackers: next.trackers ?? [],
+      interests: next.interests ?? [],
+      mangaInterests: next.mangaInterests ?? [],
+      updatedAt: next.updatedAt ?? Date.now(),
+    };
+    persist();
+    listeners.forEach((listener) => listener());
+  },
+
   exportJson(): string {
     return JSON.stringify(state, null, 2);
   },

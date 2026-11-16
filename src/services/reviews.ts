@@ -1,5 +1,6 @@
 import { Anime } from '../types';
 import { resolveMalUrl } from './platform';
+import { fetchMalEdgeHtml } from './supabase';
 
 export interface PinnedReview {
   id: string;
@@ -53,16 +54,20 @@ function makeExcerpt(clean: string, maxChars = 300): string {
 async function fetchFromMalHtml(anime: Anime): Promise<PinnedReview | null> {
   if (!anime.malId) return null;
   const typeSeg = anime.mediaType === 'MANGA' ? 'manga' : 'anime';
-  const url = resolveMalUrl(`/${typeSeg}/${anime.malId}/_/reviews?spoiler=off`);
-  if (!url) return null;
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 7000);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    if (!res.ok) return null;
-    const html = await res.text();
+    let html = await fetchMalEdgeHtml(typeSeg, anime.malId, 'reviews');
+    if (!html) {
+      const url = resolveMalUrl(`/${typeSeg}/${anime.malId}/_/reviews?spoiler=off`);
+      if (!url) return null;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 7000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      if (!res.ok) return null;
+      html = await res.text();
+    }
+    if (!html) return null;
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const elements = Array.from(doc.querySelectorAll('.review-element'));
 

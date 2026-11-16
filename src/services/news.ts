@@ -2,6 +2,7 @@ import { NewsItem } from '../types';
 import { animeStore } from './animeStore';
 import { searchAniList } from './anilist';
 import { resolveMalUrl } from './platform';
+import { fetchNewsEdge } from './supabase';
 
 function stripHtml(raw: string): string {
   return raw
@@ -21,14 +22,18 @@ function stripHtml(raw: string): string {
  */
 async function fetchMalNewsWithImages(): Promise<NewsItem[]> {
   try {
-    const url = resolveMalUrl('/news');
-    if (!url) return [];
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 7500);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    if (!res.ok) return [];
-    const html = await res.text();
+    let html = await fetchNewsEdge('mal', 0);
+    if (!html) {
+      const url = resolveMalUrl('/news');
+      if (!url) return [];
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 7500);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      if (!res.ok) return [];
+      html = await res.text();
+    }
+    if (!html) return [];
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const units = Array.from(doc.querySelectorAll('.news-unit'));
 
@@ -90,41 +95,68 @@ function extractTitleCandidate(headline: string): string | null {
 
 async function fetchAnnRssWithArtwork(): Promise<NewsItem[]> {
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 7000);
-    const res = await fetch(
-      `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(
-        'https://www.animenewsnetwork.com/all/rss.xml'
-      )}`,
-      { signal: controller.signal }
-    );
-    clearTimeout(timer);
-    if (!res.ok) return [];
-    const data = (await res.json()) as {
-      status?: string;
-      items?: {
-        guid?: string;
-        title?: string;
-        link?: string;
-        pubDate?: string;
-        author?: string;
-        description?: string;
-        thumbnail?: string;
-        enclosure?: { link?: string };
-      }[];
-    };
-    if (data.status !== 'ok' || !data.items) return [];
+    let baseItems: NewsItem[] = [];
+    const rssXml = await fetchNewsEdge('ann');
+    if (rssXml) {
+      const xmlDoc = new DOMParser().parseFromString(rssXml, 'text/xml');
+      const items = Array.from(xmlDoc.querySelectorAll('item')).slice(0, 12);
+      if (items.length > 0) {
+        baseItems = items.map((el, idx) => {
+          const text = (sel: string) => el.querySelector(sel)?.textContent?.trim() ?? '';
+          const enclosure = el.querySelector('enclosure')?.getAttribute('url') || undefined;
+          const descRaw = text('description');
+          const imgMatch = descRaw.match(/<img[^>]+src=['"]([^'"]+)['"]/i);
+          return {
+            id: `ann-${text('guid') || text('link') || idx}`,
+            title: stripHtml(text('title') || 'Anime News Update'),
+            url: text('link') || 'https://www.animenewsnetwork.com/',
+            date: text('pubDate') || new Date().toISOString(),
+            author: text('author') || undefined,
+            excerpt: stripHtml(descRaw),
+            image: enclosure || imgMatch?.[1] || undefined,
+            sourceName: 'Anime News Network',
+          };
+        });
+      }
+    }
 
-    const baseItems = data.items.slice(0, 12).map((item, idx) => ({
-      id: `ann-${item.guid || idx}`,
-      title: stripHtml(item.title || 'Anime News Update'),
-      url: item.link || 'https://www.animenewsnetwork.com/',
-      date: item.pubDate || new Date().toISOString(),
-      author: item.author || undefined,
-      excerpt: stripHtml(item.description || ''),
-      image: item.thumbnail || item.enclosure?.link || undefined,
-      sourceName: 'Anime News Network',
-    }));
+    if (baseItems.length === 0) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 7000);
+      const res = await fetch(
+        `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(
+          'https://www.animenewsnetwork.com/all/rss.xml'
+        )}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timer);
+      if (!res.ok) return [];
+      const data = (await res.json()) as {
+        status?: string;
+        items?: {
+          guid?: string;
+          title?: string;
+          link?: string;
+          pubDate?: string;
+          author?: string;
+          description?: string;
+          thumbnail?: string;
+          enclosure?: { link?: string };
+        }[];
+      };
+      if (data.status !== 'ok' || !data.items) return [];
+
+      baseItems = data.items.slice(0, 12).map((item, idx) => ({
+        id: `ann-${item.guid || idx}`,
+        title: stripHtml(item.title || 'Anime News Update'),
+        url: item.link || 'https://www.animenewsnetwork.com/',
+        date: item.pubDate || new Date().toISOString(),
+        author: item.author || undefined,
+        excerpt: stripHtml(item.description || ''),
+        image: item.thumbnail || item.enclosure?.link || undefined,
+        sourceName: 'Anime News Network',
+      }));
+    }
 
     // Enrich ANN headlines missing thumbnails with official anime covers from animeStore / AniList
     const cachedAnime = animeStore.all();

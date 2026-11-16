@@ -50,11 +50,15 @@ export const commentsStore = {
   getForAnime(animeId: string): UserComment[] {
     return commentsState[animeId] ?? EMPTY_LIST;
   },
-  addComment(animeId: string, text: string, profile: UserProfile) {
+  addComment(animeId: string, text: string, profile: UserProfile): UserComment | undefined {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed) return undefined;
+    const id =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `00000000-0000-4000-8000-${Date.now().toString().padStart(12, '0').slice(-12)}`;
     const item: UserComment = {
-      id: `cmt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id,
       animeId,
       authorName: profile.name,
       authorHandle: profile.handle,
@@ -69,6 +73,7 @@ export const commentsStore = {
       ...commentsState,
       [animeId]: [item, ...existing],
     });
+    return item;
   },
   toggleLike(animeId: string, commentId: string) {
     const list = commentsState[animeId];
@@ -91,6 +96,12 @@ export const commentsStore = {
       ...commentsState,
       [animeId]: list.filter((c) => c.id !== commentId),
     });
+  },
+  exportAll(): CommentsMap {
+    return commentsState;
+  },
+  replaceFromCloud(next: CommentsMap) {
+    persist(next);
   },
 };
 

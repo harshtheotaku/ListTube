@@ -208,6 +208,14 @@ export const profileStore = {
   reset() {
     save(DEFAULT_PROFILE);
   },
+  replaceFromCloud(next: UserProfile) {
+    save({
+      name: next.name?.trim().slice(0, 32) || DEFAULT_PROFILE.name,
+      handle: sanitizeHandle(next.handle || next.name || DEFAULT_PROFILE.handle),
+      avatarId: next.avatarId || DEFAULT_PROFILE.avatarId,
+      avatarUrl: next.avatarUrl || DEFAULT_PROFILE.avatarUrl,
+    });
+  },
 };
 
 export function useProfile(): UserProfile {

@@ -40,6 +40,11 @@ Write permanent device-local notes & comments on any anime or manga, with the **
 
 ![ListTube Comments & Pinned Review](docs/screenshots/comments-desktop.png)
 
+### Cloud Sync Vault, Supabase Backend & Cross-Device Backup
+Sync watchlists, progress, ratings, Taste DNA, custom PFPs, and comments seamlessly between Web and Android APK via a **1-Tap Cloud Sync Vault Code (`LT-XXXX-XXXX-XXXX`)** or **Supabase Email Account**, with optional live **2-way AniList progress/score write-back**.
+
+![ListTube Cloud Sync Hub](docs/screenshots/you-cloud-desktop.png)
+
 ### Custom Channel Profile & Popular Character Avatars
 Tap the small **Edit** button next to your PFP & name in the **You** tab to customize your display name, `@handle`, upload a photo, or choose from 16 built-in official anime character avatars (**Gojo, Frieren, Luffy, Levi, Killua, Zoro, Eren, Lelouch, Emilia, Maomao, Guts, L, Mikasa, Kurisu, Anya, Spike**).
 
@@ -79,9 +84,12 @@ Switch seamlessly between **Anime (`16:9`)** and **Manga (`4:5` portrait covers)
   - Mobile top bar keeps **only the ListTube logo and a wide search bar**; Anime/Manga mode switch, **Schedule**, **News**, **Connect Account**, and **Settings** live cleanly in the **You** hub and bottom bar.
 - **Live Broadcast Schedule & Illustrated News (`ScheduleView.tsx`, `NewsView.tsx`):**
   - 7-day official airing countdowns powered by AniList plus illustrated industry news from MyAnimeList News and Anime News Network.
-- **Offline-First Storage & One-Click Tracker Import (`library.ts`, `trackers.ts`):**
-  - Works immediately with **zero forced login**. Optionally connect an **AniList** username/token, **MyAnimeList** username/XML export, or local Google profile snapshot.
-- **Pull-to-Refresh Recommendations & Forever Comments (`CommentsSection.tsx`, `reviews.ts`):**
+- **Supabase Cloud Sync & AniList Two-Way Write-Back (`supabase.ts`, `cloudSync.ts`):**
+  - Works immediately with **zero forced login** while offering 1-tap **Cloud Sync Vault (`LT-XXXX-XXXX-XXXX`)** and **Supabase Email / Magic Link accounts** (with `avatars` bucket PFP uploads) backed by Row-Level Security (RLS) in Postgres.
+  - Adding your AniList token optionally enables automatic two-way write-back whenever status, episode/chapter progress, or score changes inside ListTube.
+- **Postgres L2 Edge Cache Gateway (`supabase/functions/listtube-api`):**
+  - Routes AniList GraphQL, CORS-free MyAnimeList `/userrecs` & spoiler-free `/reviews`, ANN/MAL News, and canonical `reader_catalog` matching (`89,976+` indexed `Comix.to` direct series URLs) through a shared Supabase Edge Cache (`HIT`/`STALE` rate-limit protection).
+- **Pull-to-Refresh Recommendations & Synced Comments (`CommentsSection.tsx`, `reviews.ts`):**
   - Pulling down / scrolling upward at the top of the Home feed refreshes recommendations with fresh unseen picks instead of repeating top cards.
   - Persistent YouTube-style comments saved locally with a pinned spoiler-free review fetched from MyAnimeList (`reviews.ts`) and customizable character avatars (`profile.ts`).
 - **Native Android Back Navigation & Viewport Lock (`MainActivity.java`):**
@@ -126,7 +134,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
 - **Vercel Hosting:** Pre-configured with [`vercel.json`](vercel.json) rewrites for `/proxy/mal/*` and `/proxy/ann/*`.
-- **GitHub Pages Hosting:** Built via [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) with clean CORS API fallbacks ([`platform.ts`](src/services/platform.ts)).
+- **GitHub Pages Hosting:** Built via [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) and powered server-side by our Supabase Edge Gateway ([`listtube-api`](supabase/functions/listtube-api/index.ts)) so MAL reviews, `/userrecs`, news, and direct manga reader links run CORS-free on static hosting.
 
 </details>
 
@@ -163,20 +171,25 @@ listtube/
 │   │   ├── TrackersModal.tsx    # AniList, MyAnimeList, Google profile & XML/JSON import
 │   │   └── YouView.tsx          # Mobile control hub (Anime|Manga, Schedule, News, DNA stats)
 │   └── services/
-│       ├── anilist.ts           # AniList GraphQL client (Anime, Manga, Schedule, hydration)
+│       ├── anilist.ts           # AniList GraphQL client routed via Postgres L2 Edge Cache
 │       ├── animeStore.ts        # Local metadata & artwork store
-│       ├── comments.ts          # Forever-saved per-title localStorage comment store
+│       ├── cloudSync.ts         # Supabase Auth, Vault Code sync, Comments, Storage & AniList write-back
+│       ├── comments.ts          # Per-title persistent comment store (local + Cloud merged)
 │       ├── franchise.ts         # Franchise name normalization & multi-season relation walker
 │       ├── jikan.ts             # Jikan REST fallback
-│       ├── library.ts           # Offline-first reactive persistence (localStorage)
-│       ├── news.ts              # MAL News & ANN RSS aggregator with artwork enrichment
+│       ├── library.ts           # Offline-first reactive persistence (localStorage + Cloud)
+│       ├── news.ts              # Edge-proxied MAL News & ANN RSS aggregator
 │       ├── platform.ts          # Runtime environment resolver (Capacitor / Proxy / Static Pages)
 │       ├── profile.ts           # User profile store + 16 official character PFP presets
 │       ├── recommender.ts       # Multi-source community vector, refresh rotation & MMR engine
-│       ├── reviews.ts           # Spoiler-free MyAnimeList / Jikan / AniList pinned review fetcher
+│       ├── reviews.ts           # CORS-free spoiler-free MyAnimeList pinned review fetcher
 │       ├── search.ts            # Partial-word & acronym smart search engine
 │       ├── settings.ts          # User preference persistence
+│       ├── supabase.ts          # Supabase client + Edge Gateway helpers
 │       └── trackers.ts          # AniList, MAL, token & XML export importers
+├── supabase/
+│   └── functions/
+│       └── listtube-api/        # Supabase Edge Function (L2 cache, MAL/ANN proxy, Sync Vault, readers)
 ├── capacitor.config.ts          # CapacitorHttp enabled for native CORS-free networking
 ├── vercel.json                  # Production proxy rewrites
 └── vite.config.ts               # Dual-target config (Root / Vercel / GitHub Pages subpath)
@@ -187,6 +200,7 @@ listtube/
 ## Tech Stack
 
 - **Frontend:** React 18, TypeScript 7, Tailwind CSS v4, Lucide Icons, HLS.js
+- **Backend & Cloud Sync:** Supabase (Postgres 17 + pg_trgm, Auth, Storage, Deno Edge Functions)
 - **Build & Tooling:** Vite 8
 - **Mobile Runtime:** Capacitor 8 Android (`CapacitorHttp` native networking)
 - **APIs & Metadata:** AniList GraphQL, MyAnimeList, Shikimori, Anime News Network RSS, Jikan

@@ -33,6 +33,7 @@ import { library } from '../services/library';
 import { getSimilar } from '../services/recommender';
 import { franchiseNameOf } from '../services/franchise';
 import { useSettings } from '../services/settings';
+import { resolveMangaReadersEdge, ResolvedReaderLink } from '../services/supabase';
 import { CommentsSection } from './CommentsSection';
 import { toast } from './Toast';
 import { CardSkeleton } from './Skeleton';
@@ -83,6 +84,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [listPickerOpen, setListPickerOpen] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
+  const [mangaReaders, setMangaReaders] = useState<ResolvedReaderLink[]>([]);
 
   const entry = libraryState.entries[animeId];
 
@@ -132,6 +134,28 @@ export const DetailView: React.FC<DetailViewProps> = ({
   useEffect(() => {
     library.logOpen(animeId);
   }, [animeId]);
+
+  useEffect(() => {
+    if (!anime || anime.mediaType !== 'MANGA') {
+      setMangaReaders([]);
+      return;
+    }
+    let cancelled = false;
+    const q = encodeURIComponent(anime.title);
+    setMangaReaders([
+      { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false },
+      { site: 'Kagane', key: 'kagane', url: `https://kagane.org/search?q=${q}`, isDirect: false },
+      { site: 'Asura Scans', key: 'asura', url: `https://asuracomic.net/series?page=1&name=${q}`, isDirect: false },
+    ]);
+    resolveMangaReadersEdge(anime.title, anime.titleRomaji)
+      .then((links) => {
+        if (!cancelled && links.length > 0) setMangaReaders(links);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [anime?.id, anime?.title, anime?.titleRomaji, anime?.mediaType]);
 
   useEffect(() => {
     if (!anime) return;
@@ -646,12 +670,14 @@ export const DetailView: React.FC<DetailViewProps> = ({
             {(() => {
               const officialEnglishLinks = pickSingleEnglishLink(anime.streaming, anime.mediaType);
               const q = encodeURIComponent(anime.title);
-              const mangaReaderLinks = isManga
-                ? [
-                    { name: 'Comix.to', url: `https://comix.to/browse?keyword=${q}` },
-                    { name: 'Kagane', url: `https://kagane.org/search?q=${q}` },
-                    { name: 'Asura Scans', url: `https://asuracomic.net/series?page=1&name=${q}` },
-                  ]
+              const mangaReaderLinks: ResolvedReaderLink[] = isManga
+                ? mangaReaders.length > 0
+                  ? mangaReaders
+                  : [
+                      { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false },
+                      { site: 'Kagane', key: 'kagane', url: `https://kagane.org/search?q=${q}`, isDirect: false },
+                      { site: 'Asura Scans', key: 'asura', url: `https://asuracomic.net/series?page=1&name=${q}`, isDirect: false },
+                    ]
                 : [];
 
               if (officialEnglishLinks.length === 0 && mangaReaderLinks.length === 0) return null;
@@ -695,13 +721,18 @@ export const DetailView: React.FC<DetailViewProps> = ({
                       <div className="flex flex-wrap gap-2">
                         {mangaReaderLinks.map((site) => (
                           <a
-                            key={site.name}
+                            key={site.key}
                             href={site.url}
                             target="_blank"
                             rel="noreferrer noopener"
                             className="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-[#222222] px-3.5 py-2 text-[12px] font-bold text-white transition hover:border-white/25 hover:bg-[#303030]"
                           >
-                            <span>{site.name}</span>
+                            <span>{site.site}</span>
+                            {site.isDirect && (
+                              <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase tracking-wider text-emerald-300">
+                                Direct
+                              </span>
+                            )}
                             <ExternalLink className="h-3.5 w-3.5 text-[#3EA6FF]" />
                           </a>
                         ))}

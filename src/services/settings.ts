@@ -44,6 +44,11 @@ export const settingsStore = {
   setAutoplayTrailer(enabled: boolean) {
     persist({ ...currentSettings, autoplayTrailer: enabled });
   },
+  replaceFromCloud(next: Partial<AppSettings>) {
+    persist({
+      autoplayTrailer: Boolean(next.autoplayTrailer ?? currentSettings.autoplayTrailer),
+    });
+  },
 };
 
 export function useSettings(): AppSettings {

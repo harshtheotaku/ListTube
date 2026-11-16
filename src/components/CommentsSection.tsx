@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { ExternalLink, MessageSquare, Pin, ThumbsUp, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Cloud, ExternalLink, MessageSquare, Pin, ThumbsUp, Trash2 } from 'lucide-react';
 import { Anime } from '../types';
-import { commentsStore, useComments } from '../services/comments';
+import { useComments } from '../services/comments';
+import { cloudSync, MergedComment, useCloudSync } from '../services/cloudSync';
 import { useProfile } from '../services/profile';
 import { fetchPinnedSpoilerFreeReview, PinnedReview } from '../services/reviews';
 import { toast } from './Toast';
@@ -25,7 +26,9 @@ function formatTimeAgo(timestamp: number): string {
 
 export const CommentsSection: React.FC<CommentsSectionProps> = ({ anime, onEditProfile }) => {
   const profile = useProfile();
+  const cloud = useCloudSync();
   const userComments = useComments(anime.id);
+  const [cloudComments, setCloudComments] = useState<MergedComment[]>([]);
   const [draft, setDraft] = useState('');
   const [composerFocused, setComposerFocused] = useState(false);
   const [pinnedReview, setPinnedReview] = useState<PinnedReview | null>(null);
@@ -45,21 +48,41 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ anime, onEditP
         if (!cancelled) setPinnedLoading(false);
       });
 
+    cloudSync
+      .loadCommentsForMedia(anime.id)
+      .then((rows) => {
+        if (!cancelled) setCloudComments(rows);
+      })
+      .catch(() => {});
+
     return () => {
       cancelled = true;
     };
-  }, [anime.id, anime.malId, anime.anilistId]);
+  }, [anime.id, anime.malId, anime.anilistId, cloud.userId]);
 
-  const totalCount = userComments.length + (pinnedReview ? 1 : 0);
+  const allComments = useMemo(() => {
+    const map = new Map<string, MergedComment>();
+    for (const c of cloudComments) map.set(c.id, c);
+    for (const c of userComments) {
+      const existing = map.get(c.id);
+      map.set(c.id, { ...c, isCloud: existing?.isCloud, ownerUserId: existing?.ownerUserId });
+    }
+    return Array.from(map.values()).sort((a, b) => b.createdAt - a.createdAt);
+  }, [cloudComments, userComments]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const totalCount = allComments.length + (pinnedReview ? 1 : 0);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = draft.trim();
     if (!trimmed) return;
-    commentsStore.addComment(anime.id, trimmed, profile);
     setDraft('');
     setComposerFocused(false);
-    toast('Comment posted');
+    const created = await cloudSync.postComment(anime.id, trimmed, profile);
+    if (created) {
+      setCloudComments((prev) => [created, ...prev.filter((c) => c.id !== created.id)]);
+    }
+    toast(cloud.isLinked ? 'Comment saved & synced to cloud' : 'Comment posted');
   };
 
   return (
@@ -70,8 +93,9 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ anime, onEditP
           <MessageSquare className="h-4.5 w-4.5 text-[#FF0000]" />
           <span>{totalCount} {totalCount === 1 ? 'Comment' : 'Comments'}</span>
         </h2>
-        <span className="text-[11px] font-medium text-[#AAAAAA]">
-          Comments saved permanently on device
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#AAAAAA]">
+          {cloud.isLinked && <Cloud className="h-3 w-3 text-emerald-400" />}
+          {cloud.isLinked ? 'Synced to cloud across your devices' : 'Comments saved permanently on device'}
         </span>
       </div>
 
@@ -213,59 +237,83 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ anime, onEditP
       ) : null}
 
       {/* Persistent User Comments */}
-      {userComments.length === 0 ? (
+      {allComments.length === 0 ? (
         <p className="py-2 text-[12.5px] text-[#AAAAAA]">
-          No personal notes or comments yet — share your thoughts above and they stay saved here forever.
+          No personal notes or comments yet — share your thoughts above and they stay saved across refreshes{cloud.isLinked ? ' and synced devices' : ''}.
         </p>
       ) : (
         <div className="space-y-4">
-          {userComments.map((comment) => (
-            <div key={comment.id} className="flex items-start gap-3">
-              <img
-                src={comment.authorAvatar}
-                alt={comment.authorName}
-                className="h-9 w-9 shrink-0 rounded-full object-cover bg-[#272727]"
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
-                  <span className="font-bold text-white">{comment.authorHandle}</span>
-                  <span className="text-[11px] text-[#AAAAAA]">
-                    {formatTimeAgo(comment.createdAt)}
-                  </span>
-                </div>
-                <p className="mt-1 whitespace-pre-line text-[13.5px] leading-relaxed text-[#F1F1F1]">
-                  {comment.text}
-                </p>
-                <div className="mt-1.5 flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => commentsStore.toggleLike(anime.id, comment.id)}
-                    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11.5px] transition ${
-                      comment.likedByMe
-                        ? 'text-[#3EA6FF]'
-                        : 'text-[#AAAAAA] hover:bg-white/[0.06] hover:text-white'
-                    }`}
-                  >
-                    <ThumbsUp
-                      className={`h-3.5 w-3.5 ${comment.likedByMe ? 'fill-current' : ''}`}
-                    />
-                    {comment.likes > 0 && <span>{comment.likes}</span>}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Delete comment"
-                    onClick={() => {
-                      commentsStore.deleteComment(anime.id, comment.id);
-                      toast('Comment deleted');
-                    }}
-                    className="rounded-full p-1 text-[#AAAAAA] transition hover:bg-white/[0.06] hover:text-rose-400"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+          {allComments.map((comment) => {
+            const canDelete = !comment.ownerUserId || comment.ownerUserId === cloud.userId;
+            return (
+              <div key={comment.id} className="flex items-start gap-3">
+                <img
+                  src={comment.authorAvatar}
+                  alt={comment.authorName}
+                  className="h-9 w-9 shrink-0 rounded-full object-cover bg-[#272727]"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
+                    <span className="font-bold text-white">{comment.authorHandle}</span>
+                    {comment.isCloud && (
+                      <span className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[9.5px] font-semibold text-[#AAAAAA]">
+                        Cloud
+                      </span>
+                    )}
+                    <span className="text-[11px] text-[#AAAAAA]">
+                      {formatTimeAgo(comment.createdAt)}
+                    </span>
+                  </div>
+                  <p className="mt-1 whitespace-pre-line text-[13.5px] leading-relaxed text-[#F1F1F1]">
+                    {comment.text}
+                  </p>
+                  <div className="mt-1.5 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCloudComments((prev) =>
+                          prev.map((c) =>
+                            c.id === comment.id
+                              ? {
+                                  ...c,
+                                  likedByMe: !c.likedByMe,
+                                  likes: Math.max(0, c.likes + (c.likedByMe ? -1 : 1)),
+                                }
+                              : c
+                          )
+                        );
+                        void cloudSync.toggleCommentLike(anime.id, comment);
+                      }}
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11.5px] transition ${
+                        comment.likedByMe
+                          ? 'text-[#3EA6FF]'
+                          : 'text-[#AAAAAA] hover:bg-white/[0.06] hover:text-white'
+                      }`}
+                    >
+                      <ThumbsUp
+                        className={`h-3.5 w-3.5 ${comment.likedByMe ? 'fill-current' : ''}`}
+                      />
+                      {comment.likes > 0 && <span>{comment.likes}</span>}
+                    </button>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        aria-label="Delete comment"
+                        onClick={() => {
+                          setCloudComments((prev) => prev.filter((c) => c.id !== comment.id));
+                          void cloudSync.deleteComment(anime.id, comment);
+                          toast('Comment deleted');
+                        }}
+                        className="rounded-full p-1 text-[#AAAAAA] transition hover:bg-white/[0.06] hover:text-rose-400"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>

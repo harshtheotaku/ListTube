@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BookOpen, Film, Menu, Search, Settings, Star, User, X } from 'lucide-react';
+import { BookOpen, Cloud, Film, Menu, Search, Settings, Star, User, X } from 'lucide-react';
 import { Anime, MediaType, TrackerAccount } from '../types';
 import { searchSmart } from '../services/search';
 import { useProfile } from '../services/profile';
+import { useCloudSync } from '../services/cloudSync';
 import { ListTubeLogo } from './ListTubeLogo';
 
 interface TopBarProps {
@@ -38,6 +39,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const searchTicket = useRef(0);
   const profile = useProfile();
+  const cloud = useCloudSync();
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -255,27 +257,37 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             type="button"
             onClick={onOpenTrackers}
-            aria-label={connected ? `Connected as ${connected.username}` : 'Connect AniList or MyAnimeList'}
+            aria-label={connected ? `Connected as ${connected.username}` : 'Connect AniList, MAL or Cloud Sync'}
             className="flex items-center gap-2 rounded-full border border-white/[0.16] bg-[#272727] py-1.5 pl-2 pr-3 text-[12px] font-semibold text-white transition hover:bg-[#383838]"
           >
+            <div className="relative">
+              <img
+                src={profile.avatarUrl}
+                alt={profile.name}
+                className="h-5 w-5 rounded-full object-cover"
+              />
+              {cloud.isLinked && (
+                <span
+                  title={cloud.state === 'synced' ? 'Synced to Cloud' : `Cloud: ${cloud.state}`}
+                  className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-[#272727] ${
+                    cloud.state === 'syncing'
+                      ? 'bg-amber-400'
+                      : cloud.state === 'error'
+                      ? 'bg-rose-400'
+                      : 'bg-emerald-400'
+                  }`}
+                />
+              )}
+            </div>
             {connected ? (
-              <>
-                <img
-                  src={profile.avatarUrl}
-                  alt={profile.name}
-                  className="h-5 w-5 rounded-full object-cover"
-                />
-                <span className="hidden max-w-[95px] truncate sm:block">{connected.username}</span>
-              </>
+              <span className="hidden max-w-[95px] truncate sm:block">{connected.username}</span>
+            ) : cloud.isLinked ? (
+              <span className="hidden items-center gap-1 text-emerald-300 sm:inline-flex">
+                <Cloud className="h-3.5 w-3.5" />
+                Cloud
+              </span>
             ) : (
-              <>
-                <img
-                  src={profile.avatarUrl}
-                  alt={profile.name}
-                  className="h-5 w-5 rounded-full object-cover"
-                />
-                <span className="hidden text-[#3EA6FF] sm:inline">Connect</span>
-              </>
+              <span className="hidden text-[#3EA6FF] sm:inline">Connect</span>
             )}
           </button>
         </div>

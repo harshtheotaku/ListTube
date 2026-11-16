@@ -2,20 +2,28 @@ import React, { useMemo, useState } from 'react';
 import {
   BookOpen,
   CalendarDays,
+  Cloud,
+  CloudOff,
   Compass,
+  Copy,
   Download,
   Film,
+  KeyRound,
+  Loader2,
   Newspaper,
   Pencil,
+  RefreshCw,
   Settings,
   Sparkles,
   Trash2,
+  Unlink,
 } from 'lucide-react';
 import { LibraryState, MediaType } from '../types';
 import { animeStore } from '../services/animeStore';
 import { buildTasteProfile } from '../services/recommender';
 import { library } from '../services/library';
 import { useProfile } from '../services/profile';
+import { cloudSync, useCloudSync } from '../services/cloudSync';
 import { toast } from './Toast';
 
 interface YouViewProps {
@@ -99,6 +107,51 @@ export const YouView: React.FC<YouViewProps> = ({
 
   const connected = libraryState.trackers[0];
   const profileData = useProfile();
+  const cloud = useCloudSync();
+  const [codeInput, setCodeInput] = useState('');
+  const [cloudBusy, setCloudBusy] = useState(false);
+
+  const handleCreateSyncCode = async () => {
+    setCloudBusy(true);
+    try {
+      const code = await cloudSync.createSyncCode();
+      try {
+        await navigator.clipboard?.writeText(code);
+        toast(`Cloud Sync Code created & copied: ${code}`);
+      } catch {
+        toast(`Cloud Sync Code created: ${code}`);
+      }
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not create sync code');
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
+  const handleLinkSyncCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!codeInput.trim()) return;
+    setCloudBusy(true);
+    try {
+      await cloudSync.linkSyncCode(codeInput);
+      setCodeInput('');
+      toast('Devices linked & synced via Cloud Vault!');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Invalid Sync Code');
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
+  const handleCopyCode = async () => {
+    if (!cloud.syncCode) return;
+    try {
+      await navigator.clipboard?.writeText(cloud.syncCode);
+      toast('Sync Code copied');
+    } catch {
+      toast(cloud.syncCode);
+    }
+  };
 
   return (
     <div className="mx-auto min-h-screen max-w-3xl space-y-5 bg-[#0F0F0F] px-4 pb-24 pt-5 text-white sm:px-6 lg:px-8 lg:pb-16">
@@ -127,9 +180,13 @@ export const YouView: React.FC<YouViewProps> = ({
             </div>
             <p className="text-[12px] text-[#AAAAAA]">
               {profileData.handle}
-              {connected
+              {cloud.userEmail
+                ? ` · Cloud (${cloud.userEmail})`
+                : cloud.syncCode
+                ? ` · Cloud Vault ${cloud.syncCode}`
+                : connected
                 ? ` · Synced with ${connected.provider === 'anilist' ? 'AniList' : 'MyAnimeList'} (${connected.username})`
-                : ' · 100% offline-first'}
+                : ' · Local-only (enable Cloud Sync below)'}
             </p>
           </div>
         </div>
@@ -148,9 +205,125 @@ export const YouView: React.FC<YouViewProps> = ({
             onClick={onOpenTrackers}
             className="rounded-full bg-[#F1F1F1] px-4 py-2 text-[12px] font-bold text-[#0F0F0F] transition hover:bg-white"
           >
-            {connected ? 'Manage Sync' : 'Connect Account'}
+            {connected || cloud.isLinked ? 'Manage Sync' : 'Connect Account'}
           </button>
         </div>
+      </div>
+
+      {/* Multi-Device Cloud Sync Vault & Account Status */}
+      <div className={CARD}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            {cloud.state === 'offline' ? (
+              <CloudOff className="h-4 w-4 text-[#AAAAAA]" />
+            ) : (
+              <Cloud className={`h-4 w-4 ${cloud.isLinked ? 'text-emerald-400' : 'text-[#3EA6FF]'}`} />
+            )}
+            <p className="text-[12px] font-bold uppercase tracking-wider text-white">
+              Cloud Sync &amp; Cross-Device Backup
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ${
+                cloud.state === 'synced'
+                  ? 'bg-emerald-500/15 text-emerald-300'
+                  : cloud.state === 'syncing'
+                  ? 'bg-amber-500/15 text-amber-300'
+                  : cloud.state === 'error'
+                  ? 'bg-rose-500/15 text-rose-300'
+                  : 'bg-white/10 text-[#AAAAAA]'
+              }`}
+            >
+              {cloud.state === 'synced'
+                ? 'Synced to Cloud'
+                : cloud.state === 'syncing'
+                ? 'Syncing…'
+                : cloud.state === 'error'
+                ? 'Sync Error'
+                : cloud.state === 'offline'
+                ? 'Offline'
+                : 'Device Only'}
+            </span>
+            {cloud.isLinked && (
+              <button
+                type="button"
+                disabled={cloudBusy || cloud.state === 'syncing'}
+                onClick={() => void cloudSync.syncNow()}
+                className="flex items-center gap-1 rounded-full bg-[#272727] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[#383838] disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3 w-3 ${cloud.state === 'syncing' ? 'animate-spin' : ''}`} />
+                Sync
+              </button>
+            )}
+          </div>
+        </div>
+
+        <p className="mt-1 text-[11.5px] text-[#AAAAAA]">
+          Sync your watchlist, progress, Taste DNA, comments, and custom PFP between Android APK and Web automatically.
+        </p>
+
+        {cloud.syncCode ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/25 bg-[#121212] px-3 py-2.5">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+                Active Vault Code (v{cloud.syncVersion})
+              </p>
+              <p className="font-mono text-[14px] font-black tracking-wide text-white">
+                {cloud.syncCode}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopyCode}
+                className="flex items-center gap-1 rounded-lg bg-[#272727] px-2.5 py-1.5 text-[11.5px] font-bold text-white transition hover:bg-[#383838]"
+              >
+                <Copy className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                Copy
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  cloudSync.unlinkSyncCode();
+                  toast('Unlinked Sync Code (local data kept)');
+                }}
+                className="flex items-center gap-1 rounded-lg bg-[#272727] px-2.5 py-1.5 text-[11.5px] font-bold text-rose-400 transition hover:bg-[#383838]"
+              >
+                <Unlink className="h-3.5 w-3.5" />
+                Unlink
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              disabled={cloudBusy}
+              onClick={handleCreateSyncCode}
+              className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#FF0000] px-4 py-2 text-[12px] font-bold text-white transition hover:bg-[#CC0000] disabled:opacity-50"
+            >
+              {cloudBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
+              Create Cloud Sync Code
+            </button>
+            <form onSubmit={handleLinkSyncCode} className="flex flex-1 gap-2">
+              <input
+                value={codeInput}
+                onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+                placeholder="Enter code LT-XXXX-XXXX-XXXX"
+                className="h-9 flex-1 rounded-xl border border-white/[0.12] bg-[#121212] px-3 font-mono text-[16px] text-white placeholder:font-sans placeholder:text-[12px] placeholder:text-[#777777] outline-none focus:border-[#3EA6FF] lg:text-[12px]"
+              />
+              <button
+                type="submit"
+                disabled={cloudBusy || codeInput.trim().length < 8}
+                className="rounded-xl bg-[#272727] px-3.5 text-[12px] font-bold text-white transition hover:bg-[#383838] disabled:opacity-40"
+              >
+                Link
+              </button>
+            </form>
+          </div>
+        )}
       </div>
 
       {/* Mode Switch & Quick Hub (Anime | Manga, Schedule, News, Explore) */}
