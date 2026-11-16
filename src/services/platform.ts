@@ -14,8 +14,14 @@ export function isNativeCapacitor(): boolean {
  */
 export function resolveMalUrl(malPath: string): string | null {
   if (isNativeCapacitor()) return `https://myanimelist.net${malPath}`;
-  if (typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')) {
-    return null;
+  if (typeof window !== 'undefined') {
+    const h = window.location.hostname;
+    const hasProxy =
+      h === 'localhost' ||
+      h === '127.0.0.1' ||
+      h.endsWith('.vercel.app') ||
+      window.location.port === '5173';
+    if (!hasProxy) return null;
   }
   return `/proxy/mal${malPath}`;
 }

@@ -23,6 +23,7 @@ import {
   ListStatus,
   LIST_STATUS_ORDER,
   ScoredAnime,
+  mangaOriginLabel,
   statusLabel,
 } from '../types';
 import { fetchDetail } from '../services/anilist';
@@ -41,7 +42,7 @@ interface DetailViewProps {
   libraryState: LibraryState;
   onOpenId: (id: string) => void;
   onOpenChannel: (anime: Anime) => void;
-  onOpenSettings?: () => void;
+  onEditProfile?: () => void;
   onClose: () => void;
   onQuickAdd: (anime: Anime) => void;
 }
@@ -67,7 +68,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
   libraryState,
   onOpenId,
   onOpenChannel,
-  onOpenSettings,
+  onEditProfile,
   onClose,
 }) => {
   const settings = useSettings();
@@ -187,7 +188,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
     return [
       anime.year,
       anime.season,
-      anime.format,
+      isManga ? mangaOriginLabel(anime) : anime.format,
       isManga
         ? anime.chapters
           ? `${anime.chapters} chapters`
@@ -671,7 +672,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
             )}
 
             {/* YouTube-Style Persistent Comments + Pinned Spoiler-Free MAL Review */}
-            <CommentsSection anime={anime} onOpenSettings={onOpenSettings} />
+            <CommentsSection anime={anime} onEditProfile={onEditProfile} />
           </div>
 
           {/* Right Column: "Up Next & Recommendations" (Real MAL / AniList / Community Recs!) */}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Bell, Check, MoreVertical, Play, Star } from 'lucide-react';
-import { Anime, ListStatus, statusLabel } from '../types';
+import { Anime, ListStatus, mangaOriginLabel, statusLabel } from '../types';
 import { franchiseNameOf } from '../services/franchise';
 
 interface AnimeCardProps {
@@ -51,10 +51,11 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
       ? anime.banner
       : null;
 
+  const originLabel = isManga ? mangaOriginLabel(anime) : undefined;
   const badgeDuration = isManga
     ? anime.chapters
       ? `${anime.chapters} ch`
-      : anime.format || 'MANGA'
+      : null
     : anime.episodes
     ? `${anime.episodes} ep`
     : anime.format || 'TV';
@@ -134,6 +135,12 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
           className="absolute inset-0 z-[2] rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF0000]"
         />
 
+        {isManga && originLabel && (
+          <span className="pointer-events-none absolute left-2 top-2 z-[3] rounded bg-black/80 px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-white/95 backdrop-blur-sm">
+            {originLabel}
+          </span>
+        )}
+
         {!isManga && anime.trailerYoutubeId && (
           <span className="pointer-events-none absolute left-2 top-2 z-[3] flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
             <Play className="h-2.5 w-2.5 fill-white" />
@@ -156,9 +163,11 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
           </span>
         )}
 
-        <span className="pointer-events-none absolute bottom-2 right-2 z-[3] rounded bg-black/85 px-1.5 py-0.5 text-[11px] font-semibold tracking-tight text-white">
-          {badgeDuration}
-        </span>
+        {badgeDuration && (
+          <span className="pointer-events-none absolute bottom-2 right-2 z-[3] rounded bg-black/85 px-1.5 py-0.5 text-[11px] font-semibold tracking-tight text-white">
+            {badgeDuration}
+          </span>
+        )}
 
         {anime.score ? (
           <span className="pointer-events-none absolute bottom-2 left-2 z-[3] flex items-center gap-0.5 rounded bg-black/80 px-1.5 py-0.5 text-[10.5px] font-bold text-amber-300">

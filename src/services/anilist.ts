@@ -55,6 +55,8 @@ const CORE = `
   startDate { year }
   season
   format
+  countryOfOrigin
+  synonyms
   episodes
   chapters
   volumes
@@ -81,6 +83,8 @@ interface AniListMedia {
   startDate?: { year?: number | null };
   season?: string | null;
   format?: string | null;
+  countryOfOrigin?: string | null;
+  synonyms?: string[] | null;
   episodes?: number | null;
   chapters?: number | null;
   volumes?: number | null;
@@ -131,8 +135,46 @@ export function cleanDescription(input?: string | null): string {
     .trim();
 }
 
+const NON_ENGLISH_WORDS = /\b(der|die|das|ein|eine|dem|den|des|le|la|les|un|une|des|et|en|du|au|aux|el|los|las|del|por|con|para|que|eseo|nyeon|nyeoni|neun|eun|gwa|geomga|hoegwi|sanyang|oppa|hyung|noona|seonbae|sensei|san|kun|chan)\b/i;
+const ENGLISH_SIGNAL_WORDS = /\b(the|of|in|to|a|an|for|and|from|with|by|years|year|since|life|world|hero|lord|knight|demon|level|solo|king|queen|prince|princess|sword|magic|academy|return|revenge|after|story|chronicles|hunter|dragon|saint|villainess|duke|lady|prologue|shadow|dungeon|time|new|my|i|you|we|was|became|overpowered|second|reincarnated|extra)\b/i;
+
+function pickEnglishSynonym(synonyms?: string[] | null): string | null {
+  if (!synonyms?.length) return null;
+  let fallbackAscii: string | null = null;
+
+  for (const raw of synonyms) {
+    const s = raw.trim();
+    if (s.length < 5 || s.length > 90) continue;
+    // Must be pure ASCII (drops Korean, Japanese, Chinese, Thai, Russian, accented French/German/Spanish)
+    if (!/^[\x20-\x7E]+$/.test(s)) continue;
+    if (NON_ENGLISH_WORDS.test(s)) continue;
+    // Skip obvious Korean/Japanese hyphenated romanization words like "Prologue-eseo"
+    if (/[a-z]-(?:eseo|neun|eun|ga|ui|reul|eul)\b/i.test(s)) continue;
+
+    if (ENGLISH_SIGNAL_WORDS.test(s)) {
+      return s;
+    }
+    if (!fallbackAscii && s.includes(' ')) {
+      fallbackAscii = s;
+    }
+  }
+  return fallbackAscii;
+}
+
 export function titleOf(media: AniListMedia): string {
-  return media.title.english || media.title.romaji || media.title.native || 'Untitled';
+  if (media.title.english?.trim()) return media.title.english.trim();
+  const syn = pickEnglishSynonym(media.synonyms);
+  if (syn) return syn;
+  return media.title.romaji || media.title.native || 'Untitled';
+}
+
+function resolveOriginLabel(media: AniListMedia, mediaType: MediaType): string | undefined {
+  if (mediaType !== 'MANGA') return media.format ?? undefined;
+  if (media.countryOfOrigin === 'KR') return 'MANHWA';
+  if (media.countryOfOrigin === 'CN' || media.countryOfOrigin === 'TW') return 'MANHUA';
+  if (media.format === 'NOVEL') return 'LIGHT NOVEL';
+  if (media.format === 'ONE_SHOT') return 'ONE-SHOT';
+  return 'MANGA';
 }
 
 export function mapMedia(media: AniListMedia, fallbackType: MediaType = 'ANIME'): Anime {
@@ -183,6 +225,8 @@ export function mapMedia(media: AniListMedia, fallbackType: MediaType = 'ANIME')
     year: media.startDate?.year ?? undefined,
     season: media.season ? SEASON_LABEL[media.season] ?? media.season : undefined,
     format: media.format ?? undefined,
+    countryOfOrigin: media.countryOfOrigin ?? undefined,
+    mediaLabel: resolveOriginLabel(media, mediaType),
     episodes: media.episodes ?? undefined,
     chapters: media.chapters ?? undefined,
     volumes: media.volumes ?? undefined,

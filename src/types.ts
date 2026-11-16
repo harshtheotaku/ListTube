@@ -38,6 +38,8 @@ export interface Anime {
   year?: number;
   season?: string;
   format?: string;
+  countryOfOrigin?: string;
+  mediaLabel?: string;
   episodes?: number;
   chapters?: number;
   volumes?: number;
@@ -156,3 +158,19 @@ export const LIST_STATUS_ORDER: ListStatus[] = [
   'on_hold',
   'dropped',
 ];
+
+export function mangaOriginLabel(item: {
+  countryOfOrigin?: string;
+  format?: string;
+  mediaLabel?: string;
+}): string {
+  if (item.mediaLabel) return item.mediaLabel;
+  if (item.countryOfOrigin === 'KR') return 'MANHWA';
+  if (item.countryOfOrigin === 'CN' || item.countryOfOrigin === 'TW') return 'MANHUA';
+  const fmt = item.format?.toUpperCase();
+  if (fmt === 'MANHWA') return 'MANHWA';
+  if (fmt === 'MANHUA') return 'MANHUA';
+  if (fmt === 'NOVEL' || fmt === 'LIGHT NOVEL') return 'LIGHT NOVEL';
+  if (fmt === 'ONE_SHOT' || fmt === 'ONE-SHOT') return 'ONE-SHOT';
+  return 'MANGA';
+}

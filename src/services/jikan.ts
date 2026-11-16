@@ -93,6 +93,7 @@ function toAnime(item: JikanMedia, mediaType: MediaType = 'ANIME'): Anime {
       undefined,
     season: item.season ?? undefined,
     format: item.type ?? undefined,
+    mediaLabel: mediaType === 'MANGA' ? (item.type?.toUpperCase() || 'MANGA') : item.type ?? undefined,
     episodes: item.episodes ?? undefined,
     chapters: item.chapters ?? undefined,
     volumes: item.volumes ?? undefined,

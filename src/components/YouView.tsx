@@ -6,10 +6,10 @@ import {
   Download,
   Film,
   Newspaper,
+  Pencil,
   Settings,
   Sparkles,
   Trash2,
-  User,
 } from 'lucide-react';
 import { LibraryState, MediaType } from '../types';
 import { animeStore } from '../services/animeStore';
@@ -24,6 +24,7 @@ interface YouViewProps {
   onMediaTypeChange: (type: MediaType) => void;
   onOpenTrackers: () => void;
   onOpenSettings: () => void;
+  onEditProfile: () => void;
   onOpenSchedule: () => void;
   onOpenNews: () => void;
   onExplore: () => void;
@@ -37,6 +38,7 @@ export const YouView: React.FC<YouViewProps> = ({
   onMediaTypeChange,
   onOpenTrackers,
   onOpenSettings,
+  onEditProfile,
   onOpenSchedule,
   onOpenNews,
   onExplore,
@@ -102,29 +104,35 @@ export const YouView: React.FC<YouViewProps> = ({
     <div className="mx-auto min-h-screen max-w-3xl space-y-5 bg-[#0F0F0F] px-4 pb-24 pt-5 text-white sm:px-6 lg:px-8 lg:pb-16">
       {/* Profile Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          title="Change profile & character avatar"
-          className="group flex items-center gap-3 text-left"
-        >
+        <div className="flex items-center gap-3">
           <img
             src={profileData.avatarUrl}
             alt={profileData.name}
-            className="h-14 w-14 shrink-0 rounded-full border-2 border-white/15 object-cover bg-[#272727] transition group-hover:border-[#FF0000]"
+            className="h-14 w-14 shrink-0 rounded-full border-2 border-white/15 object-cover bg-[#272727]"
           />
           <div>
-            <h1 className="text-[20px] font-black tracking-tight text-white">
-              {connected ? `${profileData.name}` : profileData.name}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-[20px] font-black tracking-tight text-white">
+                {profileData.name}
+              </h1>
+              <button
+                type="button"
+                onClick={onEditProfile}
+                aria-label="Edit profile and PFP"
+                title="Change name & PFP"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-[#272727] text-[#AAAAAA] transition hover:bg-[#383838] hover:text-white"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            </div>
             <p className="text-[12px] text-[#AAAAAA]">
-              {profileData.handle} ·{' '}
+              {profileData.handle}
               {connected
-                ? `Synced with ${connected.provider === 'anilist' ? 'AniList' : 'MyAnimeList'} (${connected.username})`
-                : 'Tap to customize PFP & name'}
+                ? ` · Synced with ${connected.provider === 'anilist' ? 'AniList' : 'MyAnimeList'} (${connected.username})`
+                : ' · 100% offline-first'}
             </p>
           </div>
-        </button>
+        </div>
 
         <div className="flex items-center gap-2">
           <button
@@ -133,7 +141,7 @@ export const YouView: React.FC<YouViewProps> = ({
             className="flex items-center gap-1.5 rounded-full bg-[#272727] px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-[#383838]"
           >
             <Settings className="h-3.5 w-3.5" />
-            Settings &amp; PFP
+            Settings
           </button>
           <button
             type="button"

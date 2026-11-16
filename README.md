@@ -7,11 +7,12 @@
 Built with React, TypeScript, Tailwind CSS v4, and Capacitor Android — bringing YouTube's dark `#0F0F0F` AMOLED interface, infinite discovery feeds, franchise channels, and community-backed recommendation algorithms to Web & Android with zero forced login.
 
 [![Live Website](https://img.shields.io/badge/Live%20Website-GitHub%20Pages-FF0000?style=for-the-badge&logo=githubpages&logoColor=white)](https://harshtheotaku.github.io/anitube/)
+[![Download Android APK](https://img.shields.io/badge/Download-Android%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=black)](https://github.com/harshtheotaku/anitube/releases/latest/download/AniTube-android.apk)
 [![Build Web & Android](https://github.com/harshtheotaku/anitube/actions/workflows/build.yml/badge.svg)](https://github.com/harshtheotaku/anitube/actions/workflows/build.yml)
 [![Deploy Website](https://github.com/harshtheotaku/anitube/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/harshtheotaku/anitube/actions/workflows/deploy-pages.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
-[**Launch Web App**](https://harshtheotaku.github.io/anitube/) · [**Download Android APK via Releases / Actions**](https://github.com/harshtheotaku/anitube/actions) · [**Report an Issue**](https://github.com/harshtheotaku/anitube/issues)
+[**Launch Web App**](https://harshtheotaku.github.io/anitube/) · [**Download Android APK**](https://github.com/harshtheotaku/anitube/releases/latest/download/AniTube-android.apk) · [**Report an Issue**](https://github.com/harshtheotaku/anitube/issues)
 
 </div>
 
@@ -40,9 +41,9 @@ Write permanent device-local notes & comments on any anime or manga, with a real
 ![AniTube Comments & Pinned Review](docs/screenshots/comments-desktop.png)
 
 ### Custom Channel Profile & Popular Character Avatars
-Personalize your display name, `@handle`, custom uploaded photo, or pick from 16 built-in official anime character avatars (**Gojo, Frieren, Luffy, Levi, Killua, Zoro, Eren, Lelouch, Emilia, Maomao, Guts, L, Mikasa, Kurisu, Anya, Spike**) in Settings.
+Tap the small **Edit** button next to your PFP & name in the **You** tab to customize your display name, `@handle`, upload a photo, or choose from 16 built-in official anime character avatars (**Gojo, Frieren, Luffy, Levi, Killua, Zoro, Eren, Lelouch, Emilia, Maomao, Guts, L, Mikasa, Kurisu, Anya, Spike**).
 
-![AniTube Settings & Character PFP Picker](docs/screenshots/settings-pfp.png)
+![AniTube Edit Profile & Character PFP Picker](docs/screenshots/settings-pfp.png)
 
 ### Dedicated Manga Mode (`4:5` Portrait Covers & 2-Column Mobile Grid)
 Switch seamlessly between **Anime (`16:9`)** and **Manga (`4:5` portrait covers)** with separate watch/read progress, genres, and recommendation profiles. On Android/mobile, Manga automatically lays out **2 cards per row** for fast browsing.
@@ -88,46 +89,26 @@ Switch seamlessly between **Anime (`16:9`)** and **Manga (`4:5` portrait covers)
 
 ---
 
-## Quick Start & Installation
+## Quick Download & Install
 
-### 1. Use Online (GitHub Pages)
-Open the live web app directly in any desktop or mobile browser:
+### Android App (No Setup Needed)
+1. **Download the APK:** Tap [**Download AniTube-android.apk**](https://github.com/harshtheotaku/anitube/releases/latest/download/AniTube-android.apk) on your Android phone (Android 7.0+).
+2. **Open & Install:** Tap the downloaded `.apk` file and choose **Install** (allow "Install unknown apps" for your browser/file manager if prompted).
+3. **Launch AniTube:** Open the app — your profile, character PFP, comments, and recommendations work immediately with zero login required.
+
+### Web App (Desktop & Mobile Browser)
+Open the live hosted website directly in any browser:
 > **https://harshtheotaku.github.io/anitube/**
 
-*(Optional: Add to Home Screen / Install PWA in Chrome or Safari for a fullscreen app feel.)*
+*(Supports desktop & mobile browsers and can be added to your Home Screen. Built with relative asset paths so custom domains work cleanly via CNAME.)*
 
----
+<details>
+<summary>Developer Build, USB Install & Local Self-Hosting</summary>
 
-### 2. Install on Android (APK via USB Debugging / Sideload)
+#### Prerequisites
+- Node.js 22+, Java 21, Android SDK (`ANDROID_HOME`) for Android builds
 
-#### Option A: Download prebuilt APK from GitHub Actions
-1. Go to the [**Actions**](https://github.com/harshtheotaku/anitube/actions) tab on GitHub and click the latest **Build Web & Android** run.
-2. Download the **`anitube-debug-apk`** artifact and install it on your Android device (Android 8.0 / minSdk 26+).
-
-#### Option B: Build & Install via USB Debugging (`adb`)
-**Prerequisites:** Node.js 22+, Java 21, Android SDK (`ANDROID_HOME` configured), and USB Debugging enabled on your phone.
-
-```bash
-git clone https://github.com/harshtheotaku/anitube.git
-cd anitube
-
-# Install dependencies & build static web bundle
-npm install
-npm run build
-
-# Sync assets into the native Capacitor Android project
-npx cap sync android
-
-# Compile debug APK & install over USB
-cd android
-./gradlew assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
----
-
-### 3. Run Locally or Self-Host on Vercel
-
+#### Run Locally (`http://localhost:5173`)
 ```bash
 git clone https://github.com/harshtheotaku/anitube.git
 cd anitube
@@ -135,9 +116,19 @@ npm install
 npm run dev
 ```
 
-- **Local Development (`http://localhost:5173`):** Includes Vite dev proxy rules (`/proxy/mal/*` and `/proxy/ann/*`) in [`vite.config.ts`](vite.config.ts).
-- **Vercel Hosting:** Pre-configured with [`vercel.json`](vercel.json) rewrites so all MAL/ANN endpoints work serverlessly.
-- **GitHub Pages Hosting:** Built with `GITHUB_PAGES=true npm run build` via [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) and automatically falls back cleanly to CORS-enabled APIs (`platform.ts`).
+#### Build & Install Android APK via USB Debugging (`adb`)
+```bash
+npm run build
+npx cap sync android
+cd android
+./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+- **Vercel Hosting:** Pre-configured with [`vercel.json`](vercel.json) rewrites for `/proxy/mal/*` and `/proxy/ann/*`.
+- **GitHub Pages Hosting:** Built via [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) with clean CORS API fallbacks ([`platform.ts`](src/services/platform.ts)).
+
+</details>
 
 ---
 
@@ -158,11 +149,12 @@ anitube/
 │   │   ├── CommentsSection.tsx  # Persistent YouTube comments + pinned spoiler-free MAL review
 │   │   ├── DetailView.tsx       # Trailer watch page, 5-list Subscribe, Up Next recommendations
 │   │   ├── ExploreView.tsx      # Infinite Trending / Top Rated / Seasonal / Genre discovery
-│   │   ├── HomeView.tsx         # Infinite "For You" feed, pull-to-refresh & inline Home search
+│   │   ├── HomeView.tsx         # Infinite "For You" feed, Anime|Manga switch & pull-to-refresh
 │   │   ├── ListView.tsx         # Subscriptions manager with story channels & progress steppers
 │   │   ├── NewsView.tsx         # Illustrated anime & manga news feed
+│   │   ├── ProfileModal.tsx     # Compact profile name/handle & 16 built-in character PFP picker
 │   │   ├── ScheduleView.tsx     # 7-day live airing countdowns
-│   │   ├── SettingsModal.tsx    # Profile/PFP picker, auto-play trailer toggle & cache controls
+│   │   ├── SettingsModal.tsx    # Auto-play trailer toggle & artwork cache controls
 │   │   ├── Shelf.tsx            # Horizontal recommendation shelves
 │   │   ├── Sidebar.tsx          # Collapsible YouTube navigation & subscribed channels
 │   │   ├── Skeleton.tsx         # Responsive 16:9 & 4:5 loading skeletons

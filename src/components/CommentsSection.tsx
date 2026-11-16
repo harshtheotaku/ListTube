@@ -8,7 +8,7 @@ import { toast } from './Toast';
 
 interface CommentsSectionProps {
   anime: Anime;
-  onOpenSettings?: () => void;
+  onEditProfile?: () => void;
 }
 
 function formatTimeAgo(timestamp: number): string {
@@ -23,7 +23,7 @@ function formatTimeAgo(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
-export const CommentsSection: React.FC<CommentsSectionProps> = ({ anime, onOpenSettings }) => {
+export const CommentsSection: React.FC<CommentsSectionProps> = ({ anime, onEditProfile }) => {
   const profile = useProfile();
   const userComments = useComments(anime.id);
   const [draft, setDraft] = useState('');
@@ -81,8 +81,8 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ anime, onOpenS
       <form onSubmit={handleSubmit} className="flex items-start gap-3">
         <button
           type="button"
-          onClick={onOpenSettings}
-          title="Change profile & character avatar"
+          onClick={onEditProfile}
+          title="Change profile & PFP"
           className="shrink-0 rounded-full focus:outline-none"
         >
           <img
@@ -103,10 +103,10 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ anime, onOpenS
 
           {(composerFocused || draft.trim().length > 0) && (
             <div className="flex items-center justify-between gap-2">
-              {onOpenSettings ? (
+              {onEditProfile ? (
                 <button
                   type="button"
-                  onClick={onOpenSettings}
+                  onClick={onEditProfile}
                   className="text-[11px] font-semibold text-[#AAAAAA] hover:text-white"
                 >
                   Change PFP ({profile.name})

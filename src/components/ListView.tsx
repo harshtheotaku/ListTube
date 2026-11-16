@@ -7,6 +7,7 @@ import {
   LIST_STATUS_ORDER,
   ListStatus,
   MediaType,
+  mangaOriginLabel,
   statusLabel,
 } from '../types';
 import { animeStore } from '../services/animeStore';
@@ -113,7 +114,11 @@ const Row: React.FC<RowProps> = ({ anime, entry, onOpen, onOpenChannel }) => {
               </button>
               {[
                 anime.year ? `• ${anime.year}` : null,
-                anime.format ? `• ${anime.format}` : null,
+                isManga
+                  ? `• ${mangaOriginLabel(anime)}`
+                  : anime.format
+                    ? `• ${anime.format}`
+                    : null,
                 total ? `• ${total} ${isManga ? 'ch' : 'eps'}` : null,
               ]
                 .filter(Boolean)

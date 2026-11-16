@@ -23,6 +23,7 @@ import { DetailView } from './components/DetailView';
 import { ChannelView } from './components/ChannelView';
 import { TrackersModal } from './components/TrackersModal';
 import { SettingsModal } from './components/SettingsModal';
+import { ProfileModal } from './components/ProfileModal';
 import { ToastHost, toast } from './components/Toast';
 
 const TABS: AppTab[] = ['home', 'explore', 'list', 'schedule', 'news', 'you'];
@@ -74,6 +75,7 @@ export const App: React.FC = () => {
   const [queriesByTab, setQueriesByTab] = useState<Record<AppTab, string>>(EMPTY_QUERIES);
   const [trackersOpen, setTrackersOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [quickTarget, setQuickTarget] = useState<Anime | null>(null);
 
   type NavSnapshot = { tab: AppTab; detailId: string | null; channelAnime: Anime | null };
@@ -85,8 +87,8 @@ export const App: React.FC = () => {
   });
   routeRef.current = { tab, detailId, channelAnime };
 
-  const modalRef = useRef({ quickTarget, settingsOpen, trackersOpen });
-  modalRef.current = { quickTarget, settingsOpen, trackersOpen };
+  const modalRef = useRef({ quickTarget, settingsOpen, trackersOpen, profileOpen });
+  modalRef.current = { quickTarget, settingsOpen, trackersOpen, profileOpen };
 
   const scrollTop = () => window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
 
@@ -118,9 +120,13 @@ export const App: React.FC = () => {
   };
 
   const goBackStep = (): boolean => {
-    const { quickTarget: qt, settingsOpen: so, trackersOpen: to } = modalRef.current;
+    const { quickTarget: qt, settingsOpen: so, trackersOpen: to, profileOpen: po } = modalRef.current;
     if (qt) {
       setQuickTarget(null);
+      return true;
+    }
+    if (po) {
+      setProfileOpen(false);
       return true;
     }
     if (so) {
@@ -288,13 +294,13 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!trackersOpen && !quickTarget && !settingsOpen) return;
+    if (!trackersOpen && !quickTarget && !settingsOpen && !profileOpen) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previous;
     };
-  }, [trackersOpen, quickTarget, settingsOpen]);
+  }, [trackersOpen, quickTarget, settingsOpen, profileOpen]);
 
   const stats = useMemo(() => {
     const entries = Object.values(libraryState.entries).filter((entry) => {
@@ -378,7 +384,7 @@ export const App: React.FC = () => {
               libraryState={libraryState}
               onOpenId={openDetail}
               onOpenChannel={openChannel}
-              onOpenSettings={() => setSettingsOpen(true)}
+              onEditProfile={() => setProfileOpen(true)}
               onClose={closeDetail}
               onQuickAdd={quickAdd}
             />
@@ -397,6 +403,7 @@ export const App: React.FC = () => {
                 <HomeView
                   library={libraryState}
                   mediaType={mediaType}
+                  onMediaTypeChange={handleMediaTypeChange}
                   query={queriesByTab.home}
                   onOpen={openAnime}
                   onOpenChannel={openChannel}
@@ -444,6 +451,7 @@ export const App: React.FC = () => {
                   onMediaTypeChange={handleMediaTypeChange}
                   onOpenTrackers={() => setTrackersOpen(true)}
                   onOpenSettings={() => setSettingsOpen(true)}
+                  onEditProfile={() => setProfileOpen(true)}
                   onOpenSchedule={() => navigate('schedule')}
                   onOpenNews={() => navigate('news')}
                   onExplore={() => navigate('explore')}
@@ -465,6 +473,7 @@ export const App: React.FC = () => {
       />
 
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
 
       {/* Quick 5-List Subscription Sheet */}
       {quickTarget && (

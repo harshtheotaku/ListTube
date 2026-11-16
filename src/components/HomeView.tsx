@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Loader2, RefreshCw, Sparkles, Upload, X } from 'lucide-react';
+import { ArrowRight, BookOpen, Film, Loader2, RefreshCw, Sparkles, Upload, X } from 'lucide-react';
 import { Anime, LibraryState, MediaType, ScoredAnime } from '../types';
 import {
   getRecommendationPage,
@@ -17,6 +17,7 @@ import { AppTab } from './Sidebar';
 interface HomeViewProps {
   library: LibraryState;
   mediaType: MediaType;
+  onMediaTypeChange: (type: MediaType) => void;
   query: string;
   onOpen: (anime: Anime) => void;
   onOpenChannel: (anime: Anime) => void;
@@ -26,6 +27,54 @@ interface HomeViewProps {
 }
 
 const ONBOARD_KEY = 'anitube.onboard.dismissed';
+const FEED_ROTATION_KEY = 'anitube.feed.rotation.v1';
+
+interface RotationRecord {
+  seed: number;
+  seenIds: string[];
+}
+
+function readRotation(mediaType: MediaType): RotationRecord {
+  try {
+    const raw = localStorage.getItem(FEED_ROTATION_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<Record<MediaType, RotationRecord>>;
+      const rec = parsed[mediaType];
+      if (rec) {
+        return {
+          seed: Number(rec.seed || 0) + 1,
+          seenIds: Array.isArray(rec.seenIds) ? rec.seenIds.slice(-45) : [],
+        };
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return { seed: 1, seenIds: [] };
+}
+
+function writeRotation(mediaType: MediaType, seed: number, newlyShown: string[]) {
+  try {
+    const raw = localStorage.getItem(FEED_ROTATION_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Partial<Record<MediaType, RotationRecord>>) : {};
+    const prevSeen = parsed[mediaType]?.seenIds ?? [];
+    const merged: string[] = [];
+    const set = new Set<string>();
+    for (const id of [...prevSeen, ...newlyShown]) {
+      if (!set.has(id)) {
+        set.add(id);
+        merged.push(id);
+      }
+    }
+    parsed[mediaType] = {
+      seed,
+      seenIds: merged.slice(-45),
+    };
+    localStorage.setItem(FEED_ROTATION_KEY, JSON.stringify(parsed));
+  } catch {
+    /* ignore */
+  }
+}
 const YOUTUBE_GRID =
   'grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
 
@@ -63,6 +112,7 @@ const MANGA_CHIPS = [
 export const HomeView: React.FC<HomeViewProps> = ({
   library,
   mediaType,
+  onMediaTypeChange,
   query,
   onOpen,
   onOpenChannel,
@@ -70,6 +120,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onOpenTrackers,
   onQuickAdd,
 }) => {
+  const initialRotation = useMemo(() => readRotation(mediaType), [mediaType]);
   const [bundle, setBundle] = useState<RecommendationBundle | null>(null);
   const [extraFeed, setExtraFeed] = useState<ScoredAnime[]>([]);
   const [page, setPage] = useState(1);
@@ -78,7 +129,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [refreshToken, setRefreshToken] = useState(0);
+  const [refreshToken, setRefreshToken] = useState(() => initialRotation.seed);
   const [selectedChip, setSelectedChip] = useState('All');
   const [dismissed, setDismissed] = useState(() => localStorage.getItem(ONBOARD_KEY) === '1');
   const [searchResults, setSearchResults] = useState<Anime[] | null>(null);
@@ -87,7 +138,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const requestId = useRef(0);
   const searchTicket = useRef(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const shownHistoryRef = useRef<Set<string>>(new Set());
+  const shownHistoryRef = useRef<Set<string>>(new Set(initialRotation.seenIds));
   const touchStartYRef = useRef<number | null>(null);
   const pullActiveRef = useRef(false);
   const pullPxRef = useRef(0);
@@ -134,8 +185,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
     setExtraFeed([]);
     setPage(1);
     setHasMore(true);
-    shownHistoryRef.current.clear();
-  }, [mediaType]);
+    shownHistoryRef.current = new Set(initialRotation.seenIds);
+    setRefreshToken(initialRotation.seed);
+  }, [mediaType, initialRotation]);
 
   const triggerRefresh = useCallback(() => {
     if (refreshing) return;
@@ -263,6 +315,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
           if (id !== requestId.current) return;
           setBundle(result);
           setLoading(false);
+          writeRotation(
+            mediaType,
+            refreshToken,
+            result.forYou.slice(0, 20).map((i) => i.anime.id)
+          );
         })
         .catch((err) => {
           if (id !== requestId.current) return;
@@ -407,30 +464,53 @@ export const HomeView: React.FC<HomeViewProps> = ({
         })}
       </div>
 
-      {/* For You Header */}
-      <div className="flex items-end justify-between gap-4 px-4 sm:px-6 lg:px-8">
+      {/* For You Header + Accessible Anime | Manga Mode Switch (Refresh works via pull/scroll at top like YouTube) */}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
         <div>
           <h1 className="text-[20px] font-bold tracking-tight text-white sm:text-[22px]">
             {selectedChip === 'All'
               ? isManga
-                ? 'For You · Manga'
+                ? 'For You · Manga & Manhwa'
                 : 'For You'
               : selectedChip}
           </h1>
           <p className="mt-0.5 text-[12.5px] text-[#AAAAAA]">
             {trackedCount > 0
-              ? `Tuned to ${genresLabel || 'your subscriptions'} · Algorithm actively learning`
-              : `Subscribe to ${isManga ? 'manga' : 'anime'} or pick genres to tune your feed`}
+              ? `Tuned to ${genresLabel || 'your subscriptions'} · Scroll up at top to refresh`
+              : `Subscribe to ${isManga ? 'manga' : 'anime'} · Pull down at top for fresh picks`}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={triggerRefresh}
-          className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#272727] px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-[#3F3F3F]"
+
+        <div
+          className="flex shrink-0 items-center rounded-full border border-white/[0.12] bg-[#181818] p-1"
+          role="group"
+          aria-label="Switch between Anime and Manga"
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+          <button
+            type="button"
+            onClick={() => onMediaTypeChange('ANIME')}
+            className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
+              mediaType === 'ANIME'
+                ? 'bg-[#FF0000] text-white shadow'
+                : 'text-[#AAAAAA] hover:text-white'
+            }`}
+          >
+            <Film className="h-3.5 w-3.5" />
+            Anime
+          </button>
+          <button
+            type="button"
+            onClick={() => onMediaTypeChange('MANGA')}
+            className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
+              mediaType === 'MANGA'
+                ? 'bg-[#FF0000] text-white shadow'
+                : 'text-[#AAAAAA] hover:text-white'
+            }`}
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+            Manga
+          </button>
+        </div>
       </div>
 
       {/* Inline Home Search Results when Home's Search Bar has input */}

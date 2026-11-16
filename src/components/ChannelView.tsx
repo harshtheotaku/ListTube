@@ -5,6 +5,7 @@ import {
   LibraryState,
   ListStatus,
   LIST_STATUS_ORDER,
+  mangaOriginLabel,
   statusLabel,
 } from '../types';
 import { channelHandleOf, fetchFranchiseSeasons, franchiseNameOf } from '../services/franchise';
@@ -332,9 +333,11 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
                       onOpen={onOpenAnime}
                       status={libraryState.entries[item.id]?.status}
                       reason={
-                        item.format
-                          ? `${item.format}${item.episodes ? ` • ${item.episodes} ep` : ''}`
-                          : undefined
+                        item.mediaType === 'MANGA'
+                          ? `${mangaOriginLabel(item)}${item.chapters ? ` • ${item.chapters} ch` : ''}`
+                          : item.format
+                            ? `${item.format}${item.episodes ? ` • ${item.episodes} ep` : ''}`
+                            : undefined
                       }
                       onQuickAdd={onQuickAdd}
                       priority={idx < 4}
