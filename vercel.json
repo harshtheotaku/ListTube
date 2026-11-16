@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/proxy/mal/(.*)",
+      "destination": "https://myanimelist.net/$1"
+    },
+    {
+      "source": "/proxy/ann/(.*)",
+      "destination": "https://www.animenewsnetwork.com/$1"
+    }
+  ]
+}

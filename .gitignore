@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+dist-ssr/
+*.local
+*.apk
+*.aab
+
+# Android / Gradle generated artifacts
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+android/local.properties
+android/app/src/main/assets/public/
+android/app/src/main/res/xml/config.xml
+android/app/src/main/assets/capacitor.config.json
+*.iml
+
+# Editor & OS files
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log
