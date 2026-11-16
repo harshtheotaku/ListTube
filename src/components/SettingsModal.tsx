@@ -28,7 +28,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4">
           <h2 id="settings-title" className="flex items-center gap-2 text-[16px] font-bold text-white">
             <Settings className="h-4 w-4 text-[#FF0000]" />
-            AniTube Settings
+            ListTube Settings
           </h2>
           <button
             type="button"

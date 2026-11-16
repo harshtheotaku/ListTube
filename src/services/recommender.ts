@@ -739,7 +739,7 @@ export async function getRecommendations(
       } else if (sets.topRated.has(anime.id)) {
         reason = `Top Rated · ${anime.score ? anime.score.toFixed(1) + '★' : 'AniList'}`;
       } else if (sets.trending.has(anime.id)) {
-        reason = 'Trending on AniTube';
+        reason = 'Trending on ListTube';
       } else if (anime.genres[0]) {
         reason = `Top pick in ${anime.genres[0]}`;
       }
@@ -804,7 +804,7 @@ export async function getRecommendations(
   if (trendingShelf.length >= 4) {
     shelves.push({
       id: 'trending',
-      title: coldStart ? 'Trending Now' : 'Trending on AniTube',
+      title: coldStart ? 'Trending Now' : 'Trending on ListTube',
       subtitle: mediaType === 'MANGA' ? 'Most read this week' : 'What anime fans are watching this week',
       items: trendingShelf,
     });

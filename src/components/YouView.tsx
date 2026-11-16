@@ -91,7 +91,7 @@ export const YouView: React.FC<YouViewProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `anitube-list-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `listtube-list-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
     toast('Exported list backup to JSON');

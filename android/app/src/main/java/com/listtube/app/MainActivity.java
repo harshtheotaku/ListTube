@@ -1,4 +1,4 @@
-package com.anitube.app;
+package com.listtube.app;
 
 import android.annotation.SuppressLint;
 import android.content.pm.ActivityInfo;
@@ -61,7 +61,7 @@ public class MainActivity extends BridgeActivity {
                 public void exitApp() {
                     runOnUiThread(() -> finish());
                 }
-            }, "AniTubeNative");
+            }, "ListTubeNative");
             bridgeConfigured = true;
         }
     }

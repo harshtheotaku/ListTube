@@ -37,20 +37,35 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npx cap sync android
-      - name: Build Debug APK
+      - name: Build Signed Release APK
         working-directory: android
-        run: ./gradlew assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk ../AniTube-android.apk
+        env:
+          LISTTUBE_KEYSTORE_BASE64: ${{ secrets.LISTTUBE_KEYSTORE_BASE64 }}
+          LISTTUBE_STORE_PASSWORD: ${{ secrets.LISTTUBE_STORE_PASSWORD }}
+          LISTTUBE_KEY_ALIAS: ${{ secrets.LISTTUBE_KEY_ALIAS }}
+          LISTTUBE_KEY_PASSWORD: ${{ secrets.LISTTUBE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$LISTTUBE_KEYSTORE_BASE64" ]; then
+            echo "$LISTTUBE_KEYSTORE_BASE64" | base64 --decode > /tmp/listtube-signing.jks
+            export LISTTUBE_KEYSTORE_PATH=/tmp/listtube-signing.jks
+            ./gradlew assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk ../ListTube-android.apk
+          else
+            ./gradlew assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk ../ListTube-android.apk
+          fi
       - uses: actions/upload-artifact@v4
         with:
-          name: AniTube-android-apk
-          path: AniTube-android.apk
+          name: ListTube-android-apk
+          path: ListTube-android.apk
       - name: Update Latest APK Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if gh release view v1.0.0 >/dev/null 2>&1; then
-            gh release upload v1.0.0 AniTube-android.apk --clobber
+            gh release upload v1.0.0 ListTube-android.apk --clobber
+            gh release delete-asset v1.0.0 AniTube-android.apk -y >/dev/null 2>&1 || true
           else
-            gh release create v1.0.0 AniTube-android.apk --title "AniTube Android APK" --notes "Latest Android APK build ready to download and install."
+            gh release create v1.0.0 ListTube-android.apk --title "ListTube Android APK" --notes "Latest signed Android APK build ready to download and install."
           fi

@@ -3,7 +3,7 @@ import { BookOpen, Film, Menu, Search, Settings, Star, User, X } from 'lucide-re
 import { Anime, MediaType, TrackerAccount } from '../types';
 import { searchSmart } from '../services/search';
 import { useProfile } from '../services/profile';
-import { AniTubeLogo } from './AniTubeLogo';
+import { ListTubeLogo } from './ListTubeLogo';
 
 interface TopBarProps {
   query: string;
@@ -86,7 +86,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   return (
     <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#0F0F0F]/95 backdrop-blur-xl">
       <div className="flex h-14 items-center justify-between gap-2 px-3 sm:gap-3 sm:px-5">
-        {/* Left: Hamburger Menu + YouTube-Style AniTube Logo */}
+        {/* Left: Hamburger Menu + ListTube Logo */}
         <div className="flex shrink-0 items-center gap-2">
           {onToggleSidebar && (
             <button
@@ -102,9 +102,9 @@ export const TopBar: React.FC<TopBarProps> = ({
             type="button"
             onClick={onHome}
             className="flex shrink-0 items-center focus:outline-none"
-            aria-label="AniTube Home"
+            aria-label="ListTube Home"
           >
-            <AniTubeLogo />
+            <ListTubeLogo />
           </button>
         </div>
 
@@ -245,7 +245,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             type="button"
             onClick={onOpenSettings}
             aria-label="Settings"
-            title="AniTube Settings"
+            title="ListTube Settings"
             className="rounded-full p-2 text-[#AAAAAA] transition hover:bg-[#272727] hover:text-white"
           >
             <Settings className="h-4 w-4 sm:h-5 sm:w-5" />

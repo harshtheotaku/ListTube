@@ -120,8 +120,8 @@ export const BUILT_IN_AVATARS: CharacterAvatar[] = [
 const PROFILE_KEY = 'anitube.profile.v1';
 
 const DEFAULT_PROFILE: UserProfile = {
-  name: 'AniTube Viewer',
-  handle: '@anitube_fan',
+  name: 'ListTube Viewer',
+  handle: '@listtube_fan',
   avatarId: BUILT_IN_AVATARS[0].id,
   avatarUrl: BUILT_IN_AVATARS[0].url,
 };
@@ -133,7 +133,8 @@ function sanitizeHandle(raw: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9_.-]/g, '')
     .slice(0, 24);
-  return `@${clean || 'anitube_fan'}`;
+  if (!clean || clean === 'anitube_fan') return '@listtube_fan';
+  return `@${clean}`;
 }
 
 function loadProfile(): UserProfile {
@@ -141,8 +142,9 @@ function loadProfile(): UserProfile {
     const raw = localStorage.getItem(PROFILE_KEY);
     if (!raw) return DEFAULT_PROFILE;
     const parsed = JSON.parse(raw) as Partial<UserProfile>;
+    const rawName = parsed.name?.trim();
     return {
-      name: parsed.name?.trim() || DEFAULT_PROFILE.name,
+      name: !rawName || rawName === 'AniTube Viewer' ? DEFAULT_PROFILE.name : rawName,
       handle: sanitizeHandle(parsed.handle || parsed.name || DEFAULT_PROFILE.handle),
       avatarId: parsed.avatarId || DEFAULT_PROFILE.avatarId,
       avatarUrl: parsed.avatarUrl || DEFAULT_PROFILE.avatarUrl,

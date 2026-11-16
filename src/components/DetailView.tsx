@@ -241,7 +241,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
       navigator
         .share({
           title: anime.title,
-          text: `Check out ${anime.title} on AniTube!`,
+          text: `Check out ${anime.title} on ListTube!`,
           url: window.location.href,
         })
         .catch(() => {});

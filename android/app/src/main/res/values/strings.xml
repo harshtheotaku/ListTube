@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">AniTube</string>
-    <string name="title_activity_main">AniTube</string>
-    <string name="package_name">com.anitube.app</string>
-    <string name="custom_url_scheme">com.anitube.app</string>
+    <string name="app_name">ListTube</string>
+    <string name="title_activity_main">ListTube</string>
+    <string name="package_name">com.listtube.app</string>
+    <string name="custom_url_scheme">com.listtube.app</string>
 </resources>

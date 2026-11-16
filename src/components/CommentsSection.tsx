@@ -150,7 +150,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ anime, onEditP
           <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#AAAAAA]">
               <Pin className="h-3 w-3 rotate-45 text-[#FF0000]" />
-              Pinned by AniTube · Spoiler-Free {pinnedReview.source} Review
+              Pinned by ListTube · Spoiler-Free {pinnedReview.source} Review
             </span>
             <span
               className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${

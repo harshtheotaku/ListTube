@@ -1,14 +1,14 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.anitube.app"
+    namespace = "com.listtube.app"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.anitube.app"
+        applicationId "com.listtube.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +16,31 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    def keystorePath = System.getenv("LISTTUBE_KEYSTORE_PATH") ?: project.findProperty("LISTTUBE_KEYSTORE_PATH")
+    def keystoreFile = keystorePath ? file(keystorePath) : null
+    def storePassVal = System.getenv("LISTTUBE_STORE_PASSWORD") ?: project.findProperty("LISTTUBE_STORE_PASSWORD")
+    def keyAliasVal = System.getenv("LISTTUBE_KEY_ALIAS") ?: project.findProperty("LISTTUBE_KEY_ALIAS")
+    def keyPassVal = System.getenv("LISTTUBE_KEY_PASSWORD") ?: project.findProperty("LISTTUBE_KEY_PASSWORD")
+    signingConfigs {
+        listtube {
+            if (keystoreFile != null && keystoreFile.exists() && storePassVal && keyAliasVal && keyPassVal) {
+                storeFile keystoreFile
+                storePassword storePassVal
+                keyAlias keyAliasVal
+                keyPassword keyPassVal
+            }
+        }
+    }
     buildTypes {
+        debug {
+            if (keystoreFile != null && keystoreFile.exists() && storePassVal && keyAliasVal && keyPassVal) {
+                signingConfig signingConfigs.listtube
+            }
+        }
         release {
+            if (keystoreFile != null && keystoreFile.exists() && storePassVal && keyAliasVal && keyPassVal) {
+                signingConfig signingConfigs.listtube
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

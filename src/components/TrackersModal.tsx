@@ -233,7 +233,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
           <div>
             <h2 id="tracker-title" className="flex items-center gap-1.5 text-[16px] font-bold text-white">
               <Sparkles className="h-4 w-4 text-[#FF0000]" />
-              Connect to AniTube
+              Connect to ListTube
             </h2>
             <p className="text-[11.5px] text-[#AAAAAA]">
               Sync your anime &amp; manga list to personalize recommendations
@@ -405,7 +405,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                     className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#272727] py-2 text-[11.5px] font-semibold text-white hover:bg-[#383838]"
                   >
                     <FileUp className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                    Upload MAL .xml or AniTube .json
+                    Upload MAL .xml or ListTube .json
                   </button>
                 </div>
               )}
