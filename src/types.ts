@@ -4,6 +4,7 @@ export type MediaSource = 'anilist' | 'mal';
 export interface StreamingLink {
   site: string;
   url: string;
+  language?: string;
 }
 
 export interface RelatedTitle {
@@ -164,13 +165,14 @@ export function mangaOriginLabel(item: {
   format?: string;
   mediaLabel?: string;
 }): string {
-  if (item.mediaLabel) return item.mediaLabel;
   if (item.countryOfOrigin === 'KR') return 'MANHWA';
   if (item.countryOfOrigin === 'CN' || item.countryOfOrigin === 'TW') return 'MANHUA';
+  if (item.countryOfOrigin === 'JP') return 'MANGA';
+  if (item.mediaLabel && ['MANGA', 'MANHWA', 'MANHUA'].includes(item.mediaLabel)) {
+    return item.mediaLabel;
+  }
   const fmt = item.format?.toUpperCase();
   if (fmt === 'MANHWA') return 'MANHWA';
   if (fmt === 'MANHUA') return 'MANHUA';
-  if (fmt === 'NOVEL' || fmt === 'LIGHT NOVEL') return 'LIGHT NOVEL';
-  if (fmt === 'ONE_SHOT' || fmt === 'ONE-SHOT') return 'ONE-SHOT';
-  return 'MANGA';
+  return item.mediaLabel || 'MANGA';
 }

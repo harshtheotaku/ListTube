@@ -20,8 +20,9 @@
     text-size-adjust: 100%;
     background-color: #0F0F0F;
     width: 100%;
-    max-width: 100%;
+    max-width: 100vw;
     overflow-x: clip;
+    overscroll-behavior-x: none;
     overscroll-behavior-y: contain;
   }
 
@@ -37,8 +38,9 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     width: 100%;
-    max-width: 100%;
+    max-width: 100vw;
     overflow-x: clip;
+    overscroll-behavior-x: none;
     overscroll-behavior-y: contain;
   }
 

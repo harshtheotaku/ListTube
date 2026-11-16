@@ -1,6 +1,7 @@
 package com.anitube.app;
 
 import android.annotation.SuppressLint;
+import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
@@ -11,8 +12,10 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     private boolean bridgeConfigured = false;
 
+    @SuppressLint("SourceLockedOrientationActivity")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         super.onCreate(savedInstanceState);
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
@@ -40,6 +43,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onStart() {
         super.onStart();
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         WebView webView = getBridge() != null ? getBridge().getWebView() : null;
         if (webView == null) return;
 
@@ -47,7 +51,7 @@ public class MainActivity extends BridgeActivity {
         settings.setSupportZoom(false);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
-        settings.setUseWideViewPort(true);
+        settings.setUseWideViewPort(false);
         settings.setLoadWithOverviewMode(false);
         settings.setTextZoom(100);
 

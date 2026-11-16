@@ -8,7 +8,8 @@ import {
   mangaOriginLabel,
   statusLabel,
 } from '../types';
-import { channelHandleOf, fetchFranchiseSeasons, franchiseNameOf } from '../services/franchise';
+import { channelHandleOf, fetchFranchiseSeasons, franchiseNameOf, isExtraWatchEntry } from '../services/franchise';
+import { fetchByStudio } from '../services/anilist';
 import { getSimilar } from '../services/recommender';
 import { library } from '../services/library';
 import { AnimeCard } from './AnimeCard';
@@ -24,8 +25,8 @@ interface ChannelViewProps {
   onBack: () => void;
 }
 
-type ChannelTab = 'videos' | 'related' | 'about';
-type SortMode = 'oldest' | 'latest' | 'popular';
+type ChannelTab = 'videos' | 'related' | 'studio' | 'about';
+type SortMode = 'oldest' | 'latest' | 'all';
 
 function formatSubscribers(popularity?: number): string {
   if (!popularity) return '120K subscribers';
@@ -44,8 +45,10 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
 }) => {
   const [seasons, setSeasons] = useState<Anime[]>([seedAnime]);
   const [related, setRelated] = useState<Anime[]>([]);
+  const [studioWorks, setStudioWorks] = useState<Anime[]>([]);
   const [loadingSeasons, setLoadingSeasons] = useState(true);
   const [loadingRelated, setLoadingRelated] = useState(false);
+  const [loadingStudio, setLoadingStudio] = useState(false);
   const [activeTab, setActiveTab] = useState<ChannelTab>('videos');
   const [sortMode, setSortMode] = useState<SortMode>('oldest');
   const [descExpanded, setDescExpanded] = useState(false);
@@ -59,6 +62,7 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
     let cancelled = false;
     setLoadingSeasons(true);
     setRelated([]);
+    setStudioWorks([]);
     setActiveTab('videos');
     setDescExpanded(false);
     setListMenuOpen(false);
@@ -93,15 +97,36 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
     };
   }, [activeTab, seedAnime, seasons, related.length]);
 
+  const primaryStudio =
+    seedAnime.studios[0] || seasons.find((s) => s.studios.length > 0)?.studios[0] || '';
+
+  useEffect(() => {
+    if (activeTab !== 'studio' || studioWorks.length > 0 || !primaryStudio) return;
+    let cancelled = false;
+    setLoadingStudio(true);
+    const excluded = new Set([seedAnime.id, ...seasons.map((s) => s.id)]);
+    fetchByStudio(primaryStudio, seedAnime.mediaType ?? 'ANIME', excluded, 20)
+      .then((res) => {
+        if (!cancelled) setStudioWorks(res);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingStudio(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, primaryStudio, seedAnime.id, seedAnime.mediaType, seasons, studioWorks.length]);
+
   const sortedSeasons = useMemo(() => {
-    const copy = [...seasons];
+    if (sortMode === 'all') {
+      return [...seasons].sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999));
+    }
+    const core = seasons.filter((s) => !isExtraWatchEntry(s));
+    const base = core.length > 0 ? [...core] : [...seasons];
     if (sortMode === 'latest') {
-      return copy.sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
+      return base.sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
     }
-    if (sortMode === 'popular') {
-      return copy.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-    }
-    return copy.sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999));
+    return base.sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999));
   }, [seasons, sortMode]);
 
   const bannerSource =
@@ -274,18 +299,19 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
           </div>
         </div>
 
-        {/* YouTube Channel Tabs: Seasons & Videos | Related | About */}
-        <div className="mt-6 flex items-center gap-6 border-b border-white/[0.1]">
+        {/* Channel Tabs: Seasons & Videos | Similar Anime | From This Studio | About */}
+        <div className="mt-6 flex items-center gap-5 overflow-x-auto border-b border-white/[0.1] no-scrollbar sm:gap-6">
           {[
             { id: 'videos' as ChannelTab, label: isManga ? 'Volumes & Series' : 'Seasons & Videos' },
-            { id: 'related' as ChannelTab, label: 'Similar Channels' },
+            { id: 'related' as ChannelTab, label: isManga ? 'Similar Manga' : 'Similar Anime' },
+            { id: 'studio' as ChannelTab, label: 'From This Studio' },
             { id: 'about' as ChannelTab, label: 'About' },
           ].map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => setActiveTab(t.id)}
-              className={`border-b-2 pb-3 text-[14px] font-semibold transition ${
+              className={`shrink-0 border-b-2 pb-3 text-[13.5px] font-semibold transition sm:text-[14px] ${
                 activeTab === t.id
                   ? 'border-white text-white'
                   : 'border-transparent text-[#AAAAAA] hover:text-white'
@@ -300,18 +326,18 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
         <div className="mt-5">
           {activeTab === 'videos' && (
             <>
-              {/* Sort Pills like YouTube (Chronological / Latest / Top Rated) */}
-              <div className="mb-5 flex items-center gap-2">
+              {/* Watch Order Filters: Oldest | Newest | All (OVAs, Fillers & Mini live in All) */}
+              <div className="mb-5 flex flex-wrap items-center gap-2">
                 {[
-                  { id: 'oldest' as SortMode, label: 'Watch Order (Oldest)' },
-                  { id: 'latest' as SortMode, label: 'Latest' },
-                  { id: 'popular' as SortMode, label: 'Top Rated' },
+                  { id: 'oldest' as SortMode, label: 'Oldest' },
+                  { id: 'latest' as SortMode, label: 'Newest' },
+                  { id: 'all' as SortMode, label: `All (${seasons.length})` },
                 ].map((s) => (
                   <button
                     key={s.id}
                     type="button"
                     onClick={() => setSortMode(s.id)}
-                    className={`rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition ${
+                    className={`rounded-lg px-3.5 py-1.5 text-[12.5px] font-semibold transition ${
                       sortMode === s.id
                         ? 'bg-[#F1F1F1] text-[#0F0F0F]'
                         : 'bg-[#272727] text-[#F1F1F1] hover:bg-[#3F3F3F]'
@@ -353,7 +379,7 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
               <GridSkeleton count={8} mediaType={seedAnime.mediaType} />
             ) : related.length === 0 ? (
               <p className="py-8 text-center text-sm text-[#AAAAAA]">
-                No similar channels found yet.
+                No similar {isManga ? 'manga' : 'anime'} found yet.
               </p>
             ) : (
               <div className={gridClass}>
@@ -367,6 +393,38 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
                     onQuickAdd={onQuickAdd}
                   />
                 ))}
+              </div>
+            )
+          )}
+
+          {activeTab === 'studio' && (
+            loadingStudio ? (
+              <GridSkeleton count={8} mediaType={seedAnime.mediaType} />
+            ) : studioWorks.length === 0 ? (
+              <p className="py-8 text-center text-sm text-[#AAAAAA]">
+                {primaryStudio
+                  ? `No other titles indexed from ${primaryStudio} yet.`
+                  : 'No studio attribution available for this title.'}
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {primaryStudio && (
+                  <p className="text-[13px] font-semibold text-[#AAAAAA]">
+                    More from <span className="text-white">{primaryStudio}</span>
+                  </p>
+                )}
+                <div className={gridClass}>
+                  {studioWorks.map((item) => (
+                    <AnimeCard
+                      key={item.id}
+                      anime={item}
+                      onOpen={onOpenAnime}
+                      onOpenChannel={onOpenChannel}
+                      status={libraryState.entries[item.id]?.status}
+                      onQuickAdd={onQuickAdd}
+                    />
+                  ))}
+                </div>
               </div>
             )
           )}

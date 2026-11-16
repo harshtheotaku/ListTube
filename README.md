@@ -25,18 +25,18 @@ Pure `#0F0F0F` AMOLED theme with category filter chips, infinite scrolling perso
 
 ![AniTube Desktop Home Feed](docs/screenshots/home-desktop.png)
 
-### Anime Franchise Channels (All Seasons in One Channel)
-Every anime & manga series acts like a dedicated YouTube Channel — complete with banner art, `@handle`, subscriber count, bio `...more`, 5-list Subscribe picker, and chronological **Watch Order (Oldest)** / **Latest** / **Top Rated** season tabs.
+### Anime Franchise Channels (All Seasons, Similar Anime & Studio Tab)
+Every anime & manga series acts like a dedicated YouTube Channel — complete with banner art, `@handle`, subscriber count, bio `...more`, 5-list Subscribe picker, **Oldest** / **Newest** / **All** watch order filters (tucking OVAs, fillers & mini specials into **All**), **Similar Anime**, and a **From This Studio** tab.
 
 ![AniTube Franchise Channel View](docs/screenshots/channel-desktop.png)
 
-### Watch Page & Multi-Source Community Recommendations
-On-demand trailer playback (with optional **Auto-Play Trailers** setting), inline expandable synopsis, 5-list subscription status picker, **Up Next & Similar** community recommendations (AniList + MyAnimeList `/userrecs` + Season 1 prequel inheritance + Reddit consensus pairings), and official streaming links.
+### Watch Page, Single English Official Link & Community Manga Readers
+On-demand trailer playback (with optional **Auto-Play Trailers** setting), inline expandable synopsis, 5-list subscription status picker, **Up Next & Similar** community recommendations (AniList + MyAnimeList `/userrecs` + Season 1 prequel inheritance + Reddit consensus pairings), a single **English official** streaming/reading destination, and direct **Comix.to**, **Kagane**, and **Asura Scans** reader links for manga.
 
 ![AniTube Watch Page](docs/screenshots/watch-desktop.png)
 
-### YouTube Comments & Pinned Spoiler-Free MAL Reviews
-Write permanent device-local notes & comments on any anime or manga, with a real **spoiler-free MyAnimeList review pinned right at the top** of the Comments thread.
+### YouTube Comments & Full Pinned Spoiler-Free MAL Reviews
+Write permanent device-local notes & comments on any anime or manga, with the **complete spoiler-free MyAnimeList review pinned right at the top** so you can read the full review without leaving the app.
 
 ![AniTube Comments & Pinned Review](docs/screenshots/comments-desktop.png)
 
@@ -68,10 +68,10 @@ Switch seamlessly between **Anime (`16:9`)** and **Manga (`4:5` portrait covers)
 ## Key Features
 
 - **Franchise Channel Metaphor (`ChannelView` & `franchise.ts`):**
-  - Channel names on cards and watch pages represent the **Anime/Manga franchise** rather than only the animation studio, grouping prequels, sequels, OVAs, movies, and spin-offs into one unified YouTube-style channel (`Seasons & Videos`, `Similar Channels`, `About`).
+  - Channel names on cards and watch pages represent the **Anime/Manga franchise**, grouping prequels, sequels, OVAs, movies, and spin-offs into one unified channel with **Oldest / Newest / All** watch order (OVAs, fillers & mini specials organized into **All**), **Similar Anime**, **From This Studio**, and **About** tabs.
 - **Community-Backed Recommendation Engine (`recommender.ts`):**
   - Blends **AniList Community Recommendations**, **MyAnimeList `/userrecs` fan votes** (with Season 1 prequel inheritance for multi-season franchises), **Franchise Relations**, and **Curated Reddit / Editorial affinity graphs**.
-  - Multi-dimensional taste vector weighting niche tags, studios, genres, and formats paired with MMR diversification and infinite `IntersectionObserver` pagination without repeats.
+  - Multi-dimensional taste vector weighting niche tags, studios, genres, and formats paired with MMR diversification, individualized anchor rotation on every open & refresh, and infinite `IntersectionObserver` pagination.
 - **Per-Tab Independent Search Bars & Smart Partial Match (`search.ts`):**
   - Every tab (`Home`, `Explore`, `Subscriptions`, `Schedule`, `News`, `You`) retains its **own independent search query** instead of leaking one global search term across tabs.
   - Supports instant partial prefixes and aliases (`"shang"` -> *Shangri-La Frontier*, `"aot"`, `"jjk"`, `"fmab"`) powered by MAL prefix, Shikimori, and AniList batch hydration.
@@ -143,10 +143,11 @@ anitube/
 ├── docs/screenshots/            # Promo captures from Web & Mobile
 ├── src/
 │   ├── components/
-│   │   ├── AnimeCard.tsx        # 16:9 Anime & 4:5 Manga card + franchise channel trigger
+│   │   ├── AnimeCard.tsx        # 16:9 Anime & 3-panel 4:5 Manga card + franchise channel trigger
+│   │   ├── AniTubeLogo.tsx      # Custom obsidian/crimson A-prism crest & star logo
 │   │   ├── BottomNav.tsx        # Mobile 5-tab navigation bar
-│   │   ├── ChannelView.tsx      # Franchise channel page (banner, handle, all seasons, tabs)
-│   │   ├── CommentsSection.tsx  # Persistent YouTube comments + pinned spoiler-free MAL review
+│   │   ├── ChannelView.tsx      # Franchise channel (Oldest/Newest/All, Similar Anime, From This Studio)
+│   │   ├── CommentsSection.tsx  # Persistent comments + full pinned spoiler-free MAL review
 │   │   ├── DetailView.tsx       # Trailer watch page, 5-list Subscribe, Up Next recommendations
 │   │   ├── ExploreView.tsx      # Infinite Trending / Top Rated / Seasonal / Genre discovery
 │   │   ├── HomeView.tsx         # Infinite "For You" feed, Anime|Manga switch & pull-to-refresh

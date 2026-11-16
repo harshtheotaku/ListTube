@@ -1,4 +1,6 @@
 import { Anime, MediaType, NewsItem, RelatedTitle, StreamingLink } from '../types';
+import { pickSingleEnglishLink } from './anilist';
+import { animeStore } from './animeStore';
 
 const BASE = 'https://api.jikan.moe/v4';
 
@@ -102,8 +104,11 @@ function toAnime(item: JikanMedia, mediaType: MediaType = 'ANIME'): Anime {
     popularity: item.members ?? 0,
     status: item.status ?? undefined,
     trailerYoutubeId: trailerId,
-    streaming: dedupeStreams(
-      (item.streaming ?? []).map<StreamingLink>((s) => ({ site: s.name, url: s.url }))
+    streaming: pickSingleEnglishLink(
+      dedupeStreams(
+        (item.streaming ?? []).map<StreamingLink>((s) => ({ site: s.name, url: s.url }))
+      ),
+      mediaType
     ),
     similar: (item.recommendations ?? [])
       .filter((rec) => rec.entry)
@@ -366,4 +371,17 @@ export async function importMALList(username: string): Promise<ImportedEntry[]> 
   }
 
   return collected;
+}
+
+export async function fetchMALTop(
+  mediaType: MediaType = 'ANIME',
+  page = 1
+): Promise<Anime[]> {
+  const endpoint = mediaType === 'MANGA' ? 'manga' : 'anime';
+  return cached(`mal-top:${mediaType}:${page}`, async () => {
+    const res = await get<{ data?: JikanMedia[] }>(
+      `/top/${endpoint}?page=${Math.max(1, page)}&limit=25&sfw=true`
+    );
+    return (res.data ?? []).map((item) => toAnime(item, mediaType)).filter((a) => a.cover);
+  });
 }

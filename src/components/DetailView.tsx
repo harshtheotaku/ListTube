@@ -26,7 +26,7 @@ import {
   mangaOriginLabel,
   statusLabel,
 } from '../types';
-import { fetchDetail } from '../services/anilist';
+import { fetchDetail, pickSingleEnglishLink } from '../services/anilist';
 import { fetchMALDetail } from '../services/jikan';
 import { animeStore } from '../services/animeStore';
 import { library } from '../services/library';
@@ -277,7 +277,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
       <div className="mx-auto max-w-[1380px] px-4 pt-4 sm:px-6 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_410px]">
           {/* Left Column: 16:9 Trailer / Artwork Hero, Title + Inline Description, Channel Row, Official Links */}
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             {/* 16:9 Hero: Trailer only plays on user click OR when Auto-Play Trailers setting is ON */}
             <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-2xl">
               {anime.trailerYoutubeId && isTrailerPlaying ? (
@@ -642,41 +642,82 @@ export const DetailView: React.FC<DetailViewProps> = ({
               </div>
             )}
 
-            {/* Official Destinations ("In case you watch anime Legally🏴‍☠️") */}
-            {anime.streaming.length > 0 && (
-              <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
-                <h3 className="mb-2.5 flex items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-white">
-                  <Tv className="h-4 w-4 text-[#FF0000]" />
-                  Official {isManga ? 'Reading' : 'Streaming'} Destinations
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {anime.streaming.map((link) => (
-                    <a
-                      key={link.url}
-                      href={link.url}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="flex items-center gap-1.5 rounded-xl bg-[#272727] px-3.5 py-2 text-[12px] font-bold text-white transition hover:bg-[#383838]"
-                    >
-                      <span>{link.site}</span>
-                      <ExternalLink className="h-3.5 w-3.5 text-[#FF0000]" />
-                    </a>
-                  ))}
-                </div>
-                <p className="mt-2.5 text-[11.5px] font-medium text-[#AAAAAA]">
-                  {isManga
-                    ? 'In case you read manga Legally🏴‍☠️'
-                    : 'In case you watch anime Legally🏴‍☠️'}
-                </p>
-              </div>
-            )}
+            {/* Single Official English Streaming / Reading Link + Manga Reader Sites */}
+            {(() => {
+              const officialEnglishLinks = pickSingleEnglishLink(anime.streaming, anime.mediaType);
+              const q = encodeURIComponent(anime.title);
+              const mangaReaderLinks = isManga
+                ? [
+                    { name: 'Comix.to', url: `https://comix.to/browse?keyword=${q}` },
+                    { name: 'Kagane', url: `https://kagane.org/search?q=${q}` },
+                    { name: 'Asura Scans', url: `https://asuracomic.net/series?page=1&name=${q}` },
+                  ]
+                : [];
 
-            {/* YouTube-Style Persistent Comments + Pinned Spoiler-Free MAL Review */}
+              if (officialEnglishLinks.length === 0 && mangaReaderLinks.length === 0) return null;
+
+              return (
+                <div className="space-y-4 rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
+                  {officialEnglishLinks.length > 0 && (
+                    <div>
+                      <h3 className="mb-2.5 flex items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-white">
+                        <Tv className="h-4 w-4 text-[#FF0000]" />
+                        Official {isManga ? 'English Reading Site' : 'English Streaming Site'}
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {officialEnglishLinks.slice(0, 1).map((link) => (
+                          <a
+                            key={link.url}
+                            href={link.url}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="flex items-center gap-1.5 rounded-xl bg-[#272727] px-3.5 py-2 text-[12px] font-bold text-white transition hover:bg-[#383838]"
+                          >
+                            <span>{link.site}</span>
+                            <ExternalLink className="h-3.5 w-3.5 text-[#FF0000]" />
+                          </a>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-[11.5px] font-medium text-[#AAAAAA]">
+                        {isManga
+                          ? 'In case you read manga Legally🏴‍☠️'
+                          : 'In case you watch anime Legally🏴‍☠️'}
+                      </p>
+                    </div>
+                  )}
+
+                  {isManga && (
+                    <div className={officialEnglishLinks.length > 0 ? 'border-t border-white/[0.08] pt-3.5' : ''}>
+                      <h3 className="mb-2.5 flex items-center gap-2 text-[12.5px] font-bold uppercase tracking-wider text-[#CCCCCC]">
+                        <BookOpen className="h-4 w-4 text-[#FF2E54]" />
+                        Read Manga On
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {mangaReaderLinks.map((site) => (
+                          <a
+                            key={site.name}
+                            href={site.url}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-[#222222] px-3.5 py-2 text-[12px] font-bold text-white transition hover:border-white/25 hover:bg-[#303030]"
+                          >
+                            <span>{site.name}</span>
+                            <ExternalLink className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* YouTube-Style Persistent Comments + Full Pinned Spoiler-Free MAL Review */}
             <CommentsSection anime={anime} onEditProfile={onEditProfile} />
           </div>
 
           {/* Right Column: "Up Next & Recommendations" (Real MAL / AniList / Community Recs!) */}
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
               <h2 className="flex items-center gap-2 text-[16px] font-bold text-white">
                 <Sparkles className="h-4 w-4 text-[#FF0000]" />
@@ -750,7 +791,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
                         <p className="mt-1 truncate text-[11.5px] text-[#AAAAAA]">
                           {[franchiseNameOf(item.title), item.year].filter(Boolean).join(' • ')}
                         </p>
-                        <p className="mt-1 truncate text-[10.5px] font-semibold text-[#3EA6FF]">
+                        <p className="mt-1 line-clamp-2 break-words text-[10.5px] font-semibold leading-snug text-[#3EA6FF]">
                           {reason}
                         </p>
                       </div>

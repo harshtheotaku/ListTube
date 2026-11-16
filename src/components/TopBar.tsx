@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BookOpen, Film, Menu, Play, Search, Settings, Star, User, X } from 'lucide-react';
+import { BookOpen, Film, Menu, Search, Settings, Star, User, X } from 'lucide-react';
 import { Anime, MediaType, TrackerAccount } from '../types';
 import { searchSmart } from '../services/search';
 import { useProfile } from '../services/profile';
+import { AniTubeLogo } from './AniTubeLogo';
 
 interface TopBarProps {
   query: string;
@@ -100,15 +101,10 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             type="button"
             onClick={onHome}
-            className="flex shrink-0 items-center gap-1.5 focus:outline-none"
+            className="flex shrink-0 items-center focus:outline-none"
             aria-label="AniTube Home"
           >
-            <div className="flex h-6 w-8 items-center justify-center rounded-lg bg-[#FF0000]">
-              <Play className="h-3.5 w-3.5 fill-white text-white" />
-            </div>
-            <span className="text-[16px] font-black tracking-tighter text-white sm:text-[18px]">
-              Ani<span className="text-[#FF0000]">Tube</span>
-            </span>
+            <AniTubeLogo />
           </button>
         </div>
 

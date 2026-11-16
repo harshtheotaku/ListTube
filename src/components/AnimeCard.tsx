@@ -52,10 +52,19 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
       : null;
 
   const originLabel = isManga ? mangaOriginLabel(anime) : undefined;
-  const badgeDuration = isManga
+  const mangaChapterLabel = isManga
     ? anime.chapters
       ? `${anime.chapters} ch`
-      : null
+      : anime.volumes
+      ? `${anime.volumes} vol`
+      : anime.format === 'ONE_SHOT'
+      ? '1-shot'
+      : anime.status === 'Publishing'
+      ? 'Ongoing'
+      : '? ch'
+    : null;
+  const badgeDuration = isManga
+    ? mangaChapterLabel
     : anime.episodes
     ? `${anime.episodes} ep`
     : anime.format || 'TV';
@@ -148,7 +157,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
           </span>
         )}
 
-        {status && (
+        {!isManga && status && (
           <span
             className={`pointer-events-none absolute right-2 top-2 z-[3] flex items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide backdrop-blur-md ${
               status === 'watching' ? 'bg-[#FF0000] text-white' : 'bg-black/80 text-neutral-200'
@@ -169,14 +178,19 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
           </span>
         )}
 
-        {anime.score ? (
+        {isManga ? (
+          <span className="pointer-events-none absolute bottom-2 left-2 z-[3] flex items-center gap-0.5 rounded bg-black/80 px-1.5 py-0.5 text-[10.5px] font-bold text-amber-300">
+            <Star className="h-2.5 w-2.5 fill-current" />
+            {anime.score ? anime.score.toFixed(1) : '—'}
+          </span>
+        ) : anime.score ? (
           <span className="pointer-events-none absolute bottom-2 left-2 z-[3] flex items-center gap-0.5 rounded bg-black/80 px-1.5 py-0.5 text-[10.5px] font-bold text-amber-300">
             <Star className="h-2.5 w-2.5 fill-current" />
             {anime.score.toFixed(1)}
           </span>
         ) : null}
 
-        {progress && percent > 0 && (
+        {!isManga && progress && percent > 0 && (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[4] h-[3.5px] bg-white/25">
             <div className="h-full bg-[#FF0000]" style={{ width: `${percent}%` }} />
           </div>
@@ -231,7 +245,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
             <p className="truncate text-[11px] text-[#AAAAAA] sm:text-[12px]">{statsLine}</p>
           )}
           {reason && (
-            <p className="mt-1 inline-flex max-w-full items-center truncate rounded bg-[#272727] px-1.5 py-0.5 text-[10px] font-medium text-neutral-200 sm:text-[10.5px]">
+            <p className="mt-1 inline-block max-w-full rounded bg-[#272727] px-2 py-0.5 text-[10.5px] font-medium leading-snug text-neutral-200 break-words">
               {reason}
             </p>
           )}

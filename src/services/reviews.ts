@@ -19,8 +19,10 @@ const reviewCache = new Map<string, PinnedReview | null>();
 function cleanReviewText(raw: string): string {
   return raw
     .replace(/\[spoiler\][\s\S]*?\[\/spoiler\]/gi, '')
-    .replace(/\([^)]*spoilers?[^)]*\)/gi, '')
-    .replace(/\s*\n\s*/g, '\n')
+    .replace(/<\/?[^>]+(>|$)/g, '')
+    .replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
@@ -80,21 +82,15 @@ async function fetchFromMalHtml(anime: Anime): Promise<PinnedReview | null> {
         avatarEl?.getAttribute('data-src') || avatarEl?.getAttribute('src') || undefined;
       const date = el.querySelector('.update_at')?.textContent?.trim() || undefined;
 
-      // Clone .text and drop hidden spoiler tail if present to prefer spoiler-free intro hook
+      // Preserve complete non-spoiler review body (including .js-hidden expansion on MAL HTML!)
       const textNode = el.querySelector('.text');
       if (!textNode) continue;
 
       const clone = textNode.cloneNode(true) as HTMLElement;
-      clone.querySelectorAll('.js-hidden, .js-visible').forEach((n) => n.remove());
-      const introText = cleanReviewText(clone.textContent ?? '');
-      const fullClean = cleanReviewText(textNode.textContent ?? '');
+      clone.querySelectorAll('.js-readmore, .btn-show-more, button').forEach((n) => n.remove());
+      const fullClean = cleanReviewText(clone.textContent ?? '');
 
-      const chosenBody =
-        introText.length >= 140
-          ? introText
-          : fullClean.slice(0, 650).replace(/\s+\S*$/, '…');
-
-      if (chosenBody.length < 60 || looksLikeSpoilerText(fullClean, tag)) continue;
+      if (fullClean.length < 60 || looksLikeSpoilerText(fullClean, tag)) continue;
 
       let reactionCount = 0;
       try {
@@ -118,8 +114,8 @@ async function fetchFromMalHtml(anime: Anime): Promise<PinnedReview | null> {
           date,
           tag,
           source: 'MyAnimeList',
-          excerpt: makeExcerpt(chosenBody, 290),
-          fullText: chosenBody.slice(0, 800),
+          excerpt: makeExcerpt(fullClean, 360),
+          fullText: fullClean,
           url: `https://myanimelist.net/${typeSeg}/${anime.malId}/_/reviews?spoiler=off`,
           reactions: reactionCount || undefined,
         },
@@ -171,7 +167,7 @@ async function fetchFromJikan(anime: Anime): Promise<PinnedReview | null> {
     });
 
     const pick = nonSpoilers[0];
-    const clean = cleanReviewText(pick.review).slice(0, 750);
+    const clean = cleanReviewText(pick.review);
     return {
       id: `jikan-rev-${pick.mal_id}`,
       author: pick.user?.username || 'MAL Reviewer',
@@ -179,7 +175,7 @@ async function fetchFromJikan(anime: Anime): Promise<PinnedReview | null> {
       date: pick.date ? new Date(pick.date).toLocaleDateString() : undefined,
       tag: pick.tags?.[0] || 'Recommended',
       source: 'MyAnimeList',
-      excerpt: makeExcerpt(clean, 290),
+      excerpt: makeExcerpt(clean, 360),
       fullText: clean,
       url: pick.url || `https://myanimelist.net/${typeSeg}/${anime.malId}/_/reviews`,
       reactions: pick.reactions?.overall,
@@ -204,6 +200,7 @@ async function fetchFromAniListSummary(anime: Anime): Promise<PinnedReview | nul
               nodes {
                 id
                 summary
+                body
                 rating
                 createdAt
                 siteUrl
@@ -225,6 +222,7 @@ async function fetchFromAniListSummary(anime: Anime): Promise<PinnedReview | nul
             nodes?: {
               id: number;
               summary?: string;
+              body?: string;
               rating?: number;
               createdAt?: number;
               siteUrl?: string;
@@ -235,18 +233,22 @@ async function fetchFromAniListSummary(anime: Anime): Promise<PinnedReview | nul
       };
     };
 
-    const node = (json.data?.Media?.reviews?.nodes ?? []).find((n) => (n.summary?.length ?? 0) > 20);
-    if (!node || !node.summary) return null;
+    const nonSpoilerNodes = (json.data?.Media?.reviews?.nodes ?? []).filter((n) => {
+      const text = n.body || n.summary || '';
+      return text.length > 40 && !looksLikeSpoilerText(text, '');
+    });
+    const node = nonSpoilerNodes[0] ?? (json.data?.Media?.reviews?.nodes ?? []).find((n) => (n.summary?.length ?? 0) > 20);
+    if (!node) return null;
 
-    const clean = cleanReviewText(node.summary);
+    const clean = cleanReviewText(node.body || node.summary || '');
     return {
       id: `al-rev-${node.id}`,
       author: node.user?.name || 'Anime Fan',
       authorAvatar: node.user?.avatar?.medium,
       date: node.createdAt ? new Date(node.createdAt * 1000).toLocaleDateString() : undefined,
-      tag: 'Spoiler-Free Summary',
+      tag: 'Spoiler-Free Review',
       source: 'AniList',
-      excerpt: makeExcerpt(clean, 280),
+      excerpt: makeExcerpt(clean, 360),
       fullText: clean,
       url: node.siteUrl || `https://anilist.co`,
       reactions: node.rating,

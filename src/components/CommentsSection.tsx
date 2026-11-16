@@ -30,12 +30,10 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ anime, onEditP
   const [composerFocused, setComposerFocused] = useState(false);
   const [pinnedReview, setPinnedReview] = useState<PinnedReview | null>(null);
   const [pinnedLoading, setPinnedLoading] = useState(true);
-  const [pinnedExpanded, setPinnedExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setPinnedLoading(true);
-    setPinnedExpanded(false);
     setPinnedReview(null);
 
     fetchPinnedSpoilerFreeReview(anime)
@@ -187,21 +185,11 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ anime, onEditP
                 )}
               </div>
 
-              <p className="mt-1.5 whitespace-pre-line text-[13px] leading-relaxed text-[#E5E5E5]">
-                {pinnedExpanded ? pinnedReview.fullText : pinnedReview.excerpt}
+              <p className="mt-1.5 whitespace-pre-line break-words text-[13px] leading-relaxed text-[#E5E5E5]">
+                {pinnedReview.fullText || pinnedReview.excerpt}
               </p>
 
               <div className="mt-2.5 flex flex-wrap items-center gap-4 text-[11.5px]">
-                {pinnedReview.fullText.length > pinnedReview.excerpt.length && (
-                  <button
-                    type="button"
-                    onClick={() => setPinnedExpanded(!pinnedExpanded)}
-                    className="font-bold text-[#AAAAAA] hover:text-white"
-                  >
-                    {pinnedExpanded ? 'Show less' : 'Read more'}
-                  </button>
-                )}
-
                 {pinnedReview.reactions ? (
                   <span className="inline-flex items-center gap-1 text-[#AAAAAA]">
                     <ThumbsUp className="h-3.5 w-3.5" />
@@ -215,7 +203,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({ anime, onEditP
                   rel="noreferrer noopener"
                   className="inline-flex items-center gap-1 font-semibold text-[#3EA6FF] hover:underline"
                 >
-                  <span>Full MAL Reviews</span>
+                  <span>View on {pinnedReview.source}</span>
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </div>

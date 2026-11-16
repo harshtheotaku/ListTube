@@ -43,7 +43,7 @@ function readRotation(mediaType: MediaType): RotationRecord {
       if (rec) {
         return {
           seed: Number(rec.seed || 0) + 1,
-          seenIds: Array.isArray(rec.seenIds) ? rec.seenIds.slice(-45) : [],
+          seenIds: Array.isArray(rec.seenIds) ? rec.seenIds.slice(-24) : [],
         };
       }
     }
@@ -68,7 +68,7 @@ function writeRotation(mediaType: MediaType, seed: number, newlyShown: string[])
     }
     parsed[mediaType] = {
       seed,
-      seenIds: merged.slice(-45),
+      seenIds: merged.slice(-24),
     };
     localStorage.setItem(FEED_ROTATION_KEY, JSON.stringify(parsed));
   } catch {
@@ -192,10 +192,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const triggerRefresh = useCallback(() => {
     if (refreshing) return;
     if (bundle?.forYou) {
-      if (shownHistoryRef.current.size > 90) {
+      if (shownHistoryRef.current.size > 24) {
         shownHistoryRef.current.clear();
       }
-      bundle.forYou.forEach((item) => shownHistoryRef.current.add(item.anime.id));
+      bundle.forYou.slice(0, 12).forEach((item) => shownHistoryRef.current.add(item.anime.id));
     }
     setRefreshing(true);
     setRefreshToken((value) => value + 1);

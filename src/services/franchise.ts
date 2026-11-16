@@ -68,6 +68,25 @@ export function channelHandleOf(franchiseName: string): string {
   return `@${slug || 'anime'}`;
 }
 
+const EXTRA_TITLE_RE =
+  /\b(ova|oad|mini|chibi|picture drama|recap|filler|specials?|omake|shorts?|break time|petit|theater|gekijou|koro-sensei q|episode\s*0\b|prologue)\b/i;
+
+/**
+ * Identifies OVAs, Specials, Fillers, Recaps, and Mini/Short entries so
+ * Oldest/Newest watch order focuses cleanly on canon seasons & movies while All shows everything.
+ */
+export function isExtraWatchEntry(anime: Anime): boolean {
+  if (anime.mediaType === 'MANGA') {
+    return anime.format === 'ONE_SHOT' || EXTRA_TITLE_RE.test(anime.title);
+  }
+  const fmt = (anime.format ?? '').toUpperCase();
+  if (fmt === 'OVA' || fmt === 'SPECIAL' || fmt === 'MUSIC') return true;
+  if (fmt === 'ONA' && anime.duration !== undefined && anime.duration <= 12) return true;
+  if (anime.duration !== undefined && anime.duration <= 8 && fmt !== 'MOVIE') return true;
+  if (EXTRA_TITLE_RE.test(anime.title) || EXTRA_TITLE_RE.test(anime.titleRomaji ?? '')) return true;
+  return false;
+}
+
 /**
  * Fetches all seasons, sequels, prequels, movies, and spin-offs for an anime/manga channel.
  */

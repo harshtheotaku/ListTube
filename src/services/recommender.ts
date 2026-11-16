@@ -1,6 +1,7 @@
 import { Anime, LibraryState, ListStatus, MediaType, ScoredAnime } from '../types';
 import { animeStore } from './animeStore';
 import { resolveMalUrl } from './platform';
+import { fetchMALTop } from './jikan';
 import {
   currentSeason,
   fetchByGenre,
@@ -302,7 +303,7 @@ export function buildTasteProfile(state: LibraryState, mediaType: MediaType = 'A
     .map(([id, weight]) => ({ anime: animeStore.get(id), weight }))
     .filter((item): item is { anime: Anime; weight: number } => Boolean(item.anime))
     .sort((a, b) => b.weight - a.weight)
-    .slice(0, 6);
+    .slice(0, 18);
 
   const topGenres = Object.entries(vector.genres)
     .sort((a, b) => b[1] - a[1])
@@ -488,7 +489,7 @@ async function fetchCommunityRecsForAnchor(
       const weight = isDirect ? 1.4 : 1.0 + Math.min(0.45, (sim.rating ?? 0) / 80);
       const sourceLabel = isDirect
         ? `Franchise · ${sim.relation?.replace('_', ' ').toLowerCase()}`
-        : `AniList fans of ${anchor.title}`;
+        : `Recommended by Anilist fans of ${anchor.title}`;
       const existing = results.get(item.id);
       if (!existing || existing.weight < weight) {
         results.set(item.id, { anime: item, weight, anchorTitle: anchor.title, sourceLabel });
@@ -525,7 +526,7 @@ async function fetchCommunityRecsForAnchor(
           anime: item,
           weight,
           anchorTitle: anchor.title,
-          sourceLabel: `MAL fans of ${anchor.title}`,
+          sourceLabel: `Recommended by MAL fans of ${anchor.title}`,
         });
       }
     });
@@ -557,33 +558,52 @@ export async function getRecommendations(
   const tracked = new Set(Object.keys(state.entries));
   const hidden = new Set(state.notInterested);
 
-  const profileGenres = profile.topGenres.map((genre) => genre.name);
-  const topGenres = [...new Set([...interestBoostGenres.slice(0, 2), ...profileGenres])].slice(0, 3);
-  const topTag =
-    profile.topTags[refreshSeed > 0 ? refreshSeed % Math.max(1, Math.min(4, profile.topTags.length)) : 0]?.name;
+  const profileGenres = profile.topGenres.slice(0, 6).map((genre) => genre.name);
+  const genrePool = [...new Set([...interestBoostGenres, ...profileGenres])];
+  const gIdx0 = genrePool.length ? refreshSeed % genrePool.length : 0;
+  const gIdx1 = genrePool.length > 1 ? (refreshSeed + 2) % genrePool.length : gIdx0;
+  const topGenres = [genrePool[gIdx0], genrePool[gIdx1]].filter(Boolean) as string[];
+  const tagCount = Math.min(6, profile.topTags.length);
+  const topTag = tagCount > 0 ? profile.topTags[refreshSeed % tagCount]?.name : undefined;
 
-  const anchorShift = profile.anchors.length > 1 ? refreshSeed % profile.anchors.length : 0;
-  const rotatedAnchors =
-    anchorShift > 0
-      ? [...profile.anchors.slice(anchorShift), ...profile.anchors.slice(0, anchorShift)]
-      : profile.anchors;
+  // Select a different personalized subset of anchors on every app open / refresh
+  const selectedAnchors: { anime: Anime; weight: number }[] = [];
+  if (profile.anchors.length > 0) {
+    const stride = profile.anchors.length > 4 ? 2 : 1;
+    const offset = refreshSeed % profile.anchors.length;
+    for (let i = 0; i < Math.min(4, profile.anchors.length); i += 1) {
+      const idx = (offset + i * stride) % profile.anchors.length;
+      const cand = profile.anchors[idx];
+      if (!selectedAnchors.some((a) => a.anime.id === cand.anime.id)) {
+        selectedAnchors.push(cand);
+      }
+    }
+  }
 
   const anchorRecsPromise = Promise.all(
-    rotatedAnchors.slice(0, 3).map((a) => fetchCommunityRecsForAnchor(a.anime))
+    selectedAnchors.map((a) => fetchCommunityRecsForAnchor(a.anime))
   );
 
-  const discoveryPage = refreshSeed > 0 ? (refreshSeed % 4) + 1 : 1;
-  const genrePage = refreshSeed > 0 ? ((refreshSeed % 3) + 1) : 1;
+  const discoveryPage = refreshSeed > 0 ? (refreshSeed % 3) + 1 : 1;
+  const genrePage = refreshSeed > 0 ? (refreshSeed % 4) + 1 : 1;
+  const genreSort =
+    refreshSeed % 3 === 1
+      ? ['POPULARITY_DESC']
+      : refreshSeed % 3 === 2
+      ? ['TRENDING_DESC', 'SCORE_DESC']
+      : ['SCORE_DESC'];
 
   const [trending, seasonal, popular, byGenre1, byGenre2, byTopTag, topRated, anchorRecsNested] =
     await Promise.all([
-      settle(fetchTrending(36, discoveryPage, mediaType)),
-      settle(fetchSeasonal(28, mediaType, refreshSeed > 0 ? ((refreshSeed % 2) + 1) : 1)),
-      settle(fetchPopular(28, mediaType, discoveryPage)),
-      topGenres[0] ? settle(fetchByGenre(topGenres[0], 24, ['SCORE_DESC'], mediaType, genrePage)) : Promise.resolve(null),
-      topGenres[1] ? settle(fetchByGenre(topGenres[1], 24, ['SCORE_DESC'], mediaType, genrePage)) : Promise.resolve(null),
-      topTag ? settle(fetchByTag(topTag, 20, ['SCORE_DESC'], mediaType, genrePage)) : Promise.resolve(null),
-      settle(fetchTopRated(30, mediaType, discoveryPage)),
+      settle(fetchTrending(30, coldStart ? discoveryPage : 1, mediaType)),
+      settle(fetchSeasonal(24, mediaType, refreshSeed > 0 ? (refreshSeed % 2) + 1 : 1)),
+      settle(fetchPopular(24, mediaType, coldStart ? discoveryPage : 1)),
+      topGenres[0] ? settle(fetchByGenre(topGenres[0], 24, genreSort, mediaType, genrePage)) : Promise.resolve(null),
+      topGenres[1] && topGenres[1] !== topGenres[0]
+        ? settle(fetchByGenre(topGenres[1], 24, ['SCORE_DESC'], mediaType, genrePage))
+        : Promise.resolve(null),
+      topTag ? settle(fetchByTag(topTag, 24, genreSort, mediaType, genrePage)) : Promise.resolve(null),
+      settle(fetchTopRated(24, mediaType, discoveryPage)),
       anchorRecsPromise,
     ]);
 
@@ -608,18 +628,37 @@ export async function getRecommendations(
   const popularList = popular ?? [];
   const topRatedList = topRated ?? [];
 
+  let fallbackTop: Anime[] = [];
+  if (
+    trendingList.length === 0 &&
+    popularList.length === 0 &&
+    topRatedList.length === 0 &&
+    communityItems.length < limit
+  ) {
+    fallbackTop = (await settle(fetchMALTop(mediaType, (refreshSeed % 3) + 1))) ?? [];
+  }
+
+  const cachedPersonalPool = coldStart
+    ? []
+    : animeStore
+        .all()
+        .filter((a) => (a.mediaType ?? 'ANIME') === mediaType && (a.score ?? 0) >= 7.0)
+        .slice(0, 120);
+
   const candidates = (
     coldStart
-      ? interleave([trendingList, topRatedList, seasonalList, popularList], 100)
+      ? interleave([trendingList, topRatedList, seasonalList, popularList, fallbackTop], 100)
       : dedupe([
           ...communityItems,
           ...(byTopTag ?? []),
+          ...(byGenre1 ?? []),
+          ...(byGenre2 ?? []),
+          ...cachedPersonalPool,
           ...trendingList,
           ...seasonalList,
           ...popularList,
           ...topRatedList,
-          ...(byGenre1 ?? []),
-          ...(byGenre2 ?? []),
+          ...fallbackTop,
         ])
   ).filter(
     (anime) =>
@@ -631,11 +670,8 @@ export async function getRecommendations(
 
   animeStore.rememberMany(candidates);
 
-  const unseenCandidates =
-    refreshSeed > 0 && previouslyShownIds?.size
-      ? candidates.filter((c) => !previouslyShownIds.has(c.id))
-      : candidates;
-  const activeCandidates = unseenCandidates.length >= limit ? unseenCandidates : candidates;
+  // Never discard personalized picks when refreshing; keep all candidates and apply smooth cooldown
+  const activeCandidates = candidates;
 
   const profileNorm = norm(profile.vector);
   const sets = {
@@ -650,26 +686,32 @@ export async function getRecommendations(
     const commRec = communityMap.get(anime.id);
     const consensusAnchor = profile.anchors.find((a) => isConsensusMatch(a.anime.title, anime.title));
 
-    const communityBoost = commRec ? 0.58 * commRec.weight : consensusAnchor ? 0.48 : 0;
-    const affinity = topGenres.some((g) => anime.genres.includes(g)) ? 0.12 : 0;
-    const interestBoost = interestBoostGenres.some((g) => anime.genres.includes(g)) ? 0.12 : 0;
+    const communityBoost = commRec ? 0.62 * commRec.weight : consensusAnchor ? 0.52 : 0;
+    const affinity = topGenres.some((g) => anime.genres.includes(g)) ? 0.16 : 0;
+    const interestBoost = interestBoostGenres.some((g) => anime.genres.includes(g)) ? 0.14 : 0;
+    const hasPersonalMatch = Boolean(commRec || consensusAnchor || content >= 0.24 || affinity > 0);
     const sourcePrior = coldStart
       ? (sets.seasonal.has(anime.id) ? 0.12 : 0) +
         (sets.trending.has(anime.id) ? 0.1 : 0) +
         (sets.topRated.has(anime.id) ? 0.08 : 0)
-      : 0;
+      : hasPersonalMatch
+      ? 0
+      : -0.6;
 
-    const refreshPenalty =
-      refreshSeed > 0 && previouslyShownIds?.has(anime.id) ? -0.95 : 0;
+    const wasShownRecently = refreshSeed > 0 && previouslyShownIds?.has(anime.id);
+    const refreshPenalty = wasShownRecently ? (hasPersonalMatch ? -0.22 : -0.8) : 0;
     const varietyJitter =
-      refreshSeed > 0 ? seedNoise(anime.anilistId ?? anime.malId ?? 17, refreshSeed) * 0.16 : 0;
+      refreshSeed > 0
+        ? seedNoise(anime.anilistId ?? anime.malId ?? 17, refreshSeed) *
+          (personalised && hasPersonalMatch ? 0.26 : 0.14)
+        : 0;
 
     const value =
-      (coldStart ? 0.3 * qualityPrior(anime) : 0.45 * content) +
+      (coldStart ? 0.3 * qualityPrior(anime) : 0.58 * content) +
       communityBoost +
-      0.16 * qualityPrior(anime) +
-      0.1 * popularityPrior(anime) +
-      0.08 * freshnessPrior(anime) +
+      0.14 * qualityPrior(anime) +
+      0.06 * popularityPrior(anime) +
+      0.06 * freshnessPrior(anime) +
       affinity +
       interestBoost +
       sourcePrior +
@@ -722,7 +764,7 @@ export async function getRecommendations(
   const shelves: RecommendationBundle['shelves'] = [];
 
   if (!coldStart) {
-    profile.anchors.slice(0, 2).forEach((anchor, idx) => {
+    selectedAnchors.slice(0, 2).forEach((anchor, idx) => {
       const anchorCommunity = (anchorRecsNested[idx] ?? []).map((r) => r.anime);
       const anchorVec = vectorOf(anchor.anime);
       const anchorNorm = norm(anchorVec);
@@ -936,9 +978,7 @@ export async function getSimilar(
 
         const reason = isDirectRelation
           ? `Franchise · ${sim.relation?.replace('_', ' ').toLowerCase()}`
-          : sim.rating && sim.rating > 0
-          ? `${sim.rating}+ AniList users recommend this`
-          : `AniList community pick`;
+          : `Recommended by Anilist fans of ${hydrated.title}`;
 
         const existing = results.get(full.id);
         if (!existing || existing.score < score) {

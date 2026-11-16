@@ -94,7 +94,7 @@ interface AniListMedia {
   status?: string | null;
   trailer?: { id?: string; site?: string; thumbnail?: string | null } | null;
   nextAiringEpisode?: { episode: number; airingAt: number } | null;
-  externalLinks?: { site: string; url: string; type: string }[] | null;
+  externalLinks?: { site: string; url: string; type: string; language?: string | null }[] | null;
   relations?: {
     edges?: { relationType?: string; node?: AniListMedia | null }[];
   } | null;
@@ -168,10 +168,84 @@ export function titleOf(media: AniListMedia): string {
   return media.title.romaji || media.title.native || 'Untitled';
 }
 
+const NON_EN_DOMAIN_RE =
+  /(\.jp(?:\/|$)|\.kr(?:\/|$)|\.cn(?:\/|$)|\/(?:ja|jp|ko|kr|zh|es|fr|de|pt|it|th|id|ru|ar)(?:\/|$)|piccoma\.|page\.kakao\.|webtoon\.kakao\.|comic\.naver\.|abema\.tv|nicovideo\.|video\.unext\.|dmm\.co|delitoon\.|cmoa\.jp|bookwalker\.jp|renta\.|line\.me|pixiv\.net)/i;
+
+const ANIME_EN_PRIORITY = [
+  'crunchyroll',
+  'netflix',
+  'hulu',
+  'hidive',
+  'amazon',
+  'prime video',
+  'disney+',
+  'apple tv',
+  'muse asia',
+  'ani-one',
+  'adult swim',
+  'youtube',
+  'tubi',
+  'official site',
+];
+
+const MANGA_EN_PRIORITY = [
+  'manga plus',
+  'mangaplus',
+  'shonen jump',
+  'viz',
+  'webtoon',
+  'tappytoon',
+  'tapas',
+  'k manga',
+  'azuki',
+  'webnovel',
+  'comikey',
+  'inkr',
+  'yen press',
+  'kodansha',
+  'seven seas',
+  'j-novel',
+  'manga planet',
+  'lezhin',
+  'pocket comics',
+  'official site',
+];
+
+export function pickSingleEnglishLink(
+  links: StreamingLink[],
+  mediaType: MediaType = 'ANIME'
+): StreamingLink[] {
+  if (!links.length) return [];
+
+  const filtered = links.filter((link) => {
+    if (!link.url) return false;
+    if (link.language && link.language.toLowerCase() !== 'english') return false;
+    if (NON_EN_DOMAIN_RE.test(link.url)) return false;
+    return true;
+  });
+
+  if (!filtered.length) return [];
+
+  const prefs = mediaType === 'MANGA' ? MANGA_EN_PRIORITY : ANIME_EN_PRIORITY;
+
+  const scoreOf = (link: StreamingLink): number => {
+    const siteLower = link.site.toLowerCase();
+    let score = link.language?.toLowerCase() === 'english' ? 100 : 20;
+    const idx = prefs.findIndex((p) => siteLower.includes(p));
+    if (idx !== -1) score += 200 - idx * 5;
+    if (siteLower.includes('official site')) score -= 35;
+    return score;
+  };
+
+  const sorted = [...filtered].sort((a, b) => scoreOf(b) - scoreOf(a));
+  return [sorted[0]];
+}
+
 function resolveOriginLabel(media: AniListMedia, mediaType: MediaType): string | undefined {
   if (mediaType !== 'MANGA') return media.format ?? undefined;
   if (media.countryOfOrigin === 'KR') return 'MANHWA';
   if (media.countryOfOrigin === 'CN' || media.countryOfOrigin === 'TW') return 'MANHUA';
+  if (media.countryOfOrigin === 'JP') return 'MANGA';
   if (media.format === 'NOVEL') return 'LIGHT NOVEL';
   if (media.format === 'ONE_SHOT') return 'ONE-SHOT';
   return 'MANGA';
@@ -243,9 +317,16 @@ export function mapMedia(media: AniListMedia, fallbackType: MediaType = 'ANIME')
     nextEpisode: media.nextAiringEpisode
       ? { number: media.nextAiringEpisode.episode, airingAt: media.nextAiringEpisode.airingAt }
       : undefined,
-    streaming: (media.externalLinks ?? [])
-      .filter((link) => link.type === 'STREAMING' || (mediaType === 'MANGA' && link.type === 'INFO'))
-      .map<StreamingLink>((link) => ({ site: link.site, url: link.url })),
+    streaming: pickSingleEnglishLink(
+      (media.externalLinks ?? [])
+        .filter((link) => link.type === 'STREAMING' || (mediaType === 'MANGA' && link.type === 'INFO'))
+        .map<StreamingLink>((link) => ({
+          site: link.site,
+          url: link.url,
+          language: link.language ?? undefined,
+        })),
+      mediaType
+    ),
     similar: [],
     fetchedAt: Date.now(),
   };
@@ -408,7 +489,7 @@ const DETAIL_QUERY = `
   query Detail($id: Int, $type: MediaType) {
     Media(id: $id, type: $type) {
       ${CORE}
-      externalLinks { site url type }
+      externalLinks { site url type language }
       relations {
         edges {
           relationType
@@ -613,4 +694,106 @@ export async function fetchAniListViewer(token: string): Promise<AniListViewer> 
     name: json.data.Viewer.name,
     avatar: json.data.Viewer.avatar?.large,
   };
+}
+
+const STUDIO_QUERY = `
+  query StudioMedia($search: String) {
+    Studio(search: $search) {
+      id
+      name
+      media(isMain: true, sort: POPULARITY_DESC, perPage: 30) {
+        nodes {
+          isAdult
+          ${CORE}
+        }
+      }
+    }
+  }
+`;
+
+const STAFF_MANGA_QUERY = `
+  query StaffManga($search: String) {
+    Staff(search: $search) {
+      id
+      name { full }
+      staffMedia(sort: POPULARITY_DESC, type: MANGA, perPage: 25) {
+        nodes {
+          isAdult
+          ${CORE}
+        }
+      }
+    }
+  }
+`;
+
+export async function fetchByStudio(
+  studioName: string,
+  mediaType: MediaType = 'ANIME',
+  excludeIds: Set<string> = new Set(),
+  limit = 20
+): Promise<Anime[]> {
+  const cleanName = studioName.trim();
+  const seen = new Set<string>();
+  const out: Anime[] = [];
+
+  const pushUnique = (item: Anime) => {
+    if (!item.cover || seen.has(item.id) || excludeIds.has(item.id)) return;
+    if ((item.mediaType ?? 'ANIME') !== mediaType) return;
+    seen.add(item.id);
+    out.push(item);
+  };
+
+  if (cleanName) {
+    try {
+      if (mediaType === 'ANIME') {
+        type StudioRes = {
+          Studio?: {
+            media?: { nodes?: (AniListMedia & { isAdult?: boolean })[] };
+          } | null;
+        };
+        const data = await cached(`studio:${cleanName.toLowerCase()}`, () =>
+          request<StudioRes>(STUDIO_QUERY, { search: cleanName })
+        );
+        for (const node of data.Studio?.media?.nodes ?? []) {
+          if (node.isAdult) continue;
+          pushUnique(mapMedia(node, 'ANIME'));
+        }
+      } else {
+        type StaffRes = {
+          Staff?: {
+            staffMedia?: { nodes?: (AniListMedia & { isAdult?: boolean })[] };
+          } | null;
+        };
+        const data = await cached(`staff-manga:${cleanName.toLowerCase()}`, () =>
+          request<StaffRes>(STAFF_MANGA_QUERY, { search: cleanName })
+        );
+        for (const node of data.Staff?.staffMedia?.nodes ?? []) {
+          if (node.isAdult) continue;
+          pushUnique(mapMedia(node, 'MANGA'));
+        }
+      }
+    } catch {
+      /* fallback to local cache below */
+    }
+  }
+
+  // Fallback / enrichment from cached animeStore entries sharing the studio/author
+  if (cleanName && out.length < limit) {
+    const targetLower = cleanName.toLowerCase();
+    const localMatches = animeStore
+      .all()
+      .filter(
+        (a) =>
+          (a.mediaType ?? 'ANIME') === mediaType &&
+          a.studios.some((s) => s.toLowerCase() === targetLower)
+      )
+      .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0));
+    for (const item of localMatches) {
+      pushUnique(item);
+      if (out.length >= limit) break;
+    }
+  }
+
+  if (out.length > 0) animeStore.rememberMany(out);
+  return out.slice(0, limit);
 }
