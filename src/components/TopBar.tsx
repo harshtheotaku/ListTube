@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { BookOpen, Film, Menu, Play, Search, Settings, Star, User, X } from 'lucide-react';
 import { Anime, MediaType, TrackerAccount } from '../types';
 import { searchSmart } from '../services/search';
+import { useProfile } from '../services/profile';
 
 interface TopBarProps {
   query: string;
@@ -35,6 +36,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [suggestions, setSuggestions] = useState<Anime[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const searchTicket = useRef(0);
+  const profile = useProfile();
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -135,7 +137,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     ? 'Search manga (e.g. "vagab", "berserk")…'
                     : 'Search anime (e.g. "shang", "frieren", "aot")…'
                 }
-                className="h-9 w-full rounded-l-full border border-white/[0.15] bg-[#121212] pl-4 pr-8 text-[13px] text-white placeholder:text-[#888888] outline-none transition focus:border-[#3EA6FF]"
+                className="h-9 w-full rounded-l-full border border-white/[0.15] bg-[#121212] pl-4 pr-8 text-[16px] text-white placeholder:text-[13px] placeholder:text-[#888888] outline-none transition focus:border-[#3EA6FF] lg:text-[13px]"
                 aria-label="Search"
               />
               {query && (
@@ -262,14 +264,20 @@ export const TopBar: React.FC<TopBarProps> = ({
           >
             {connected ? (
               <>
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-[#FF0000] to-orange-500 text-[10px] font-black uppercase text-white">
-                  {connected.username.slice(0, 1)}
-                </span>
+                <img
+                  src={profile.avatarUrl}
+                  alt={profile.name}
+                  className="h-5 w-5 rounded-full object-cover"
+                />
                 <span className="hidden max-w-[95px] truncate sm:block">{connected.username}</span>
               </>
             ) : (
               <>
-                <User className="h-4 w-4 text-[#3EA6FF]" />
+                <img
+                  src={profile.avatarUrl}
+                  alt={profile.name}
+                  className="h-5 w-5 rounded-full object-cover"
+                />
                 <span className="hidden text-[#3EA6FF] sm:inline">Connect</span>
               </>
             )}

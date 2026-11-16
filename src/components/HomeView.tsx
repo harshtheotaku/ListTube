@@ -83,9 +83,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [dismissed, setDismissed] = useState(() => localStorage.getItem(ONBOARD_KEY) === '1');
   const [searchResults, setSearchResults] = useState<Anime[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [pullPx, setPullPx] = useState(0);
   const requestId = useRef(0);
   const searchTicket = useRef(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const shownHistoryRef = useRef<Set<string>>(new Set());
+  const touchStartYRef = useRef<number | null>(null);
+  const pullActiveRef = useRef(false);
+  const pullPxRef = useRef(0);
+  const wheelAccRef = useRef(0);
+  const wheelLastTriggerRef = useRef(0);
 
   const isManga = mediaType === 'MANGA';
   const chips = isManga ? MANGA_CHIPS : ANIME_CHIPS;
@@ -127,7 +134,98 @@ export const HomeView: React.FC<HomeViewProps> = ({
     setExtraFeed([]);
     setPage(1);
     setHasMore(true);
+    shownHistoryRef.current.clear();
   }, [mediaType]);
+
+  const triggerRefresh = useCallback(() => {
+    if (refreshing) return;
+    if (bundle?.forYou) {
+      if (shownHistoryRef.current.size > 90) {
+        shownHistoryRef.current.clear();
+      }
+      bundle.forYou.forEach((item) => shownHistoryRef.current.add(item.anime.id));
+    }
+    setRefreshing(true);
+    setRefreshToken((value) => value + 1);
+  }, [refreshing, bundle]);
+
+  // YouTube-style Pull-to-Refresh at Top (Mobile Touch Drag Down & Trackpad/Wheel Upward Overscroll at Y=0)
+  useEffect(() => {
+    const THRESHOLD = 58;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (window.scrollY <= 2 && e.touches.length === 1 && !refreshing) {
+        touchStartYRef.current = e.touches[0].clientY;
+        pullActiveRef.current = true;
+      } else {
+        touchStartYRef.current = null;
+        pullActiveRef.current = false;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!pullActiveRef.current || touchStartYRef.current === null || refreshing) return;
+      if (window.scrollY > 4) {
+        pullActiveRef.current = false;
+        pullPxRef.current = 0;
+        setPullPx(0);
+        return;
+      }
+      const dy = e.touches[0].clientY - touchStartYRef.current;
+      if (dy > 8) {
+        const clamped = Math.min(92, (dy - 8) * 0.45);
+        pullPxRef.current = clamped;
+        setPullPx(clamped);
+      } else if (dy <= 0) {
+        pullPxRef.current = 0;
+        setPullPx(0);
+      }
+    };
+
+    const onTouchEnd = () => {
+      if (pullActiveRef.current && pullPxRef.current >= THRESHOLD) {
+        triggerRefresh();
+      }
+      touchStartYRef.current = null;
+      pullActiveRef.current = false;
+      pullPxRef.current = 0;
+      setPullPx(0);
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      if (refreshing || window.scrollY > 0) {
+        wheelAccRef.current = 0;
+        return;
+      }
+      if (e.deltaY < -4) {
+        const now = Date.now();
+        if (now - wheelLastTriggerRef.current < 1500) return;
+        wheelAccRef.current += Math.abs(e.deltaY);
+        const visual = Math.min(THRESHOLD + 12, wheelAccRef.current * 0.45);
+        setPullPx(visual);
+        if (wheelAccRef.current >= 140) {
+          wheelLastTriggerRef.current = now;
+          wheelAccRef.current = 0;
+          setPullPx(0);
+          triggerRefresh();
+        }
+      } else if (e.deltaY > 4) {
+        wheelAccRef.current = 0;
+        setPullPx(0);
+      }
+    };
+
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    window.addEventListener('wheel', onWheel, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('wheel', onWheel);
+    };
+  }, [refreshing, triggerRefresh]);
 
   const trackedCount = useMemo(
     () =>
@@ -160,7 +258,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     setHasMore(true);
 
     const timer = setTimeout(() => {
-      getRecommendations(library, 20, mediaType)
+      getRecommendations(library, 20, mediaType, refreshToken, shownHistoryRef.current)
         .then((result) => {
           if (id !== requestId.current) return;
           setBundle(result);
@@ -262,6 +360,32 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   return (
     <div className="min-h-screen space-y-7 bg-[#0F0F0F] pb-24 text-white lg:pb-16">
+      {/* Pull-to-Refresh YouTube Floating Spinner Indicator */}
+      {(pullPx > 8 || refreshing) && (
+        <div
+          className="pointer-events-none fixed left-1/2 top-16 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/[0.14] bg-[#212121]/95 px-4 py-2 text-[12px] font-bold text-white shadow-2xl backdrop-blur-md transition-transform"
+          style={{
+            transform: `translate(-50%, ${refreshing ? 12 : Math.round(pullPx * 0.45)}px)`,
+          }}
+        >
+          <RefreshCw
+            className={`h-4 w-4 ${
+              refreshing || pullPx >= 58 ? 'animate-spin text-[#FF0000]' : 'text-[#AAAAAA]'
+            }`}
+            style={
+              !refreshing && pullPx < 58 ? { transform: `rotate(${pullPx * 4}deg)` } : undefined
+            }
+          />
+          <span>
+            {refreshing
+              ? 'Finding fresh picks…'
+              : pullPx >= 58
+                ? 'Release to refresh'
+                : 'Pull down for new picks'}
+          </span>
+        </div>
+      )}
+
       {/* YouTube Category Chips Bar */}
       <div className="sticky top-14 z-30 flex items-center gap-2.5 overflow-x-auto border-b border-white/[0.06] bg-[#0F0F0F]/95 px-4 py-3 backdrop-blur-xl no-scrollbar sm:px-6 lg:px-8">
         {chips.map((chip) => {
@@ -301,10 +425,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
         <button
           type="button"
-          onClick={() => {
-            setRefreshing(true);
-            setRefreshToken((value) => value + 1);
-          }}
+          onClick={triggerRefresh}
           className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#272727] px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-[#3F3F3F]"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />

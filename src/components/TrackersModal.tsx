@@ -335,7 +335,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                     onChange={(event) => setUsername(event.target.value)}
                     placeholder={PROVIDERS.find((p) => p.id === provider)?.hint}
                     autoComplete="username"
-                    className="h-11 flex-1 rounded-xl border border-white/[0.14] bg-[#121212] px-3.5 text-[13px] text-white placeholder:text-[#777777] outline-none transition focus:border-[#FF0000]"
+                    className="h-11 flex-1 rounded-xl border border-white/[0.14] bg-[#121212] px-3.5 text-[16px] text-white placeholder:text-[13px] placeholder:text-[#777777] outline-none transition focus:border-[#FF0000] lg:text-[13px]"
                   />
                   <button
                     type="submit"
@@ -382,7 +382,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                       value={anilistToken}
                       onChange={(e) => setAnilistToken(e.target.value)}
                       placeholder="Paste AniList Bearer Token…"
-                      className="h-9 flex-1 rounded-lg border border-white/15 bg-[#121212] px-3 text-[12px] text-white outline-none"
+                      className="h-9 flex-1 rounded-lg border border-white/15 bg-[#121212] px-3 text-[16px] text-white placeholder:text-[12px] outline-none lg:text-[12px]"
                     />
                     <button
                       type="submit"
@@ -448,7 +448,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                     value={googleEmail}
                     onChange={(e) => setGoogleEmail(e.target.value)}
                     placeholder="Enter Google email (you@gmail.com)"
-                    className="h-10 flex-1 rounded-xl border border-white/15 bg-[#121212] px-3 text-[12.5px] text-white outline-none focus:border-[#4285F4]"
+                    className="h-10 flex-1 rounded-xl border border-white/15 bg-[#121212] px-3 text-[16px] text-white placeholder:text-[12.5px] outline-none focus:border-[#4285F4] lg:text-[12.5px]"
                   />
                   <button
                     type="submit"

@@ -34,6 +34,16 @@ On-demand trailer playback (with optional **Auto-Play Trailers** setting), inlin
 
 ![AniTube Watch Page](docs/screenshots/watch-desktop.png)
 
+### YouTube Comments & Pinned Spoiler-Free MAL Reviews
+Write permanent device-local notes & comments on any anime or manga, with a real **spoiler-free MyAnimeList review pinned right at the top** of the Comments thread.
+
+![AniTube Comments & Pinned Review](docs/screenshots/comments-desktop.png)
+
+### Custom Channel Profile & Popular Character Avatars
+Personalize your display name, `@handle`, custom uploaded photo, or pick from 16 built-in official anime character avatars (**Gojo, Frieren, Luffy, Levi, Killua, Zoro, Eren, Lelouch, Emilia, Maomao, Guts, L, Mikasa, Kurisu, Anya, Spike**) in Settings.
+
+![AniTube Settings & Character PFP Picker](docs/screenshots/settings-pfp.png)
+
 ### Dedicated Manga Mode (`4:5` Portrait Covers & 2-Column Mobile Grid)
 Switch seamlessly between **Anime (`16:9`)** and **Manga (`4:5` portrait covers)** with separate watch/read progress, genres, and recommendation profiles. On Android/mobile, Manga automatically lays out **2 cards per row** for fast browsing.
 
@@ -70,6 +80,11 @@ Switch seamlessly between **Anime (`16:9`)** and **Manga (`4:5` portrait covers)
   - 7-day official airing countdowns powered by AniList plus illustrated industry news from MyAnimeList News and Anime News Network.
 - **Offline-First Storage & One-Click Tracker Import (`library.ts`, `trackers.ts`):**
   - Works immediately with **zero forced login**. Optionally connect an **AniList** username/token, **MyAnimeList** username/XML export, or local Google profile snapshot.
+- **Pull-to-Refresh Recommendations & Forever Comments (`CommentsSection.tsx`, `reviews.ts`):**
+  - Pulling down / scrolling upward at the top of the Home feed refreshes recommendations with fresh unseen picks instead of repeating top cards.
+  - Persistent YouTube-style comments saved locally with a pinned spoiler-free review fetched from MyAnimeList (`reviews.ts`) and customizable character avatars (`profile.ts`).
+- **Native Android Back Navigation & Viewport Lock (`MainActivity.java`):**
+  - Android hardware/gesture back steps backward cleanly through modals, watch pages, franchise channels, and tabs before exiting on Home; WebView pinch/overview zoom is locked at native 1.0x mobile scale.
 
 ---
 
@@ -90,7 +105,7 @@ Open the live web app directly in any desktop or mobile browser:
 2. Download the **`anitube-debug-apk`** artifact and install it on your Android device (Android 8.0 / minSdk 26+).
 
 #### Option B: Build & Install via USB Debugging (`adb`)
-**Prerequisites:** Node.js 20+, Java 21, Android SDK (`ANDROID_HOME` configured), and USB Debugging enabled on your phone.
+**Prerequisites:** Node.js 22+, Java 21, Android SDK (`ANDROID_HOME` configured), and USB Debugging enabled on your phone.
 
 ```bash
 git clone https://github.com/harshtheotaku/anitube.git
@@ -140,13 +155,14 @@ anitube/
 │   │   ├── AnimeCard.tsx        # 16:9 Anime & 4:5 Manga card + franchise channel trigger
 │   │   ├── BottomNav.tsx        # Mobile 5-tab navigation bar
 │   │   ├── ChannelView.tsx      # Franchise channel page (banner, handle, all seasons, tabs)
+│   │   ├── CommentsSection.tsx  # Persistent YouTube comments + pinned spoiler-free MAL review
 │   │   ├── DetailView.tsx       # Trailer watch page, 5-list Subscribe, Up Next recommendations
 │   │   ├── ExploreView.tsx      # Infinite Trending / Top Rated / Seasonal / Genre discovery
-│   │   ├── HomeView.tsx         # Infinite "For You" feed, shelves & inline Home search
+│   │   ├── HomeView.tsx         # Infinite "For You" feed, pull-to-refresh & inline Home search
 │   │   ├── ListView.tsx         # Subscriptions manager with story channels & progress steppers
 │   │   ├── NewsView.tsx         # Illustrated anime & manga news feed
 │   │   ├── ScheduleView.tsx     # 7-day live airing countdowns
-│   │   ├── SettingsModal.tsx    # Auto-play trailer toggle & artwork cache management
+│   │   ├── SettingsModal.tsx    # Profile/PFP picker, auto-play trailer toggle & cache controls
 │   │   ├── Shelf.tsx            # Horizontal recommendation shelves
 │   │   ├── Sidebar.tsx          # Collapsible YouTube navigation & subscribed channels
 │   │   ├── Skeleton.tsx         # Responsive 16:9 & 4:5 loading skeletons
@@ -156,12 +172,15 @@ anitube/
 │   └── services/
 │       ├── anilist.ts           # AniList GraphQL client (Anime, Manga, Schedule, hydration)
 │       ├── animeStore.ts        # Local metadata & artwork store
+│       ├── comments.ts          # Forever-saved per-title localStorage comment store
 │       ├── franchise.ts         # Franchise name normalization & multi-season relation walker
 │       ├── jikan.ts             # Jikan REST fallback
 │       ├── library.ts           # Offline-first reactive persistence (localStorage)
 │       ├── news.ts              # MAL News & ANN RSS aggregator with artwork enrichment
 │       ├── platform.ts          # Runtime environment resolver (Capacitor / Proxy / Static Pages)
-│       ├── recommender.ts       # Multi-source community vector & MMR recommendation engine
+│       ├── profile.ts           # User profile store + 16 official character PFP presets
+│       ├── recommender.ts       # Multi-source community vector, refresh rotation & MMR engine
+│       ├── reviews.ts           # Spoiler-free MyAnimeList / Jikan / AniList pinned review fetcher
 │       ├── search.ts            # Partial-word & acronym smart search engine
 │       ├── settings.ts          # User preference persistence
 │       └── trackers.ts          # AniList, MAL, token & XML export importers

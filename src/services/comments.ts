@@ -1,0 +1,103 @@
+import { useSyncExternalStore } from 'react';
+import { UserProfile } from './profile';
+
+export interface UserComment {
+  id: string;
+  animeId: string;
+  authorName: string;
+  authorHandle: string;
+  authorAvatar: string;
+  text: string;
+  createdAt: number;
+  likes: number;
+  likedByMe: boolean;
+}
+
+type CommentsMap = Record<string, UserComment[]>;
+
+const COMMENTS_KEY = 'anitube.comments.v1';
+
+function loadAll(): CommentsMap {
+  try {
+    const raw = localStorage.getItem(COMMENTS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as CommentsMap;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+let commentsState: CommentsMap = loadAll();
+const listeners = new Set<() => void>();
+const EMPTY_LIST: UserComment[] = [];
+
+function persist(next: CommentsMap) {
+  commentsState = next;
+  try {
+    localStorage.setItem(COMMENTS_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+  listeners.forEach((l) => l());
+}
+
+export const commentsStore = {
+  subscribe(listener: () => void): () => void {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  },
+  getForAnime(animeId: string): UserComment[] {
+    return commentsState[animeId] ?? EMPTY_LIST;
+  },
+  addComment(animeId: string, text: string, profile: UserProfile) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const item: UserComment = {
+      id: `cmt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      animeId,
+      authorName: profile.name,
+      authorHandle: profile.handle,
+      authorAvatar: profile.avatarUrl,
+      text: trimmed,
+      createdAt: Date.now(),
+      likes: 0,
+      likedByMe: false,
+    };
+    const existing = commentsState[animeId] ?? [];
+    persist({
+      ...commentsState,
+      [animeId]: [item, ...existing],
+    });
+  },
+  toggleLike(animeId: string, commentId: string) {
+    const list = commentsState[animeId];
+    if (!list) return;
+    const updated = list.map((c) => {
+      if (c.id !== commentId) return c;
+      const nextLiked = !c.likedByMe;
+      return {
+        ...c,
+        likedByMe: nextLiked,
+        likes: Math.max(0, c.likes + (nextLiked ? 1 : -1)),
+      };
+    });
+    persist({ ...commentsState, [animeId]: updated });
+  },
+  deleteComment(animeId: string, commentId: string) {
+    const list = commentsState[animeId];
+    if (!list) return;
+    persist({
+      ...commentsState,
+      [animeId]: list.filter((c) => c.id !== commentId),
+    });
+  },
+};
+
+export function useComments(animeId: string): UserComment[] {
+  const all = useSyncExternalStore(
+    commentsStore.subscribe,
+    () => commentsState
+  );
+  return all[animeId] ?? EMPTY_LIST;
+}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Check, Play, X } from 'lucide-react';
 import {
   Anime,
@@ -76,13 +76,107 @@ export const App: React.FC = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quickTarget, setQuickTarget] = useState<Anime | null>(null);
 
+  type NavSnapshot = { tab: AppTab; detailId: string | null; channelAnime: Anime | null };
+  const navStackRef = useRef<NavSnapshot[]>([]);
+  const routeRef = useRef<NavSnapshot>({
+    tab: initialRoute.tab,
+    detailId: initialRoute.detailId,
+    channelAnime: initialRoute.channelId ? animeStore.get(initialRoute.channelId) ?? null : null,
+  });
+  routeRef.current = { tab, detailId, channelAnime };
+
+  const modalRef = useRef({ quickTarget, settingsOpen, trackersOpen });
+  modalRef.current = { quickTarget, settingsOpen, trackersOpen };
+
   const scrollTop = () => window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+
+  const syncHashReplace = (snap: NavSnapshot) => {
+    const hash = snap.detailId
+      ? `#/anime/${encodeURIComponent(snap.detailId)}`
+      : snap.channelAnime
+        ? `#/channel/${encodeURIComponent(snap.channelAnime.id)}`
+        : `#/${snap.tab}`;
+    window.history.replaceState(
+      { tab: snap.tab, detail: snap.detailId ?? undefined, channel: snap.channelAnime?.id ?? undefined },
+      '',
+      hash
+    );
+  };
+
+  const pushSnapshot = (snap: NavSnapshot) => {
+    const top = navStackRef.current[navStackRef.current.length - 1];
+    if (
+      top &&
+      top.tab === snap.tab &&
+      top.detailId === snap.detailId &&
+      top.channelAnime?.id === snap.channelAnime?.id
+    ) {
+      return;
+    }
+    navStackRef.current.push(snap);
+    if (navStackRef.current.length > 50) navStackRef.current.shift();
+  };
+
+  const goBackStep = (): boolean => {
+    const { quickTarget: qt, settingsOpen: so, trackersOpen: to } = modalRef.current;
+    if (qt) {
+      setQuickTarget(null);
+      return true;
+    }
+    if (so) {
+      setSettingsOpen(false);
+      return true;
+    }
+    if (to) {
+      setTrackersOpen(false);
+      return true;
+    }
+
+    const prev = navStackRef.current.pop();
+    if (prev) {
+      setTab(prev.tab);
+      setDetailId(prev.detailId);
+      setChannelAnime(prev.channelAnime);
+      syncHashReplace(prev);
+      scrollTop();
+      return true;
+    }
+
+    const curr = routeRef.current;
+    if (curr.detailId || curr.channelAnime) {
+      const next: NavSnapshot = { tab: curr.tab, detailId: null, channelAnime: null };
+      setDetailId(null);
+      setChannelAnime(null);
+      syncHashReplace(next);
+      scrollTop();
+      return true;
+    }
+
+    if (curr.tab !== 'home') {
+      const next: NavSnapshot = { tab: 'home', detailId: null, channelAnime: null };
+      setTab('home');
+      syncHashReplace(next);
+      scrollTop();
+      return true;
+    }
+
+    return false;
+  };
+
+  useEffect(() => {
+    const win = window as unknown as { __anitubeHandleBack?: () => boolean };
+    win.__anitubeHandleBack = goBackStep;
+    return () => {
+      delete win.__anitubeHandleBack;
+    };
+  }, []);
 
   const handleMediaTypeChange = (nextType: MediaType) => {
     setMediaType(nextType);
     localStorage.setItem(MEDIA_TYPE_KEY, nextType);
     setDetailId(null);
     setChannelAnime(null);
+    navStackRef.current = [];
     setQueriesByTab(EMPTY_QUERIES);
     scrollTop();
   };
@@ -115,9 +209,10 @@ export const App: React.FC = () => {
   }, [initialRoute]);
 
   const openDetail = (id: string) => {
+    if (detailId === id) return;
+    pushSnapshot(routeRef.current);
     const state = { tab, detail: id };
-    if (detailId || channelAnime) window.history.replaceState(state, '', `#/anime/${encodeURIComponent(id)}`);
-    else window.history.pushState(state, '', `#/anime/${encodeURIComponent(id)}`);
+    window.history.pushState(state, '', `#/anime/${encodeURIComponent(id)}`);
     setChannelAnime(null);
     setDetailId(id);
     scrollTop();
@@ -130,31 +225,23 @@ export const App: React.FC = () => {
 
   const openChannel = (anime: Anime) => {
     animeStore.remember(anime);
+    if (!detailId && channelAnime?.id === anime.id) return;
+    pushSnapshot(routeRef.current);
     const state = { tab, channel: anime.id };
-    if (channelAnime || detailId) {
-      window.history.replaceState(state, '', `#/channel/${encodeURIComponent(anime.id)}`);
-    } else {
-      window.history.pushState(state, '', `#/channel/${encodeURIComponent(anime.id)}`);
-    }
+    window.history.pushState(state, '', `#/channel/${encodeURIComponent(anime.id)}`);
     setDetailId(null);
     setChannelAnime(anime);
     scrollTop();
   };
 
   const closeDetail = () => {
-    if (window.history.state?.detail || window.history.state?.channel) {
-      window.history.back();
-      return;
-    }
-    setDetailId(null);
-    setChannelAnime(null);
-    window.history.replaceState({ tab }, '', `#/${tab}`);
-    scrollTop();
+    goBackStep();
   };
 
   useEffect(() => {
     const onPop = (event: PopStateEvent) => {
       const state = event.state as { tab?: AppTab; detail?: string; channel?: string } | null;
+      navStackRef.current.pop();
       if (state?.detail) {
         setTab(state.tab ?? 'home');
         setChannelAnime(null);
@@ -175,6 +262,10 @@ export const App: React.FC = () => {
   }, []);
 
   const navigate = (next: AppTab) => {
+    const curr = routeRef.current;
+    if (curr.tab !== next || curr.detailId || curr.channelAnime) {
+      pushSnapshot(curr);
+    }
     setTab(next);
     setDetailId(null);
     setChannelAnime(null);
@@ -190,14 +281,11 @@ export const App: React.FC = () => {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      if (quickTarget) setQuickTarget(null);
-      else if (settingsOpen) setSettingsOpen(false);
-      else if (trackersOpen) setTrackersOpen(false);
-      else if (detailId || channelAnime) closeDetail();
+      goBackStep();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [quickTarget, trackersOpen, settingsOpen, detailId, channelAnime, tab]);
+  }, []);
 
   useEffect(() => {
     if (!trackersOpen && !quickTarget && !settingsOpen) return;
@@ -253,7 +341,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] text-[#F1F1F1]">
+    <div className="min-h-screen w-full overflow-x-clip bg-[#0F0F0F] text-[#F1F1F1]">
       <TopBar
         query={activeQuery}
         onQueryChange={handleQueryChange}
@@ -290,6 +378,7 @@ export const App: React.FC = () => {
               libraryState={libraryState}
               onOpenId={openDetail}
               onOpenChannel={openChannel}
+              onOpenSettings={() => setSettingsOpen(true)}
               onClose={closeDetail}
               onQuickAdd={quickAdd}
             />

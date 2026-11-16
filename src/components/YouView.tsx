@@ -15,6 +15,7 @@ import { LibraryState, MediaType } from '../types';
 import { animeStore } from '../services/animeStore';
 import { buildTasteProfile } from '../services/recommender';
 import { library } from '../services/library';
+import { useProfile } from '../services/profile';
 import { toast } from './Toast';
 
 interface YouViewProps {
@@ -95,30 +96,35 @@ export const YouView: React.FC<YouViewProps> = ({
   };
 
   const connected = libraryState.trackers[0];
+  const profileData = useProfile();
 
   return (
     <div className="mx-auto min-h-screen max-w-3xl space-y-5 bg-[#0F0F0F] px-4 pb-24 pt-5 text-white sm:px-6 lg:px-8 lg:pb-16">
       {/* Profile Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-[#272727] text-white">
-            {connected ? (
-              <span className="text-base font-bold uppercase">{connected.username.slice(0, 1)}</span>
-            ) : (
-              <User className="h-6 w-6 text-[#AAAAAA]" />
-            )}
-          </div>
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          title="Change profile & character avatar"
+          className="group flex items-center gap-3 text-left"
+        >
+          <img
+            src={profileData.avatarUrl}
+            alt={profileData.name}
+            className="h-14 w-14 shrink-0 rounded-full border-2 border-white/15 object-cover bg-[#272727] transition group-hover:border-[#FF0000]"
+          />
           <div>
             <h1 className="text-[20px] font-black tracking-tight text-white">
-              {connected ? connected.username : 'Guest User'}
+              {connected ? `${profileData.name}` : profileData.name}
             </h1>
             <p className="text-[12px] text-[#AAAAAA]">
+              {profileData.handle} ·{' '}
               {connected
-                ? `Synced with ${connected.provider === 'anilist' ? 'AniList' : 'MyAnimeList'} (${connected.imported} titles)`
-                : '100% offline-first · No login required'}
+                ? `Synced with ${connected.provider === 'anilist' ? 'AniList' : 'MyAnimeList'} (${connected.username})`
+                : 'Tap to customize PFP & name'}
             </p>
           </div>
-        </div>
+        </button>
 
         <div className="flex items-center gap-2">
           <button
@@ -127,7 +133,7 @@ export const YouView: React.FC<YouViewProps> = ({
             className="flex items-center gap-1.5 rounded-full bg-[#272727] px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-[#383838]"
           >
             <Settings className="h-3.5 w-3.5" />
-            Settings
+            Settings &amp; PFP
           </button>
           <button
             type="button"

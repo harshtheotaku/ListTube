@@ -534,10 +534,18 @@ async function fetchCommunityRecsForAnchor(
   return [...results.values()].sort((a, b) => b.weight - a.weight);
 }
 
+function seedNoise(idNum: number, seed: number): number {
+  if (seed <= 0) return 0;
+  const h = Math.sin(idNum * 12.9898 + seed * 78.233) * 43758.5453;
+  return h - Math.floor(h);
+}
+
 export async function getRecommendations(
   state: LibraryState,
   limit = 20,
-  mediaType: MediaType = 'ANIME'
+  mediaType: MediaType = 'ANIME',
+  refreshSeed = 0,
+  previouslyShownIds?: Set<string>
 ): Promise<RecommendationBundle> {
   const profile = buildTasteProfile(state, mediaType);
   const interestBoostGenres = mediaType === 'MANGA' ? state.mangaInterests ?? [] : state.interests ?? [];
@@ -551,21 +559,31 @@ export async function getRecommendations(
 
   const profileGenres = profile.topGenres.map((genre) => genre.name);
   const topGenres = [...new Set([...interestBoostGenres.slice(0, 2), ...profileGenres])].slice(0, 3);
-  const topTag = profile.topTags[0]?.name;
+  const topTag =
+    profile.topTags[refreshSeed > 0 ? refreshSeed % Math.max(1, Math.min(4, profile.topTags.length)) : 0]?.name;
+
+  const anchorShift = profile.anchors.length > 1 ? refreshSeed % profile.anchors.length : 0;
+  const rotatedAnchors =
+    anchorShift > 0
+      ? [...profile.anchors.slice(anchorShift), ...profile.anchors.slice(0, anchorShift)]
+      : profile.anchors;
 
   const anchorRecsPromise = Promise.all(
-    profile.anchors.slice(0, 3).map((a) => fetchCommunityRecsForAnchor(a.anime))
+    rotatedAnchors.slice(0, 3).map((a) => fetchCommunityRecsForAnchor(a.anime))
   );
+
+  const discoveryPage = refreshSeed > 0 ? (refreshSeed % 4) + 1 : 1;
+  const genrePage = refreshSeed > 0 ? ((refreshSeed % 3) + 1) : 1;
 
   const [trending, seasonal, popular, byGenre1, byGenre2, byTopTag, topRated, anchorRecsNested] =
     await Promise.all([
-      settle(fetchTrending(36, 1, mediaType)),
-      settle(fetchSeasonal(28, mediaType)),
-      settle(fetchPopular(28, mediaType)),
-      topGenres[0] ? settle(fetchByGenre(topGenres[0], 24, ['SCORE_DESC'], mediaType)) : Promise.resolve(null),
-      topGenres[1] ? settle(fetchByGenre(topGenres[1], 24, ['SCORE_DESC'], mediaType)) : Promise.resolve(null),
-      topTag ? settle(fetchByTag(topTag, 20, ['SCORE_DESC'], mediaType)) : Promise.resolve(null),
-      settle(fetchTopRated(30, mediaType)),
+      settle(fetchTrending(36, discoveryPage, mediaType)),
+      settle(fetchSeasonal(28, mediaType, refreshSeed > 0 ? ((refreshSeed % 2) + 1) : 1)),
+      settle(fetchPopular(28, mediaType, discoveryPage)),
+      topGenres[0] ? settle(fetchByGenre(topGenres[0], 24, ['SCORE_DESC'], mediaType, genrePage)) : Promise.resolve(null),
+      topGenres[1] ? settle(fetchByGenre(topGenres[1], 24, ['SCORE_DESC'], mediaType, genrePage)) : Promise.resolve(null),
+      topTag ? settle(fetchByTag(topTag, 20, ['SCORE_DESC'], mediaType, genrePage)) : Promise.resolve(null),
+      settle(fetchTopRated(30, mediaType, discoveryPage)),
       anchorRecsPromise,
     ]);
 
@@ -613,6 +631,12 @@ export async function getRecommendations(
 
   animeStore.rememberMany(candidates);
 
+  const unseenCandidates =
+    refreshSeed > 0 && previouslyShownIds?.size
+      ? candidates.filter((c) => !previouslyShownIds.has(c.id))
+      : candidates;
+  const activeCandidates = unseenCandidates.length >= limit ? unseenCandidates : candidates;
+
   const profileNorm = norm(profile.vector);
   const sets = {
     seasonal: new Set(seasonalList.map((a) => a.id)),
@@ -621,7 +645,7 @@ export async function getRecommendations(
     popular: new Set(popularList.map((a) => a.id)),
   };
 
-  const scored = candidates.map((anime) => {
+  const scored = activeCandidates.map((anime) => {
     const content = cosine(profile.vector, profileNorm, vectorOf(anime));
     const commRec = communityMap.get(anime.id);
     const consensusAnchor = profile.anchors.find((a) => isConsensusMatch(a.anime.title, anime.title));
@@ -635,6 +659,11 @@ export async function getRecommendations(
         (sets.topRated.has(anime.id) ? 0.08 : 0)
       : 0;
 
+    const refreshPenalty =
+      refreshSeed > 0 && previouslyShownIds?.has(anime.id) ? -0.95 : 0;
+    const varietyJitter =
+      refreshSeed > 0 ? seedNoise(anime.anilistId ?? anime.malId ?? 17, refreshSeed) * 0.16 : 0;
+
     const value =
       (coldStart ? 0.3 * qualityPrior(anime) : 0.45 * content) +
       communityBoost +
@@ -643,7 +672,9 @@ export async function getRecommendations(
       0.08 * freshnessPrior(anime) +
       affinity +
       interestBoost +
-      sourcePrior;
+      sourcePrior +
+      refreshPenalty +
+      varietyJitter;
 
     let reason = 'Picked for your taste';
     if (commRec) {

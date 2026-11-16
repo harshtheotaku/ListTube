@@ -32,6 +32,7 @@ import { library } from '../services/library';
 import { getSimilar } from '../services/recommender';
 import { franchiseNameOf } from '../services/franchise';
 import { useSettings } from '../services/settings';
+import { CommentsSection } from './CommentsSection';
 import { toast } from './Toast';
 import { CardSkeleton } from './Skeleton';
 
@@ -40,6 +41,7 @@ interface DetailViewProps {
   libraryState: LibraryState;
   onOpenId: (id: string) => void;
   onOpenChannel: (anime: Anime) => void;
+  onOpenSettings?: () => void;
   onClose: () => void;
   onQuickAdd: (anime: Anime) => void;
 }
@@ -65,6 +67,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
   libraryState,
   onOpenId,
   onOpenChannel,
+  onOpenSettings,
   onClose,
 }) => {
   const settings = useSettings();
@@ -666,6 +669,9 @@ export const DetailView: React.FC<DetailViewProps> = ({
                 </p>
               </div>
             )}
+
+            {/* YouTube-Style Persistent Comments + Pinned Spoiler-Free MAL Review */}
+            <CommentsSection anime={anime} onOpenSettings={onOpenSettings} />
           </div>
 
           {/* Right Column: "Up Next & Recommendations" (Real MAL / AniList / Community Recs!) */}
