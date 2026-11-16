@@ -10,12 +10,15 @@ import {
   statusLabel,
 } from '../types';
 import { animeStore } from '../services/animeStore';
+import { franchiseNameOf } from '../services/franchise';
 import { library } from '../services/library';
 
 interface ListViewProps {
   libraryState: LibraryState;
   mediaType: MediaType;
+  query: string;
   onOpen: (anime: Anime) => void;
+  onOpenChannel: (anime: Anime) => void;
   onExplore: () => void;
 }
 
@@ -25,30 +28,41 @@ interface RowProps {
   anime: Anime;
   entry: ListEntry;
   onOpen: (anime: Anime) => void;
+  onOpenChannel: (anime: Anime) => void;
 }
 
-const Row: React.FC<RowProps> = ({ anime, entry, onOpen }) => {
+const Row: React.FC<RowProps> = ({ anime, entry, onOpen, onOpenChannel }) => {
   const isManga = (anime.mediaType ?? 'ANIME') === 'MANGA';
   const total = isManga
     ? anime.chapters ?? 0
     : anime.episodes ?? (anime.nextEpisode ? Math.max(1, anime.nextEpisode.number - 1) : 0);
   const progress = entry.progress ?? 0;
   const percent = total > 0 ? Math.min(100, (progress / total) * 100) : 0;
+  const channelName = franchiseNameOf(anime.title);
   const wideThumb =
-    anime.hasOfficialBanner && anime.banner && anime.banner !== anime.cover
+    !isManga && anime.hasOfficialBanner && anime.banner && anime.banner !== anime.cover
       ? anime.banner
       : null;
 
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-3 transition hover:border-white/[0.16] hover:bg-[#222222] sm:p-4">
       <div className="flex gap-3 sm:gap-4">
-        {/* 16:9 Thumbnail with Red Watch Progress Bar */}
+        {/* Thumbnail with Red Progress Bar (4:5 portrait for Manga, 16:9 for Anime) */}
         <button
           type="button"
           onClick={() => onOpen(anime)}
-          className="relative aspect-video h-20 shrink-0 overflow-hidden rounded-xl bg-black text-left focus:outline-none sm:h-24"
+          className={`relative shrink-0 overflow-hidden rounded-xl bg-black text-left focus:outline-none ${
+            isManga ? 'aspect-[4/5] w-16 sm:w-20' : 'aspect-video h-20 sm:h-24'
+          }`}
         >
-          {wideThumb ? (
+          {isManga ? (
+            <img
+              src={anime.cover}
+              alt={anime.title}
+              loading="lazy"
+              className="h-full w-full object-cover"
+            />
+          ) : wideThumb ? (
             <img
               src={wideThumb}
               alt={anime.title}
@@ -56,18 +70,20 @@ const Row: React.FC<RowProps> = ({ anime, entry, onOpen }) => {
               className="h-full w-full object-cover"
             />
           ) : (
-            <div className="relative h-full w-full overflow-hidden bg-[#121216]">
+            <div className="absolute inset-0 overflow-hidden bg-[#121216]">
               <img
                 src={anime.cover}
                 alt=""
                 className="absolute inset-0 h-full w-full scale-125 object-cover opacity-35 blur-md"
               />
-              <img
-                src={anime.cover}
-                alt={anime.title}
-                loading="lazy"
-                className="relative z-[1] mx-auto h-full w-auto max-w-[70%] object-contain"
-              />
+              <div className="absolute inset-0 z-[1] flex items-center justify-center">
+                <img
+                  src={anime.cover}
+                  alt={anime.title}
+                  loading="lazy"
+                  className="h-full w-auto max-w-[72%] object-contain"
+                />
+              </div>
             </div>
           )}
           {total > 0 && percent > 0 && (
@@ -87,15 +103,23 @@ const Row: React.FC<RowProps> = ({ anime, entry, onOpen }) => {
             >
               {anime.title}
             </button>
-            <p className="mt-0.5 truncate text-[11.5px] text-[#AAAAAA]">
+            <p className="mt-0.5 flex flex-wrap items-center gap-1 truncate text-[11.5px] text-[#AAAAAA]">
+              <button
+                type="button"
+                onClick={() => onOpenChannel(anime)}
+                className="font-medium text-[#AAAAAA] hover:text-white hover:underline"
+              >
+                {channelName}
+              </button>
               {[
-                anime.studios[0] || (isManga ? 'Manga' : 'Studio'),
-                anime.year,
-                anime.format,
-                total ? `${total} ${isManga ? 'ch' : 'eps'}` : null,
+                anime.year ? `• ${anime.year}` : null,
+                anime.format ? `• ${anime.format}` : null,
+                total ? `• ${total} ${isManga ? 'ch' : 'eps'}` : null,
               ]
                 .filter(Boolean)
-                .join(' • ')}
+                .map((part, idx) => (
+                  <span key={idx}>{part}</span>
+                ))}
             </p>
           </div>
 
@@ -151,7 +175,9 @@ const Row: React.FC<RowProps> = ({ anime, entry, onOpen }) => {
 export const ListView: React.FC<ListViewProps> = ({
   libraryState,
   mediaType,
+  query,
   onOpen,
+  onOpenChannel,
   onExplore,
 }) => {
   const [filter, setFilter] = useState<Filter>('all');
@@ -176,19 +202,39 @@ export const ListView: React.FC<ListViewProps> = ({
     [libraryState.entries, mediaType]
   );
 
+  const normalizedQuery = query.trim().toLowerCase();
+
   const rows = useMemo(() => {
     return entries
       .map((entry) => ({ entry, anime: animeStore.get(entry.animeId) }))
       .filter((row): row is { entry: ListEntry; anime: Anime } => Boolean(row.anime))
       .filter((row) => (filter === 'all' ? true : row.entry.status === filter))
+      .filter((row) => {
+        if (!normalizedQuery) return true;
+        const ch = franchiseNameOf(row.anime.title).toLowerCase();
+        return (
+          row.anime.title.toLowerCase().includes(normalizedQuery) ||
+          (row.anime.titleRomaji?.toLowerCase().includes(normalizedQuery) ?? false) ||
+          ch.includes(normalizedQuery)
+        );
+      })
       .sort((a, b) => b.entry.updatedAt - a.entry.updatedAt);
-  }, [entries, filter]);
+  }, [entries, filter, normalizedQuery]);
 
   const subscribedChannels = useMemo(() => {
-    return entries
-      .filter((e) => e.status === 'watching')
-      .map((e) => animeStore.get(e.animeId))
-      .filter((a): a is Anime => Boolean(a));
+    const seen = new Set<string>();
+    const out: { anime: Anime; channelName: string }[] = [];
+    for (const e of entries) {
+      if (e.status !== 'watching') continue;
+      const anime = animeStore.get(e.animeId);
+      if (!anime) continue;
+      const ch = franchiseNameOf(anime.title);
+      const key = ch.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ anime, channelName: ch });
+    }
+    return out;
   }, [entries]);
 
   return (
@@ -205,26 +251,27 @@ export const ListView: React.FC<ListViewProps> = ({
         </p>
       </div>
 
-      {/* Top Story Avatars */}
+      {/* Top Subscribed Franchise Channels */}
       {subscribedChannels.length > 0 && (
         <div className="flex items-center gap-4 overflow-x-auto border-b border-white/[0.08] pb-3 no-scrollbar">
-          {subscribedChannels.map((anime) => (
+          {subscribedChannels.map(({ anime, channelName }) => (
             <button
               key={anime.id}
               type="button"
-              onClick={() => onOpen(anime)}
+              onClick={() => onOpenChannel(anime)}
+              title={`Open ${channelName} channel`}
               className="group flex shrink-0 flex-col items-center gap-1.5 focus:outline-none"
             >
               <div className="relative">
                 <img
                   src={anime.cover}
-                  alt={anime.title}
+                  alt={channelName}
                   className="h-14 w-14 rounded-full border-2 border-[#FF0000] object-cover p-0.5 transition group-hover:scale-105"
                 />
                 <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-[#0F0F0F] bg-emerald-500" />
               </div>
-              <span className="max-w-[68px] truncate text-[11px] font-medium text-neutral-300 group-hover:text-white">
-                {anime.title}
+              <span className="max-w-[74px] truncate text-[11px] font-medium text-neutral-300 group-hover:text-white">
+                {channelName}
               </span>
             </button>
           ))}
@@ -276,7 +323,13 @@ export const ListView: React.FC<ListViewProps> = ({
       ) : (
         <div className="space-y-3">
           {rows.map(({ anime, entry }) => (
-            <Row key={anime.id} anime={anime} entry={entry} onOpen={onOpen} />
+            <Row
+              key={anime.id}
+              anime={anime}
+              entry={entry}
+              onOpen={onOpen}
+              onOpenChannel={onOpenChannel}
+            />
           ))}
         </div>
       )}

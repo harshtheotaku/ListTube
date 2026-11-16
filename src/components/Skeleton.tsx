@@ -1,8 +1,13 @@
 import React from 'react';
+import { MediaType } from '../types';
 
-export const CardSkeleton: React.FC = () => (
+export const CardSkeleton: React.FC<{ mediaType?: MediaType }> = ({ mediaType = 'ANIME' }) => (
   <div className="animate-pulse">
-    <div className="aspect-video w-full rounded-xl bg-white/[0.08]" />
+    <div
+      className={`w-full rounded-xl bg-white/[0.08] ${
+        mediaType === 'MANGA' ? 'aspect-[4/5]' : 'aspect-video'
+      }`}
+    />
     <div className="mt-3 flex gap-3">
       <div className="h-9 w-9 shrink-0 rounded-full bg-white/[0.08]" />
       <div className="flex-1 space-y-2 py-0.5">
@@ -13,10 +18,19 @@ export const CardSkeleton: React.FC = () => (
   </div>
 );
 
-export const GridSkeleton: React.FC<{ count?: number }> = ({ count = 8 }) => (
-  <div className="grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+export const GridSkeleton: React.FC<{ count?: number; mediaType?: MediaType }> = ({
+  count = 8,
+  mediaType = 'ANIME',
+}) => (
+  <div
+    className={
+      mediaType === 'MANGA'
+        ? 'grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
+        : 'grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+    }
+  >
     {Array.from({ length: count }).map((_, index) => (
-      <CardSkeleton key={index} />
+      <CardSkeleton key={index} mediaType={mediaType} />
     ))}
   </div>
 );

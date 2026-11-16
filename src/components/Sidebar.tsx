@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Anime, LibraryState, MediaType, TrackerAccount } from '../types';
 import { animeStore } from '../services/animeStore';
+import { franchiseNameOf } from '../services/franchise';
 
 export type AppTab = 'home' | 'explore' | 'list' | 'schedule' | 'news' | 'you';
 
@@ -23,6 +24,7 @@ interface SidebarProps {
   libraryState: LibraryState;
   onNavigate: (tab: AppTab) => void;
   onOpenAnime: (anime: Anime) => void;
+  onOpenChannel: (anime: Anime) => void;
   onOpenTrackers: () => void;
   onOpenSettings: () => void;
   trackers: TrackerAccount[];
@@ -35,7 +37,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   mediaType,
   libraryState,
   onNavigate,
-  onOpenAnime,
+  onOpenChannel,
   onOpenTrackers,
   onOpenSettings,
   trackers,
@@ -44,11 +46,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [showAllSubs, setShowAllSubs] = useState(false);
 
   const subscribedItems = useMemo(() => {
-    return Object.values(libraryState.entries)
+    const seen = new Set<string>();
+    const list = Object.values(libraryState.entries)
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .map((entry) => animeStore.get(entry.animeId))
       .filter((anime): anime is Anime => Boolean(anime))
       .filter((anime) => (anime.mediaType ?? 'ANIME') === mediaType);
+    const out: { anime: Anime; channelName: string }[] = [];
+    for (const anime of list) {
+      const channelName = franchiseNameOf(anime.title);
+      const key = channelName.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ anime, channelName });
+    }
+    return out;
   }, [libraryState.entries, mediaType]);
 
   const displayedSubs = showAllSubs ? subscribedItems : subscribedItems.slice(0, 6);
@@ -144,11 +156,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </p>
         ) : (
           <div className="mt-1 space-y-0.5">
-            {displayedSubs.map((anime) => (
+            {displayedSubs.map(({ anime, channelName }) => (
               <button
                 key={anime.id}
                 type="button"
-                onClick={() => onOpenAnime(anime)}
+                onClick={() => onOpenChannel(anime)}
+                title={`Open ${channelName} channel`}
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[13px] font-medium text-[#F1F1F1] transition hover:bg-white/[0.06]"
               >
                 <img
@@ -156,7 +169,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   alt=""
                   className="h-6 w-6 shrink-0 rounded-full object-cover"
                 />
-                <span className="min-w-0 flex-1 truncate">{anime.title}</span>
+                <span className="min-w-0 flex-1 truncate">{channelName}</span>
                 {anime.status === 'Airing' || anime.status === 'Publishing' ? (
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#3EA6FF]" title="Ongoing" />
                 ) : null}

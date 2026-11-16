@@ -2,6 +2,7 @@ import { Anime, MediaType } from '../types';
 import { fetchByMalIds, searchAniList } from './anilist';
 import { searchMAL } from './jikan';
 import { animeStore } from './animeStore';
+import { resolveMalUrl } from './platform';
 
 function normalize(input: string): string {
   return input
@@ -55,19 +56,14 @@ function isSubsequence(needle: string, haystack: string): boolean {
   return i === needle.length;
 }
 
-function isNativeCapacitor(): boolean {
-  return Boolean((window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.());
-}
-
 /**
  * Queries MyAnimeList official live prefix autocomplete (via Vite proxy on Web or CapacitorHttp on Android).
  * Handles partial prefixes like "shan" -> "Shangri-La Frontier" in milliseconds.
  */
 async function fetchMalPrefixIds(query: string, mediaType: MediaType): Promise<{ id: number; name: string; image: string }[]> {
   const typeParam = mediaType === 'MANGA' ? 'manga' : 'anime';
-  const url = isNativeCapacitor()
-    ? `https://myanimelist.net/search/prefix.json?type=${typeParam}&keyword=${encodeURIComponent(query)}`
-    : `/proxy/mal/search/prefix.json?type=${typeParam}&keyword=${encodeURIComponent(query)}`;
+  const url = resolveMalUrl(`/search/prefix.json?type=${typeParam}&keyword=${encodeURIComponent(query)}`);
+  if (!url) return [];
 
   try {
     const controller = new AbortController();

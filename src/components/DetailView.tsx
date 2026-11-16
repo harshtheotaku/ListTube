@@ -30,6 +30,7 @@ import { fetchMALDetail } from '../services/jikan';
 import { animeStore } from '../services/animeStore';
 import { library } from '../services/library';
 import { getSimilar } from '../services/recommender';
+import { franchiseNameOf } from '../services/franchise';
 import { useSettings } from '../services/settings';
 import { toast } from './Toast';
 import { CardSkeleton } from './Skeleton';
@@ -38,6 +39,7 @@ interface DetailViewProps {
   animeId: string;
   libraryState: LibraryState;
   onOpenId: (id: string) => void;
+  onOpenChannel: (anime: Anime) => void;
   onClose: () => void;
   onQuickAdd: (anime: Anime) => void;
 }
@@ -62,6 +64,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
   animeId,
   libraryState,
   onOpenId,
+  onOpenChannel,
   onClose,
 }) => {
   const settings = useSettings();
@@ -221,6 +224,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
     : anime.episodes ?? (anime.nextEpisode ? Math.max(1, anime.nextEpisode.number - 1) : 0);
   const progress = entry?.progress ?? 0;
   const studioName = anime.studios[0] || (isManga ? 'Official Manga Publication' : 'Official Studio');
+  const channelName = franchiseNameOf(anime.title);
 
   const handleChooseList = (status: ListStatus) => {
     library.setStatus(anime, status);
@@ -286,7 +290,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
                     <img
                       src={widePreview}
                       alt={anime.title}
-                      className="h-full w-full object-cover brightness-[0.82]"
+                      className="absolute inset-0 h-full w-full object-cover brightness-[0.82]"
                     />
                   ) : (
                     <>
@@ -295,11 +299,13 @@ export const DetailView: React.FC<DetailViewProps> = ({
                         alt=""
                         className="absolute inset-0 h-full w-full scale-125 object-cover opacity-35 blur-2xl"
                       />
-                      <img
-                        src={anime.cover}
-                        alt={anime.title}
-                        className="relative z-[1] mx-auto h-full w-auto max-w-[68%] object-contain drop-shadow-2xl"
-                      />
+                      <div className="absolute inset-0 z-[1] flex items-center justify-center">
+                        <img
+                          src={anime.cover}
+                          alt={anime.title}
+                          className="h-full w-auto max-w-[70%] object-contain drop-shadow-2xl"
+                        />
+                      </div>
                     </>
                   )}
                   <div className="absolute inset-0 z-[2] flex flex-col items-center justify-center bg-gradient-to-t from-black/75 via-black/25 to-black/20 p-4">
@@ -348,25 +354,34 @@ export const DetailView: React.FC<DetailViewProps> = ({
               )}
             </div>
 
-            {/* Channel Row: Studio Avatar, Name, Subscribers & Subscribe 5-List Button */}
+            {/* Channel Row: Anime Franchise Avatar, Name, Subscribers & Subscribe 5-List Button */}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <img
-                  src={anime.cover}
-                  alt={studioName}
-                  className="h-10 w-10 shrink-0 rounded-full object-cover bg-[#272727]"
-                />
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[15px] font-bold text-white">{studioName}</span>
-                    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#AAAAAA]/25 text-[9px] font-bold text-[#AAAAAA]">
-                      ✓
+                <button
+                  type="button"
+                  onClick={() => onOpenChannel(anime)}
+                  className="group flex items-center gap-3 text-left"
+                  title={`Open ${channelName} Channel`}
+                >
+                  <img
+                    src={anime.cover}
+                    alt={channelName}
+                    className="h-10 w-10 shrink-0 rounded-full bg-[#272727] object-cover ring-1 ring-white/10 transition group-hover:ring-white/40"
+                  />
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="max-w-[200px] truncate text-[15px] font-bold text-white transition group-hover:text-[#3EA6FF] sm:max-w-[280px]">
+                        {channelName}
+                      </span>
+                      <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-[#AAAAAA]/25 text-[9px] font-bold text-[#AAAAAA]">
+                        ✓
+                      </span>
+                    </div>
+                    <span className="text-[12px] text-[#AAAAAA]">
+                      {formatSubscribers(anime.popularity)} · View Channel
                     </span>
                   </div>
-                  <span className="text-[12px] text-[#AAAAAA]">
-                    {formatSubscribers(anime.popularity)}
-                  </span>
-                </div>
+                </button>
 
                 {/* Subscribe Button (Tapping opens the 5 Lists picker!) */}
                 <div className="relative ml-2">
@@ -433,8 +448,17 @@ export const DetailView: React.FC<DetailViewProps> = ({
                 </div>
               </div>
 
-              {/* Right Action Pills: Like, Share, Not for me */}
+              {/* Right Action Pills: All Seasons, Like, Share, Not for me */}
               <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onOpenChannel(anime)}
+                  className="flex items-center gap-1.5 rounded-full bg-[#272727] px-4 py-2 text-[12.5px] font-semibold text-white transition hover:bg-[#3F3F3F]"
+                >
+                  <Tv className="h-4 w-4 text-[#FF0000]" />
+                  <span>{isManga ? 'Series Channel' : 'All Seasons'}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -488,6 +512,9 @@ export const DetailView: React.FC<DetailViewProps> = ({
                   </span>
                 ) : null}
                 <span>{meta}</span>
+                <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-medium text-[#AAAAAA]">
+                  {isManga ? studioName : `Studio: ${studioName}`}
+                </span>
                 {anime.status && (
                   <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-neutral-200">
                     {anime.status}
@@ -683,21 +710,23 @@ export const DetailView: React.FC<DetailViewProps> = ({
                             src={thumb}
                             alt={item.title}
                             loading="lazy"
-                            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                            className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-105"
                           />
                         ) : (
-                          <div className="relative h-full w-full overflow-hidden bg-[#121216]">
+                          <div className="absolute inset-0 overflow-hidden bg-[#121216]">
                             <img
                               src={item.cover}
                               alt=""
                               className="absolute inset-0 h-full w-full scale-125 object-cover opacity-35 blur-lg"
                             />
-                            <img
-                              src={item.cover}
-                              alt={item.title}
-                              loading="lazy"
-                              className="relative z-[1] mx-auto h-full w-auto max-w-[70%] object-contain"
-                            />
+                            <div className="absolute inset-0 z-[1] flex items-center justify-center">
+                              <img
+                                src={item.cover}
+                                alt={item.title}
+                                loading="lazy"
+                                className="h-full w-auto max-w-[72%] object-contain"
+                              />
+                            </div>
                           </div>
                         )}
                         {item.score ? (
@@ -712,7 +741,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
                           {item.title}
                         </h4>
                         <p className="mt-1 truncate text-[11.5px] text-[#AAAAAA]">
-                          {[item.studios[0] || item.format, item.year].filter(Boolean).join(' • ')}
+                          {[franchiseNameOf(item.title), item.year].filter(Boolean).join(' • ')}
                         </p>
                         <p className="mt-1 truncate text-[10.5px] font-semibold text-[#3EA6FF]">
                           {reason}

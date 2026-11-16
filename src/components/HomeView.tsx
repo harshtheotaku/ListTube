@@ -7,6 +7,7 @@ import {
   RecommendationBundle,
 } from '../services/recommender';
 import { ANIME_GENRES, MANGA_GENRES } from '../services/anilist';
+import { searchSmart } from '../services/search';
 import { library as libraryStore } from '../services/library';
 import { AnimeCard } from './AnimeCard';
 import { Shelf, ShelfItem } from './Shelf';
@@ -16,7 +17,9 @@ import { AppTab } from './Sidebar';
 interface HomeViewProps {
   library: LibraryState;
   mediaType: MediaType;
+  query: string;
   onOpen: (anime: Anime) => void;
+  onOpenChannel: (anime: Anime) => void;
   onNavigate: (tab: AppTab) => void;
   onOpenTrackers: () => void;
   onQuickAdd: (anime: Anime) => void;
@@ -60,7 +63,9 @@ const MANGA_CHIPS = [
 export const HomeView: React.FC<HomeViewProps> = ({
   library,
   mediaType,
+  query,
   onOpen,
+  onOpenChannel,
   onNavigate,
   onOpenTrackers,
   onQuickAdd,
@@ -76,12 +81,45 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [refreshToken, setRefreshToken] = useState(0);
   const [selectedChip, setSelectedChip] = useState('All');
   const [dismissed, setDismissed] = useState(() => localStorage.getItem(ONBOARD_KEY) === '1');
+  const [searchResults, setSearchResults] = useState<Anime[] | null>(null);
+  const [searching, setSearching] = useState(false);
   const requestId = useRef(0);
+  const searchTicket = useRef(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const isManga = mediaType === 'MANGA';
   const chips = isManga ? MANGA_CHIPS : ANIME_CHIPS;
   const genreOptions = isManga ? MANGA_GENRES : ANIME_GENRES;
+  const gridClass = isManga
+    ? 'grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
+    : YOUTUBE_GRID;
+  const shelfWidth = isManga ? 'w-[155px] sm:w-[175px]' : 'w-[260px] sm:w-[290px]';
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+    const ticket = ++searchTicket.current;
+    setSearching(true);
+    const timer = setTimeout(() => {
+      searchSmart(trimmed, mediaType, 24)
+        .then((res) => {
+          if (ticket === searchTicket.current) {
+            setSearchResults(res);
+          }
+        })
+        .catch(() => {
+          if (ticket === searchTicket.current) setSearchResults([]);
+        })
+        .finally(() => {
+          if (ticket === searchTicket.current) setSearching(false);
+        });
+    }, 240);
+    return () => clearTimeout(timer);
+  }, [query, mediaType]);
 
   useEffect(() => {
     setSelectedChip('All');
@@ -274,7 +312,43 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </button>
       </div>
 
-      {/* Zero-Login Onboarding Banner */}
+      {/* Inline Home Search Results when Home's Search Bar has input */}
+      {query.trim().length > 0 ? (
+        <section className="space-y-4 px-4 pt-3 sm:px-6 lg:px-8">
+          <div>
+            <h1 className="text-[19px] font-bold text-white sm:text-[21px]">
+              Home results for &ldquo;{query.trim()}&rdquo;
+            </h1>
+            <p className="text-[12px] text-[#AAAAAA]">
+              Searching {isManga ? 'manga' : 'anime'} in Home without overwriting other tabs
+            </p>
+          </div>
+          {searching ? (
+            <GridSkeleton count={8} mediaType={mediaType} />
+          ) : !searchResults || searchResults.length === 0 ? (
+            <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-10 text-center text-[#AAAAAA]">
+              <p className="text-[14px] font-bold text-white">No matches found</p>
+              <p className="mt-1 text-[12px]">Try a shorter title or keyword.</p>
+            </div>
+          ) : (
+            <div className={gridClass}>
+              {searchResults.map((anime, index) => (
+                <AnimeCard
+                  key={anime.id}
+                  anime={anime}
+                  onOpen={onOpen}
+                  onOpenChannel={onOpenChannel}
+                  status={library.entries[anime.id]?.status}
+                  onQuickAdd={onQuickAdd}
+                  priority={index < 8}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      ) : (
+        <>
+          {/* Zero-Login Onboarding Banner */}
       {showOnboarding && (
         <section className="mx-4 sm:mx-6 lg:mx-8">
           <div className="relative overflow-hidden rounded-2xl border border-white/[0.1] bg-gradient-to-br from-[#FF0000]/15 via-[#181818] to-[#121212] p-5 shadow-xl">
@@ -338,10 +412,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </section>
       )}
 
-      {/* Top 16:9 Personalized Feed */}
+      {/* Top Personalized Feed */}
       <section className="px-4 sm:px-6 lg:px-8">
         {loading ? (
-          <GridSkeleton count={8} />
+          <GridSkeleton count={8} mediaType={mediaType} />
         ) : error ? (
           <div className="rounded-2xl border border-white/10 bg-[#1F1F1F] p-8 text-center">
             <p className="text-[14px] text-[#AAAAAA]">{error}</p>
@@ -365,12 +439,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </button>
           </div>
         ) : (
-          <div className={YOUTUBE_GRID}>
+          <div className={gridClass}>
             {visibleInitial.map((item, index) => (
               <AnimeCard
                 key={item.anime.id}
                 anime={item.anime}
                 onOpen={onOpen}
+                onOpenChannel={onOpenChannel}
                 reason={item.reason}
                 status={library.entries[item.anime.id]?.status}
                 onQuickAdd={onQuickAdd}
@@ -401,10 +476,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
             const entry = library.entries[anime.id];
             const totalCount = isManga ? anime.chapters : anime.episodes;
             return (
-              <ShelfItem key={anime.id} width="w-[260px] sm:w-[290px]">
+              <ShelfItem key={anime.id} width={shelfWidth}>
                 <AnimeCard
                   anime={anime}
                   onOpen={onOpen}
+                  onOpenChannel={onOpenChannel}
                   status={entry?.status}
                   progress={entry?.progress ? { watched: entry.progress, total: totalCount } : undefined}
                   onQuickAdd={onQuickAdd}
@@ -421,10 +497,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
         bundle.shelves.map((shelf) => (
           <Shelf key={shelf.id} title={shelf.title} subtitle={shelf.subtitle}>
             {shelf.items.map((anime) => (
-              <ShelfItem key={anime.id} width="w-[260px] sm:w-[290px]">
+              <ShelfItem key={anime.id} width={shelfWidth}>
                 <AnimeCard
                   anime={anime}
                   onOpen={onOpen}
+                  onOpenChannel={onOpenChannel}
                   status={library.entries[anime.id]?.status}
                   onQuickAdd={onQuickAdd}
                 />
@@ -437,12 +514,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
       {visibleExtra.length > 0 && (
         <section className="space-y-4 px-4 sm:px-6 lg:px-8">
           <h2 className="text-[17px] font-bold text-white">More Recommended for You</h2>
-          <div className={YOUTUBE_GRID}>
+          <div className={gridClass}>
             {visibleExtra.map((item) => (
               <AnimeCard
                 key={item.anime.id}
                 anime={item.anime}
                 onOpen={onOpen}
+                onOpenChannel={onOpenChannel}
                 reason={item.reason}
                 status={library.entries[item.anime.id]?.status}
                 onQuickAdd={onQuickAdd}
@@ -470,6 +548,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </button>
           )}
         </div>
+      )}
+        </>
       )}
     </div>
   );

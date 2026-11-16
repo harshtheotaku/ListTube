@@ -1,13 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Newspaper, RefreshCw } from 'lucide-react';
 import { LibraryState, NewsItem } from '../types';
 import { fetchOfficialNewsFeed } from '../services/news';
 
 interface NewsViewProps {
   libraryState: LibraryState;
+  query: string;
 }
 
-export const NewsView: React.FC<NewsViewProps> = () => {
+export const NewsView: React.FC<NewsViewProps> = ({ query }) => {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -26,6 +27,17 @@ export const NewsView: React.FC<NewsViewProps> = () => {
   useEffect(() => {
     load();
   }, []);
+
+  const filteredNews = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return news;
+    return news.filter(
+      (n) =>
+        n.title.toLowerCase().includes(q) ||
+        n.excerpt.toLowerCase().includes(q) ||
+        n.sourceName.toLowerCase().includes(q)
+    );
+  }, [news, query]);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 bg-[#0F0F0F] px-4 pb-24 pt-5 text-white sm:px-6 lg:px-8 lg:pb-16 min-h-screen">
@@ -77,13 +89,15 @@ export const NewsView: React.FC<NewsViewProps> = () => {
             <div key={idx} className="h-28 animate-pulse rounded-2xl bg-[#1A1A1A]" />
           ))}
         </div>
-      ) : news.length === 0 ? (
+      ) : filteredNews.length === 0 ? (
         <div className="rounded-2xl border border-white/[0.08] bg-[#1A1A1A] p-10 text-center text-[#AAAAAA]">
-          <p className="text-[13px] font-semibold">No recent articles fetched. Try refreshing.</p>
+          <p className="text-[13px] font-semibold">
+            {query.trim() ? `No news matching "${query.trim()}".` : 'No recent articles fetched. Try refreshing.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {news.map((item) => (
+          {filteredNews.map((item) => (
             <a
               key={item.id}
               href={item.url}
@@ -99,12 +113,14 @@ export const NewsView: React.FC<NewsViewProps> = () => {
                       alt=""
                       className="absolute inset-0 h-full w-full scale-125 object-cover opacity-35 blur-md"
                     />
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      loading="lazy"
-                      className="relative z-[1] mx-auto h-full w-auto max-w-full object-contain"
-                    />
+                    <div className="absolute inset-0 z-[1] flex items-center justify-center">
+                      <img
+                        src={item.image}
+                        alt={item.title}
+                        loading="lazy"
+                        className="h-full w-auto max-w-full object-contain"
+                      />
+                    </div>
                   </>
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#FF0000]/20 to-[#1F1F1F]">

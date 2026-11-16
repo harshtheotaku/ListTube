@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Bell, Check, MoreVertical, Play, Star } from 'lucide-react';
 import { Anime, ListStatus, statusLabel } from '../types';
+import { franchiseNameOf } from '../services/franchise';
 
 interface AnimeCardProps {
   anime: Anime;
   onOpen: (anime: Anime) => void;
+  onOpenChannel?: (anime: Anime) => void;
   status?: ListStatus;
   reason?: string;
   progress?: { watched: number; total?: number };
@@ -22,6 +24,7 @@ function formatMembers(popularity?: number): string | null {
 export const AnimeCard: React.FC<AnimeCardProps> = ({
   anime,
   onOpen,
+  onOpenChannel,
   status,
   reason,
   progress,
@@ -34,11 +37,17 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
   const isManga = anime.mediaType === 'MANGA';
   const total = progress?.total ?? (isManga ? anime.chapters ?? 0 : anime.episodes ?? 0);
   const percent = progress && total > 0 ? Math.min(100, (progress.watched / total) * 100) : 0;
-  const studio = anime.studios[0] || (isManga ? 'Manga Series' : anime.format || 'Anime');
 
-  // Strictly prefer official wide AniList bannerImage (never blurry YouTube trailer screenshots)
+  // Channel name is the Anime/Manga Franchise Name (not studio)
+  const channelTitle = franchiseNameOf(anime.title);
+
+  // Strictly prefer official wide AniList bannerImage for Anime; Manga uses crisp 4:5 portrait covers!
   const officialWideBanner =
-    !bannerFailed && anime.hasOfficialBanner && anime.banner && anime.banner !== anime.cover
+    !isManga &&
+    !bannerFailed &&
+    anime.hasOfficialBanner &&
+    anime.banner &&
+    anime.banner !== anime.cover
       ? anime.banner
       : null;
 
@@ -58,22 +67,39 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
     .filter(Boolean)
     .join(' • ');
 
+  const openChannel = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onOpenChannel) onOpenChannel(anime);
+    else onOpen(anime);
+  };
+
   return (
     <div className="group relative flex w-full flex-col">
-      {/* 16:9 YouTube Video Thumbnail Container */}
-      <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-[#141418]">
-        {officialWideBanner ? (
+      {/* Thumbnail Container: 4:5 Portrait for Manga, 16:9 Landscape for Anime */}
+      <div
+        className={`relative w-full overflow-hidden rounded-xl bg-[#141418] ${
+          isManga ? 'aspect-[4/5]' : 'aspect-video'
+        }`}
+      >
+        {isManga ? (
+          <img
+            src={anime.cover}
+            alt={anime.title}
+            loading={priority ? 'eager' : 'lazy'}
+            decoding="async"
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+          />
+        ) : officialWideBanner ? (
           <img
             src={officialWideBanner}
             alt={anime.title}
             loading={priority ? 'eager' : 'lazy'}
             decoding="async"
             onError={() => setBannerFailed(true)}
-            className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
           />
         ) : (
-          /* High-Res Official Key Visual inside Cinematic 16:9 Frame */
-          <div className="relative h-full w-full overflow-hidden bg-[#121216]">
+          <div className="absolute inset-0 overflow-hidden bg-[#121216]">
             {!coverFailed && anime.cover && (
               <>
                 <img
@@ -84,14 +110,16 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
                   className="absolute inset-0 h-full w-full scale-125 object-cover opacity-35 blur-2xl"
                 />
                 <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/15 to-black/75" />
-                <img
-                  src={anime.cover}
-                  alt={anime.title}
-                  loading={priority ? 'eager' : 'lazy'}
-                  decoding="async"
-                  onError={() => setCoverFailed(true)}
-                  className="relative z-[1] mx-auto h-full w-auto max-w-[68%] object-contain drop-shadow-[0_10px_25px_rgba(0,0,0,0.9)] transition-transform duration-300 group-hover:scale-[1.04]"
-                />
+                <div className="absolute inset-0 z-[1] flex items-center justify-center">
+                  <img
+                    src={anime.cover}
+                    alt={anime.title}
+                    loading={priority ? 'eager' : 'lazy'}
+                    decoding="async"
+                    onError={() => setCoverFailed(true)}
+                    className="h-full w-auto max-w-[70%] object-contain drop-shadow-[0_10px_25px_rgba(0,0,0,0.9)] transition-transform duration-300 group-hover:scale-[1.04]"
+                  />
+                </div>
               </>
             )}
           </div>
@@ -99,7 +127,6 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
 
         <div className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-70 transition-opacity group-hover:opacity-90" />
 
-        {/* Clickable Surface */}
         <button
           type="button"
           onClick={() => onOpen(anime)}
@@ -107,21 +134,17 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
           className="absolute inset-0 z-[2] rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF0000]"
         />
 
-        {/* Top-Left Trailer Badge */}
-        {anime.trailerYoutubeId && (
+        {!isManga && anime.trailerYoutubeId && (
           <span className="pointer-events-none absolute left-2 top-2 z-[3] flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
             <Play className="h-2.5 w-2.5 fill-white" />
             Trailer
           </span>
         )}
 
-        {/* Top-Right Subscribed Status Pill */}
         {status && (
           <span
             className={`pointer-events-none absolute right-2 top-2 z-[3] flex items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide backdrop-blur-md ${
-              status === 'watching'
-                ? 'bg-[#FF0000] text-white'
-                : 'bg-black/80 text-neutral-200'
+              status === 'watching' ? 'bg-[#FF0000] text-white' : 'bg-black/80 text-neutral-200'
             }`}
           >
             {status === 'watching' ? (
@@ -133,12 +156,10 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
           </span>
         )}
 
-        {/* Bottom-Right Duration / Episode Count Badge */}
         <span className="pointer-events-none absolute bottom-2 right-2 z-[3] rounded bg-black/85 px-1.5 py-0.5 text-[11px] font-semibold tracking-tight text-white">
           {badgeDuration}
         </span>
 
-        {/* Bottom-Left Rating Pill */}
         {anime.score ? (
           <span className="pointer-events-none absolute bottom-2 left-2 z-[3] flex items-center gap-0.5 rounded bg-black/80 px-1.5 py-0.5 text-[10.5px] font-bold text-amber-300">
             <Star className="h-2.5 w-2.5 fill-current" />
@@ -146,7 +167,6 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
           </span>
         ) : null}
 
-        {/* Red Watch Progress Bar */}
         {progress && percent > 0 && (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[4] h-[3.5px] bg-white/25">
             <div className="h-full bg-[#FF0000]" style={{ width: `${percent}%` }} />
@@ -154,46 +174,59 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
         )}
       </div>
 
-      {/* YouTube Metadata Row Below 16:9 Thumbnail */}
-      <div className="mt-3 flex items-start gap-3">
+      {/* Metadata Row Below Thumbnail */}
+      <div className="mt-2.5 flex items-start gap-2.5">
+        {/* Clickable Channel Avatar (Anime/Manga Franchise Channel) */}
         <button
           type="button"
-          onClick={() => onOpen(anime)}
-          className="shrink-0 overflow-hidden rounded-full bg-[#272727] focus:outline-none"
-          aria-label={studio}
+          onClick={openChannel}
+          className="shrink-0 overflow-hidden rounded-full bg-[#272727] transition hover:ring-2 hover:ring-white/40 focus:outline-none"
+          aria-label={`Open ${channelTitle} channel`}
+          title={`Open ${channelTitle} channel`}
         >
           <img
             src={anime.cover}
-            alt={studio}
+            alt={channelTitle}
             loading="lazy"
-            className="h-9 w-9 rounded-full object-cover"
+            className="h-8 w-8 rounded-full object-cover sm:h-9 sm:w-9"
           />
         </button>
 
-        <button
-          type="button"
-          onClick={() => onOpen(anime)}
-          className="min-w-0 flex-1 text-left focus:outline-none"
-        >
-          <h3 className="line-clamp-2 text-[14px] font-semibold leading-[1.35] text-[#F1F1F1] group-hover:text-white">
-            {anime.title}
-          </h3>
-          <div className="mt-1 flex items-center gap-1 text-[12px] text-[#AAAAAA]">
-            <span className="truncate font-medium">{studio}</span>
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => onOpen(anime)}
+            className="w-full text-left focus:outline-none"
+          >
+            <h3 className="line-clamp-2 text-[13.5px] font-semibold leading-[1.35] text-[#F1F1F1] group-hover:text-white sm:text-[14px]">
+              {anime.title}
+            </h3>
+          </button>
+
+          {/* Clickable Anime Franchise Channel Name */}
+          <button
+            type="button"
+            onClick={openChannel}
+            className="mt-0.5 flex max-w-full items-center gap-1 text-left text-[11.5px] text-[#AAAAAA] hover:text-white sm:text-[12px]"
+          >
+            <span className="truncate font-medium">{channelTitle}</span>
             <span
               className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-[#AAAAAA]/25 text-[8px] font-bold text-[#AAAAAA]"
-              title="Verified Official Data"
+              title="Franchise Channel"
             >
               ✓
             </span>
-          </div>
-          {statsLine && <p className="truncate text-[12px] text-[#AAAAAA]">{statsLine}</p>}
+          </button>
+
+          {statsLine && (
+            <p className="truncate text-[11px] text-[#AAAAAA] sm:text-[12px]">{statsLine}</p>
+          )}
           {reason && (
-            <p className="mt-1 inline-flex max-w-full items-center truncate rounded bg-[#272727] px-1.5 py-0.5 text-[10.5px] font-medium text-neutral-200">
+            <p className="mt-1 inline-flex max-w-full items-center truncate rounded bg-[#272727] px-1.5 py-0.5 text-[10px] font-medium text-neutral-200 sm:text-[10.5px]">
               {reason}
             </p>
           )}
-        </button>
+        </div>
 
         {onQuickAdd && (
           <button
@@ -208,7 +241,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
                 : 'Subscribe / Add to list'
             }
             title="Subscribe / Add to list"
-            className={`shrink-0 rounded-full p-1.5 transition ${
+            className={`shrink-0 rounded-full p-1 transition ${
               isSubscribed
                 ? 'text-[#FF0000] hover:bg-white/10'
                 : 'text-[#AAAAAA] hover:bg-white/10 hover:text-white'

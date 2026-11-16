@@ -9,6 +9,7 @@ import {
 } from './types';
 import { useLibrary, library } from './services/library';
 import { animeStore } from './services/animeStore';
+import { fetchDetail } from './services/anilist';
 import { Sidebar, AppTab } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
 import { TopBar } from './components/TopBar';
@@ -19,6 +20,7 @@ import { ScheduleView } from './components/ScheduleView';
 import { NewsView } from './components/NewsView';
 import { YouView } from './components/YouView';
 import { DetailView } from './components/DetailView';
+import { ChannelView } from './components/ChannelView';
 import { TrackersModal } from './components/TrackersModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ToastHost, toast } from './components/Toast';
@@ -26,16 +28,33 @@ import { ToastHost, toast } from './components/Toast';
 const TABS: AppTab[] = ['home', 'explore', 'list', 'schedule', 'news', 'you'];
 const MEDIA_TYPE_KEY = 'anitube.mediaType.v1';
 
-function routeFromHash(): { tab: AppTab; detailId: string | null } {
-  const raw = window.location.hash.replace(/^#\/?/, '');
+const EMPTY_QUERIES: Record<AppTab, string> = {
+  home: '',
+  explore: '',
+  list: '',
+  schedule: '',
+  news: '',
+  you: '',
+};
+
+function routeFromHash(): { tab: AppTab; detailId: string | null; channelId: string | null } {
+  const raw = window.location.hash.replace(/^#\/?/, '').split('?')[0];
   const tabFromState = window.history.state?.tab as AppTab | undefined;
   const fallback = TABS.includes(tabFromState as AppTab) ? (tabFromState as AppTab) : 'home';
 
   if (raw.startsWith('anime/')) {
     const id = decodeURIComponent(raw.slice('anime/'.length));
-    return { tab: fallback, detailId: id || null };
+    return { tab: fallback, detailId: id || null, channelId: null };
   }
-  return { tab: TABS.includes(raw as AppTab) ? (raw as AppTab) : fallback, detailId: null };
+  if (raw.startsWith('channel/')) {
+    const id = decodeURIComponent(raw.slice('channel/'.length));
+    return { tab: fallback, detailId: null, channelId: id || null };
+  }
+  return {
+    tab: TABS.includes(raw as AppTab) ? (raw as AppTab) : fallback,
+    detailId: null,
+    channelId: null,
+  };
 }
 
 export const App: React.FC = () => {
@@ -43,11 +62,16 @@ export const App: React.FC = () => {
   const [initialRoute] = useState(routeFromHash);
   const [tab, setTab] = useState<AppTab>(initialRoute.tab);
   const [detailId, setDetailId] = useState<string | null>(initialRoute.detailId);
-  const [mediaType, setMediaType] = useState<MediaType>(() =>
-    localStorage.getItem(MEDIA_TYPE_KEY) === 'MANGA' ? 'MANGA' : 'ANIME'
+  const [channelAnime, setChannelAnime] = useState<Anime | null>(() =>
+    initialRoute.channelId ? animeStore.get(initialRoute.channelId) ?? null : null
   );
+  const [mediaType, setMediaType] = useState<MediaType>(() => {
+    if (window.location.hash.includes('mode=manga')) return 'MANGA';
+    if (window.location.hash.includes('mode=anime')) return 'ANIME';
+    return localStorage.getItem(MEDIA_TYPE_KEY) === 'MANGA' ? 'MANGA' : 'ANIME';
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [query, setQuery] = useState('');
+  const [queriesByTab, setQueriesByTab] = useState<Record<AppTab, string>>(EMPTY_QUERIES);
   const [trackersOpen, setTrackersOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quickTarget, setQuickTarget] = useState<Anime | null>(null);
@@ -58,7 +82,8 @@ export const App: React.FC = () => {
     setMediaType(nextType);
     localStorage.setItem(MEDIA_TYPE_KEY, nextType);
     setDetailId(null);
-    setQuery('');
+    setChannelAnime(null);
+    setQueriesByTab(EMPTY_QUERIES);
     scrollTop();
   };
 
@@ -68,14 +93,32 @@ export const App: React.FC = () => {
       '',
       initialRoute.detailId
         ? `#/anime/${encodeURIComponent(initialRoute.detailId)}`
-        : `#/${initialRoute.tab}`
+        : initialRoute.channelId
+          ? `#/channel/${encodeURIComponent(initialRoute.channelId)}`
+          : `#/${initialRoute.tab}`
     );
+    if (initialRoute.channelId && !animeStore.get(initialRoute.channelId)) {
+      const chId = initialRoute.channelId;
+      const numeric = Number(chId.split(':')[1] ?? chId);
+      const mt: MediaType = chId.includes('manga') ? 'MANGA' : 'ANIME';
+      if (Number.isFinite(numeric) && numeric > 0) {
+        fetchDetail(numeric, mt)
+          .then((resolved) => {
+            if (resolved) {
+              animeStore.remember(resolved);
+              setChannelAnime(resolved);
+            }
+          })
+          .catch(() => {});
+      }
+    }
   }, [initialRoute]);
 
   const openDetail = (id: string) => {
     const state = { tab, detail: id };
-    if (detailId) window.history.replaceState(state, '', `#/anime/${encodeURIComponent(id)}`);
+    if (detailId || channelAnime) window.history.replaceState(state, '', `#/anime/${encodeURIComponent(id)}`);
     else window.history.pushState(state, '', `#/anime/${encodeURIComponent(id)}`);
+    setChannelAnime(null);
     setDetailId(id);
     scrollTop();
   };
@@ -85,24 +128,44 @@ export const App: React.FC = () => {
     openDetail(anime.id);
   };
 
+  const openChannel = (anime: Anime) => {
+    animeStore.remember(anime);
+    const state = { tab, channel: anime.id };
+    if (channelAnime || detailId) {
+      window.history.replaceState(state, '', `#/channel/${encodeURIComponent(anime.id)}`);
+    } else {
+      window.history.pushState(state, '', `#/channel/${encodeURIComponent(anime.id)}`);
+    }
+    setDetailId(null);
+    setChannelAnime(anime);
+    scrollTop();
+  };
+
   const closeDetail = () => {
-    if (window.history.state?.detail) {
+    if (window.history.state?.detail || window.history.state?.channel) {
       window.history.back();
       return;
     }
     setDetailId(null);
+    setChannelAnime(null);
     window.history.replaceState({ tab }, '', `#/${tab}`);
     scrollTop();
   };
 
   useEffect(() => {
     const onPop = (event: PopStateEvent) => {
-      const state = event.state as { tab?: AppTab; detail?: string } | null;
+      const state = event.state as { tab?: AppTab; detail?: string; channel?: string } | null;
       if (state?.detail) {
         setTab(state.tab ?? 'home');
+        setChannelAnime(null);
         setDetailId(state.detail);
+      } else if (state?.channel) {
+        setTab(state.tab ?? 'home');
+        setDetailId(null);
+        setChannelAnime(animeStore.get(state.channel) ?? null);
       } else {
         setDetailId(null);
+        setChannelAnime(null);
         if (state?.tab) setTab(state.tab);
       }
       scrollTop();
@@ -114,8 +177,9 @@ export const App: React.FC = () => {
   const navigate = (next: AppTab) => {
     setTab(next);
     setDetailId(null);
+    setChannelAnime(null);
     const state = { tab: next };
-    if (window.history.state?.tab === next && !window.history.state?.detail) {
+    if (window.history.state?.tab === next && !window.history.state?.detail && !window.history.state?.channel) {
       window.history.replaceState(state, '', `#/${next}`);
     } else {
       window.history.pushState(state, '', `#/${next}`);
@@ -129,11 +193,11 @@ export const App: React.FC = () => {
       if (quickTarget) setQuickTarget(null);
       else if (settingsOpen) setSettingsOpen(false);
       else if (trackersOpen) setTrackersOpen(false);
-      else if (detailId) closeDetail();
+      else if (detailId || channelAnime) closeDetail();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [quickTarget, trackersOpen, settingsOpen, detailId, tab]);
+  }, [quickTarget, trackersOpen, settingsOpen, detailId, channelAnime, tab]);
 
   useEffect(() => {
     if (!trackersOpen && !quickTarget && !settingsOpen) return;
@@ -169,13 +233,31 @@ export const App: React.FC = () => {
   };
 
   const quickEntry = quickTarget ? libraryState.entries[quickTarget.id] : undefined;
+  const activeSearchKey: AppTab = detailId || channelAnime ? 'explore' : tab;
+  const activeQuery = queriesByTab[activeSearchKey];
+
+  const handleQueryChange = (val: string) => {
+    setQueriesByTab((prev) => ({ ...prev, [activeSearchKey]: val }));
+  };
+
+  const handleSearchSubmit = () => {
+    if (detailId || channelAnime) {
+      navigate('explore');
+      return;
+    }
+    if (tab === 'you') {
+      const q = queriesByTab.you;
+      setQueriesByTab((prev) => ({ ...prev, explore: q }));
+      navigate('explore');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#0F0F0F] text-[#F1F1F1]">
       <TopBar
-        query={query}
-        onQueryChange={setQuery}
-        onSubmit={() => navigate('explore')}
+        query={activeQuery}
+        onQueryChange={handleQueryChange}
+        onSubmit={handleSearchSubmit}
         onHome={() => navigate('home')}
         onOpenAnime={openAnime}
         onOpenTrackers={() => setTrackersOpen(true)}
@@ -193,6 +275,7 @@ export const App: React.FC = () => {
         libraryState={libraryState}
         onNavigate={navigate}
         onOpenAnime={openAnime}
+        onOpenChannel={openChannel}
         onOpenTrackers={() => setTrackersOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         trackers={libraryState.trackers}
@@ -206,8 +289,18 @@ export const App: React.FC = () => {
               animeId={detailId}
               libraryState={libraryState}
               onOpenId={openDetail}
+              onOpenChannel={openChannel}
               onClose={closeDetail}
               onQuickAdd={quickAdd}
+            />
+          ) : channelAnime ? (
+            <ChannelView
+              seedAnime={channelAnime}
+              libraryState={libraryState}
+              onOpenAnime={openAnime}
+              onOpenChannel={openChannel}
+              onQuickAdd={quickAdd}
+              onBack={closeDetail}
             />
           ) : (
             <>
@@ -215,7 +308,9 @@ export const App: React.FC = () => {
                 <HomeView
                   library={libraryState}
                   mediaType={mediaType}
+                  query={queriesByTab.home}
                   onOpen={openAnime}
+                  onOpenChannel={openChannel}
                   onNavigate={navigate}
                   onOpenTrackers={() => setTrackersOpen(true)}
                   onQuickAdd={quickAdd}
@@ -225,8 +320,9 @@ export const App: React.FC = () => {
                 <ExploreView
                   library={libraryState}
                   mediaType={mediaType}
-                  query={query}
+                  query={queriesByTab.explore}
                   onOpen={openAnime}
+                  onOpenChannel={openChannel}
                   onQuickAdd={quickAdd}
                 />
               )}
@@ -234,24 +330,33 @@ export const App: React.FC = () => {
                 <ListView
                   libraryState={libraryState}
                   mediaType={mediaType}
+                  query={queriesByTab.list}
                   onOpen={openAnime}
+                  onOpenChannel={openChannel}
                   onExplore={() => navigate('explore')}
                 />
               )}
               {tab === 'schedule' && (
                 <ScheduleView
                   libraryState={libraryState}
+                  query={queriesByTab.schedule}
                   onOpen={openAnime}
+                  onOpenChannel={openChannel}
                   onQuickAdd={quickAdd}
                 />
               )}
-              {tab === 'news' && <NewsView libraryState={libraryState} />}
+              {tab === 'news' && (
+                <NewsView libraryState={libraryState} query={queriesByTab.news} />
+              )}
               {tab === 'you' && (
                 <YouView
                   libraryState={libraryState}
                   mediaType={mediaType}
+                  onMediaTypeChange={handleMediaTypeChange}
                   onOpenTrackers={() => setTrackersOpen(true)}
                   onOpenSettings={() => setSettingsOpen(true)}
+                  onOpenSchedule={() => navigate('schedule')}
+                  onOpenNews={() => navigate('news')}
                   onExplore={() => navigate('explore')}
                 />
               )}
@@ -291,7 +396,7 @@ export const App: React.FC = () => {
                   <img
                     src={quickTarget.banner}
                     alt={quickTarget.title}
-                    className="h-full w-full object-cover"
+                    className="absolute inset-0 h-full w-full object-cover"
                   />
                 ) : (
                   <>
@@ -300,11 +405,13 @@ export const App: React.FC = () => {
                       alt=""
                       className="absolute inset-0 h-full w-full scale-125 object-cover opacity-35 blur-md"
                     />
-                    <img
-                      src={quickTarget.cover}
-                      alt={quickTarget.title}
-                      className="relative z-[1] mx-auto h-full w-auto max-w-[75%] object-contain"
-                    />
+                    <div className="absolute inset-0 z-[1] flex items-center justify-center">
+                      <img
+                        src={quickTarget.cover}
+                        alt={quickTarget.title}
+                        className="h-full w-auto max-w-[75%] object-contain"
+                      />
+                    </div>
                   </>
                 )}
               </div>

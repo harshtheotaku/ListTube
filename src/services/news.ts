@@ -1,6 +1,7 @@
 import { NewsItem } from '../types';
 import { animeStore } from './animeStore';
 import { searchAniList } from './anilist';
+import { resolveMalUrl } from './platform';
 
 function stripHtml(raw: string): string {
   return raw
@@ -14,19 +15,14 @@ function stripHtml(raw: string): string {
     .trim();
 }
 
-function isNativeCapacitor(): boolean {
-  return Boolean(
-    (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()
-  );
-}
-
 /**
  * Scrapes official MyAnimeList News page (via Vite proxy on Web or CapacitorHttp on Android)
  * which provides crisp high-res images for every single news story.
  */
 async function fetchMalNewsWithImages(): Promise<NewsItem[]> {
   try {
-    const url = isNativeCapacitor() ? 'https://myanimelist.net/news' : '/proxy/mal/news';
+    const url = resolveMalUrl('/news');
+    if (!url) return [];
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 7500);
     const res = await fetch(url, { signal: controller.signal });

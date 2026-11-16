@@ -104,14 +104,14 @@ export const TopBar: React.FC<TopBarProps> = ({
             <div className="flex h-6 w-8 items-center justify-center rounded-lg bg-[#FF0000]">
               <Play className="h-3.5 w-3.5 fill-white text-white" />
             </div>
-            <span className="hidden text-[18px] font-black tracking-tighter text-white sm:inline">
+            <span className="text-[16px] font-black tracking-tighter text-white sm:text-[18px]">
               Ani<span className="text-[#FF0000]">Tube</span>
             </span>
           </button>
         </div>
 
         {/* Center: Smart YouTube Search Bar with Instant Autocomplete Dropdown */}
-        <div ref={dropdownRef} className="relative min-w-0 flex-1 max-w-xl">
+        <div ref={dropdownRef} className="relative min-w-0 flex-1 lg:max-w-xl">
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -208,8 +208,9 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
         </div>
 
-        {/* Right: Anime | Manga Switch + Settings + Corner Connect */}
-        <div className="flex shrink-0 items-center gap-2">
+        {/* Right (Desktop only): Anime | Manga Switch + Settings + Corner Connect.
+            On mobile (< lg), these live inside the You tab so Logo + Search Bar use the full top bar width. */}
+        <div className="hidden shrink-0 items-center gap-2 lg:flex">
           {/* Anime / Manga Mode Switcher */}
           <div
             className="flex items-center rounded-full border border-white/[0.12] bg-[#1A1A1A] p-0.5"

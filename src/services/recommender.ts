@@ -1,5 +1,6 @@
 import { Anime, LibraryState, ListStatus, MediaType, ScoredAnime } from '../types';
 import { animeStore } from './animeStore';
+import { resolveMalUrl } from './platform';
 import {
   currentSeason,
   fetchByGenre,
@@ -199,12 +200,6 @@ function consensusNamesFor(title: string): string[] {
   return [];
 }
 
-function isNativeCapacitor(): boolean {
-  return Boolean(
-    (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()
-  );
-}
-
 const malRecsCache = new Map<string, Anime[]>();
 
 /**
@@ -217,9 +212,8 @@ async function fetchMalUserRecs(malId: number, mediaType: MediaType): Promise<An
   if (hit) return hit;
 
   const typeSeg = mediaType === 'MANGA' ? 'manga' : 'anime';
-  const url = isNativeCapacitor()
-    ? `https://myanimelist.net/${typeSeg}/${malId}/_/userrecs`
-    : `/proxy/mal/${typeSeg}/${malId}/_/userrecs`;
+  const url = resolveMalUrl(`/${typeSeg}/${malId}/_/userrecs`);
+  if (!url) return [];
 
   try {
     const controller = new AbortController();

@@ -1,6 +1,17 @@
 import React, { useMemo, useState } from 'react';
-import { Download, Settings, Sparkles, Trash2, User } from 'lucide-react';
-import { Anime, LibraryState, MediaType } from '../types';
+import {
+  BookOpen,
+  CalendarDays,
+  Compass,
+  Download,
+  Film,
+  Newspaper,
+  Settings,
+  Sparkles,
+  Trash2,
+  User,
+} from 'lucide-react';
+import { LibraryState, MediaType } from '../types';
 import { animeStore } from '../services/animeStore';
 import { buildTasteProfile } from '../services/recommender';
 import { library } from '../services/library';
@@ -9,8 +20,11 @@ import { toast } from './Toast';
 interface YouViewProps {
   libraryState: LibraryState;
   mediaType: MediaType;
+  onMediaTypeChange: (type: MediaType) => void;
   onOpenTrackers: () => void;
   onOpenSettings: () => void;
+  onOpenSchedule: () => void;
+  onOpenNews: () => void;
   onExplore: () => void;
 }
 
@@ -19,8 +33,12 @@ const CARD = 'rounded-2xl border border-white/[0.08] bg-[#181818] p-4 sm:p-5';
 export const YouView: React.FC<YouViewProps> = ({
   libraryState,
   mediaType,
+  onMediaTypeChange,
   onOpenTrackers,
   onOpenSettings,
+  onOpenSchedule,
+  onOpenNews,
+  onExplore,
 }) => {
   const [confirmClear, setConfirmClear] = useState(false);
   const isManga = mediaType === 'MANGA';
@@ -117,6 +135,77 @@ export const YouView: React.FC<YouViewProps> = ({
             className="rounded-full bg-[#F1F1F1] px-4 py-2 text-[12px] font-bold text-[#0F0F0F] transition hover:bg-white"
           >
             {connected ? 'Manage Sync' : 'Connect Account'}
+          </button>
+        </div>
+      </div>
+
+      {/* Mode Switch & Quick Hub (Anime | Manga, Schedule, News, Explore) */}
+      <div className={CARD}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[12px] font-bold uppercase tracking-wider text-white">
+              Library Mode
+            </p>
+            <p className="text-[11.5px] text-[#AAAAAA]">
+              Switch between 16:9 Anime &amp; 4:5 Manga feeds
+            </p>
+          </div>
+          <div
+            className="flex items-center rounded-full border border-white/[0.12] bg-[#0F0F0F] p-1"
+            role="group"
+            aria-label="Media Mode"
+          >
+            <button
+              type="button"
+              onClick={() => onMediaTypeChange('ANIME')}
+              className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12.5px] font-bold transition ${
+                mediaType === 'ANIME'
+                  ? 'bg-[#FF0000] text-white shadow'
+                  : 'text-[#AAAAAA] hover:text-white'
+              }`}
+            >
+              <Film className="h-3.5 w-3.5" />
+              Anime
+            </button>
+            <button
+              type="button"
+              onClick={() => onMediaTypeChange('MANGA')}
+              className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12.5px] font-bold transition ${
+                mediaType === 'MANGA'
+                  ? 'bg-[#FF0000] text-white shadow'
+                  : 'text-[#AAAAAA] hover:text-white'
+              }`}
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+              Manga
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-3 gap-2 border-t border-white/[0.08] pt-4">
+          <button
+            type="button"
+            onClick={onOpenSchedule}
+            className="flex flex-col items-center gap-1.5 rounded-xl bg-[#272727]/80 px-2 py-3 text-[12px] font-semibold text-white transition hover:bg-[#383838]"
+          >
+            <CalendarDays className="h-4 w-4 text-[#FF0000]" />
+            <span>Schedule</span>
+          </button>
+          <button
+            type="button"
+            onClick={onOpenNews}
+            className="flex flex-col items-center gap-1.5 rounded-xl bg-[#272727]/80 px-2 py-3 text-[12px] font-semibold text-white transition hover:bg-[#383838]"
+          >
+            <Newspaper className="h-4 w-4 text-[#3EA6FF]" />
+            <span>News</span>
+          </button>
+          <button
+            type="button"
+            onClick={onExplore}
+            className="flex flex-col items-center gap-1.5 rounded-xl bg-[#272727]/80 px-2 py-3 text-[12px] font-semibold text-white transition hover:bg-[#383838]"
+          >
+            <Compass className="h-4 w-4 text-emerald-400" />
+            <span>Explore</span>
           </button>
         </div>
       </div>

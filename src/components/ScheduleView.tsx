@@ -2,10 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Bell, Calendar, Clock, RefreshCw } from 'lucide-react';
 import { Anime, LibraryState, ScheduleItem } from '../types';
 import { fetchAiringSchedule } from '../services/anilist';
+import { franchiseNameOf } from '../services/franchise';
 
 interface ScheduleViewProps {
   libraryState: LibraryState;
+  query: string;
   onOpen: (anime: Anime) => void;
+  onOpenChannel: (anime: Anime) => void;
   onQuickAdd: (anime: Anime) => void;
 }
 
@@ -43,7 +46,9 @@ function formatCountdown(timestampSec: number): string {
 
 export const ScheduleView: React.FC<ScheduleViewProps> = ({
   libraryState,
+  query,
   onOpen,
+  onOpenChannel,
   onQuickAdd,
 }) => {
   const [items, setItems] = useState<ScheduleItem[]>([]);
@@ -62,10 +67,18 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
     load();
   }, []);
 
+  const normalizedQuery = query.trim().toLowerCase();
+
   const grouped = useMemo(() => {
-    const filtered = onlySubscribed
-      ? items.filter((item) => Boolean(libraryState.entries[item.anime.id]))
-      : items;
+    const filtered = items.filter((item) => {
+      if (onlySubscribed && !libraryState.entries[item.anime.id]) return false;
+      if (!normalizedQuery) return true;
+      const ch = franchiseNameOf(item.anime.title).toLowerCase();
+      return (
+        item.anime.title.toLowerCase().includes(normalizedQuery) ||
+        ch.includes(normalizedQuery)
+      );
+    });
 
     const map = new Map<string, ScheduleItem[]>();
     for (const item of filtered) {
@@ -75,7 +88,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       map.set(label, bucket);
     }
     return [...map.entries()];
-  }, [items, onlySubscribed, libraryState.entries]);
+  }, [items, onlySubscribed, normalizedQuery, libraryState.entries]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 bg-[#0F0F0F] px-4 pb-24 pt-5 text-white sm:px-6 lg:px-8 lg:pb-16 min-h-screen">
@@ -157,7 +170,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                           <img
                             src={item.anime.banner}
                             alt={item.anime.title}
-                            className="h-full w-full object-cover"
+                            className="absolute inset-0 h-full w-full object-cover"
                           />
                         ) : (
                           <>
@@ -166,11 +179,13 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                               alt=""
                               className="absolute inset-0 h-full w-full scale-125 object-cover opacity-35 blur-md"
                             />
-                            <img
-                              src={item.anime.cover}
-                              alt={item.anime.title}
-                              className="relative z-[1] mx-auto h-full w-auto max-w-[70%] object-contain"
-                            />
+                            <div className="absolute inset-0 z-[1] flex items-center justify-center">
+                              <img
+                                src={item.anime.cover}
+                                alt={item.anime.title}
+                                className="h-full w-auto max-w-[72%] object-contain"
+                              />
+                            </div>
                           </>
                         )}
                         <span className="absolute bottom-1 right-1 z-[2] rounded bg-black/85 px-1.5 py-0.5 text-[10px] font-bold text-white">
@@ -185,6 +200,13 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                           className="line-clamp-2 text-left text-[13px] font-bold text-white hover:underline"
                         >
                           {item.anime.title}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenChannel(item.anime)}
+                          className="mt-0.5 block max-w-full truncate text-left text-[11px] font-medium text-[#AAAAAA] hover:text-white hover:underline"
+                        >
+                          {franchiseNameOf(item.anime.title)}
                         </button>
                         <p className="mt-1 flex items-center gap-1.5 text-[11.5px] text-[#AAAAAA]">
                           <Clock className="h-3 w-3 text-[#FF0000]" />

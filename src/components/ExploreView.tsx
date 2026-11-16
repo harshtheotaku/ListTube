@@ -21,6 +21,7 @@ interface ExploreViewProps {
   mediaType: MediaType;
   query: string;
   onOpen: (anime: Anime) => void;
+  onOpenChannel: (anime: Anime) => void;
   onQuickAdd: (anime: Anime) => void;
 }
 
@@ -32,13 +33,14 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   mediaType,
   query,
   onOpen,
+  onOpenChannel,
   onQuickAdd,
 }) => {
   const [genre, setGenre] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>('trending');
   const [items, setItems] = useState<Anime[]>([]);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +50,9 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
   const isManga = mediaType === 'MANGA';
   const genres = isManga ? MANGA_GENRES : ANIME_GENRES;
+  const gridClass = isManga
+    ? 'grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
+    : YOUTUBE_GRID;
 
   const sorts: { id: SortKey; label: string }[] = [
     { id: 'trending', label: '🔥 Trending' },
@@ -70,7 +75,10 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     async (targetPage: number, append: boolean) => {
       const id = ++requestId.current;
       if (append) setLoadingMore(true);
-      else setLoading(true);
+      else {
+        setLoading(true);
+        setHasMore(false);
+      }
       setError(null);
 
       try {
@@ -217,10 +225,10 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         </p>
       </div>
 
-      {/* 16:9 YouTube Grid */}
+      {/* YouTube Grid (2-col 4:5 portrait for Manga on mobile, 16:9 for Anime) */}
       <div className="px-4 sm:px-6 lg:px-8">
         {loading ? (
-          <GridSkeleton count={12} />
+          <GridSkeleton count={12} mediaType={mediaType} />
         ) : error ? (
           <div className="rounded-2xl border border-white/[0.08] bg-[#1A1A1A] p-8 text-center text-[#AAAAAA]">
             <p className="text-[13px]">{error}</p>
@@ -239,12 +247,13 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             <p className="mt-1 text-[12px] text-[#AAAAAA]">Try a partial title or reset filters.</p>
           </div>
         ) : (
-          <div className={YOUTUBE_GRID}>
+          <div className={gridClass}>
             {items.map((anime, index) => (
               <AnimeCard
                 key={anime.id}
                 anime={anime}
                 onOpen={onOpen}
+                onOpenChannel={onOpenChannel}
                 status={library.entries[anime.id]?.status}
                 onQuickAdd={onQuickAdd}
                 priority={index < 8}

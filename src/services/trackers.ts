@@ -1,6 +1,7 @@
 import { Anime, ListStatus, MediaType, TrackerAccount } from '../types';
 import { fetchAniListViewer, fetchByMalIds, mapMedia } from './anilist';
 import { importMALList, ImportedEntry } from './jikan';
+import { resolveMalUrl } from './platform';
 
 const ENDPOINT = 'https://graphql.anilist.co';
 
@@ -90,12 +91,6 @@ export function extractUsername(raw: string): string {
   if (urlMatch?.[1]) return urlMatch[1];
   if (clean.startsWith('@')) clean = clean.slice(1);
   return clean.trim();
-}
-
-function isNativeCapacitor(): boolean {
-  return Boolean(
-    (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()
-  );
 }
 
 async function graphql<T>(
@@ -219,9 +214,13 @@ async function fetchMalLoadJson(
 
   for (let page = 0; page < 3; page += 1) {
     const offset = page * 300;
-    const url = isNativeCapacitor()
-      ? `https://myanimelist.net/${listKind}/${encodeURIComponent(username)}/load.json?status=7&offset=${offset}`
-      : `/proxy/mal/${listKind}/${encodeURIComponent(username)}/load.json?status=7&offset=${offset}`;
+    const url = resolveMalUrl(`/${listKind}/${encodeURIComponent(username)}/load.json?status=7&offset=${offset}`);
+    if (!url) {
+      if (page === 0 && mediaType === 'ANIME') {
+        throw new Error('Static host fallback to Jikan');
+      }
+      break;
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 9000);
