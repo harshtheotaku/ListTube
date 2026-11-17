@@ -7,34 +7,110 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <meta name="theme-color" content="#0F0F0F" />
+    <meta name="application-name" content="ListTube" />
+    <meta name="author" content="HarshTheOtaku" />
+    <meta
+      name="robots"
+      content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+    />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link
-      rel="icon"
-      type="image/svg+xml"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 26'%3E%3Crect x='0.5' y='0.5' width='35' height='25' rx='6.5' fill='%23FF0000'/%3E%3Crect x='7' y='7' width='8.5' height='2.6' rx='1.3' fill='%23FFFFFF'/%3E%3Crect x='7' y='11.7' width='6.5' height='2.6' rx='1.3' fill='%23FFFFFF'/%3E%3Crect x='7' y='16.4' width='10.5' height='2.6' rx='1.3' fill='%23FFFFFF'/%3E%3Cpath d='M20 7.2L29.5 13L20 18.8V7.2Z' fill='%23FFFFFF'/%3E%3C/svg%3E"
-    />
+    <meta name="apple-mobile-web-app-title" content="ListTube" />
+
+    <link rel="canonical" href="https://listtube.vercel.app/" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+
+    <title>ListTube — Anime &amp; Manga Tracker, Encyclopedia &amp; Recommendations</title>
     <meta
       name="description"
-      content="ListTube — Track anime & manga, read reviews, browse full MAL & AniList catalogs, connect with friends, and discover personalized recommendations."
+      content="ListTube is a YouTube-inspired anime and manga tracker, encyclopedia, and discovery platform. Sync AniList &amp; MyAnimeList, read spoiler-free reviews, explore characters &amp; VAs, and get personalized recommendations."
     />
+    <meta
+      name="keywords"
+      content="ListTube, listtube app, anime tracker, manga tracker, anime recommendations, MyAnimeList sync, AniList 2-way sync, anime characters, OP ED themes, anime catalog"
+    />
+
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="ListTube" />
-    <meta property="og:title" content="ListTube — Anime & Manga Tracker & Discovery" />
+    <meta property="og:url" content="https://listtube.vercel.app/" />
+    <meta property="og:title" content="ListTube — Anime &amp; Manga Tracker &amp; Discovery" />
     <meta
       property="og:description"
-      content="Track anime & manga with decimal scoring, Episode threads, Characters & VAs, 2-way AniList/MAL OAuth sync, and Google Cloud sync."
+      content="Track anime &amp; manga with decimal scoring, Episode threads, Characters &amp; VAs, OP/ED YouTube links, 2-way AniList/MAL OAuth sync, and Google Cloud sync."
     />
     <meta
       property="og:image"
       content="https://s4.anilist.co/file/anilistcdn/media/anime/banner/16498-8jpFCOcDmneX.jpg"
     />
+    <meta property="og:image:alt" content="ListTube — Anime &amp; Manga Tracker and Discovery Platform" />
+
     <meta name="twitter:card" content="summary_large_image" />
-    <title>ListTube — Anime & Manga recommendations that learn your taste</title>
+    <meta name="twitter:title" content="ListTube — Anime &amp; Manga Tracker &amp; Discovery" />
+    <meta
+      name="twitter:description"
+      content="YouTube-inspired anime &amp; manga tracker with personalized recommendations, full characters &amp; staff, OP/ED YouTube links, and AniList/MAL sync."
+    />
+    <meta
+      name="twitter:image"
+      content="https://s4.anilist.co/file/anilistcdn/media/anime/banner/16498-8jpFCOcDmneX.jpg"
+    />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "name": "ListTube",
+            "alternateName": ["ListTube App", "ListTube Anime Tracker"],
+            "url": "https://listtube.vercel.app/",
+            "description": "YouTube-inspired anime and manga tracker, encyclopedia, community feed, and personalized recommendation platform.",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": "https://listtube.vercel.app/explore?q={search_term_string}",
+              "query-input": "required name=search_term_string"
+            }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "ListTube",
+            "operatingSystem": "Web, Android",
+            "applicationCategory": "EntertainmentApplication",
+            "url": "https://listtube.vercel.app/",
+            "downloadUrl": "https://github.com/harshtheotaku/ListTube/releases/latest/download/ListTube-android.apk",
+            "softwareVersion": "1.0",
+            "author": {
+              "@type": "Person",
+              "name": "HarshTheOtaku",
+              "url": "https://github.com/harshtheotaku"
+            },
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main style="background:#0F0F0F;color:#F1F1F1;font-family:system-ui,-apple-system,sans-serif;padding:40px 24px;max-width:860px;margin:0 auto">
+        <h1>ListTube — Anime &amp; Manga Tracker, Encyclopedia &amp; Recommendations</h1>
+        <p>ListTube brings YouTube's dark discovery experience to anime and manga: track watchlists with decimal scoring, read spoiler-free MyAnimeList reviews, inspect Characters &amp; Voice Actors, explore Production Staff and Opening/Ending themes, follow friends, and sync two-way with AniList, MyAnimeList, and Google.</p>
+        <nav aria-label="Primary sections" style="margin-top:20px;display:flex;gap:16px;flex-wrap:wrap">
+          <a href="/explore" style="color:#3EA6FF">Explore MAL &amp; AniList Catalog</a>
+          <a href="/schedule" style="color:#3EA6FF">Airing Schedule</a>
+          <a href="/news" style="color:#3EA6FF">Anime &amp; Manga News</a>
+          <a href="/feed" style="color:#3EA6FF">Community Activity &amp; People</a>
+          <a href="https://github.com/harshtheotaku/ListTube" style="color:#3EA6FF">GitHub &amp; Android APK</a>
+        </nav>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

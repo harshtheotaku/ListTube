@@ -1,6 +1,25 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
+  ],
   "rewrites": [
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/sitemap"
+    },
     {
       "source": "/proxy/mal/(.*)",
       "destination": "https://myanimelist.net/$1"
@@ -15,13 +34,13 @@
         {
           "type": "header",
           "key": "user-agent",
-          "value": ".*(bot|crawler|spider|discord|twitter|facebook|slack|telegram|whatsapp|preview|embed).*"
+          "value": "(?i).*(bot|crawler|spider|slurp|archiver|discord|twitter|facebook|slack|telegram|whatsapp|preview|embed).*"
         }
       ],
-      "destination": "/api/og?id=:id"
+      "destination": "/api/og?id=:id&bot=1"
     },
     {
-      "source": "/((?!api/|assets/|proxy/).*)",
+      "source": "/((?!api/|assets/|proxy/|robots\\.txt|sitemap\\.xml|favicon\\.svg|site\\.webmanifest|404\\.html|mobile\\.html).*)",
       "destination": "/index.html"
     }
   ]

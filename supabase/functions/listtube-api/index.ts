@@ -832,21 +832,26 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ ok: true, entry: json });
     }
 
-    // 13. SSR OpenGraph Link Preview Endpoint (?id=anilist:16498 or ?id=anilist-manga:30002)
+    // 13. SSR OpenGraph Link Preview & SEO Bot Endpoint (?id=anilist:16498 or ?id=anilist-manga:30002)
     if (path === "/share" && req.method === "GET") {
       const rawId = (url.searchParams.get("id") ?? "").trim();
       const targetOrigin = (url.searchParams.get("origin") ?? "https://listtube.vercel.app").replace(/\/$/, "");
+      const isBot = url.searchParams.get("bot") === "1";
       const redirectUrl = rawId ? `${targetOrigin}/anime/${encodeURIComponent(rawId)}` : targetOrigin;
 
       let title = "ListTube — Anime & Manga Recommendations";
       let desc = "Track anime & manga, read reviews, explore MAL catalogs, and get personalized recommendations.";
       let image = "https://s4.anilist.co/file/anilistcdn/media/anime/banner/16498-8jpFCOcDmneX.jpg";
+      let mediaTitle = "ListTube";
+      let schemaType = "CreativeWork";
+      let ratingValue: string | null = null;
 
       const idMatch = rawId.match(/^(anilist|anilist-manga|mal|mal-manga):(\d+)$/i);
       if (idMatch) {
         const prefix = idMatch[1].toLowerCase();
         const numericId = Number(idMatch[2]);
         const mediaType = prefix.includes("manga") ? "MANGA" : "ANIME";
+        schemaType = mediaType === "MANGA" ? "Book" : "TVSeries";
         const isMal = prefix.startsWith("mal");
         const cacheKey = `og:${prefix}:${numericId}`;
 
@@ -885,19 +890,45 @@ Deno.serve(async (req: Request) => {
         }
 
         if (media) {
-          const mTitle = media.title?.english || media.title?.romaji || "Untitled";
-          const scoreLabel = media.averageScore ? ` • ★ ${(media.averageScore / 10).toFixed(1)}` : "";
+          mediaTitle = media.title?.english || media.title?.romaji || "Untitled";
+          ratingValue = media.averageScore ? (media.averageScore / 10).toFixed(1) : null;
+          const scoreLabel = ratingValue ? ` • ★ ${ratingValue}` : "";
           const yearLabel = media.startDate?.year ? ` (${media.startDate.year})` : "";
-          title = `${mTitle}${yearLabel}${scoreLabel} — ListTube`;
+          title = `${mediaTitle}${yearLabel}${scoreLabel} — ListTube`;
           desc = String(media.description ?? desc).replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim().slice(0, 220);
           image = media.bannerImage || media.coverImage?.extraLarge || image;
         }
       }
 
+      const jsonLd = JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": schemaType,
+        name: mediaTitle,
+        description: desc,
+        image,
+        url: redirectUrl,
+        ...(ratingValue
+          ? {
+              aggregateRating: {
+                "@type": "AggregateRating",
+                ratingValue,
+                bestRating: "10",
+                worstRating: "1",
+              },
+            }
+          : {}),
+      });
+
+      const redirectTags = isBot
+        ? ""
+        : `\n<meta http-equiv="refresh" content="0;url=${escapeHtml(redirectUrl)}" />\n<script>window.location.replace(${JSON.stringify(redirectUrl)});</script>`;
+
       const html = `<!doctype html><html lang="en"><head>
 <meta charset="utf-8" />
 <title>${escapeHtml(title)}</title>
 <meta name="description" content="${escapeHtml(desc)}" />
+<meta name="robots" content="index, follow, max-image-preview:large" />
+<link rel="canonical" href="${escapeHtml(redirectUrl)}" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="ListTube" />
 <meta property="og:title" content="${escapeHtml(title)}" />
@@ -908,9 +939,8 @@ Deno.serve(async (req: Request) => {
 <meta name="twitter:title" content="${escapeHtml(title)}" />
 <meta name="twitter:description" content="${escapeHtml(desc)}" />
 <meta name="twitter:image" content="${escapeHtml(image)}" />
-<meta http-equiv="refresh" content="0;url=${escapeHtml(redirectUrl)}" />
-<script>window.location.replace(${JSON.stringify(redirectUrl)});</script>
-</head><body style="background:#0F0F0F;color:#fff;font-family:sans-serif;padding:32px"><p>Opening <a href="${escapeHtml(redirectUrl)}" style="color:#3EA6FF">${escapeHtml(title)}</a>…</p></body></html>`;
+<script type="application/ld+json">${jsonLd}</script>${redirectTags}
+</head><body style="background:#0F0F0F;color:#fff;font-family:sans-serif;padding:32px;max-width:720px;margin:0 auto"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(desc)}</p><p><a href="${escapeHtml(redirectUrl)}" style="color:#3EA6FF">Open ${escapeHtml(mediaTitle)} on ListTube</a></p></body></html>`;
 
       return new Response(html, {
         status: 200,

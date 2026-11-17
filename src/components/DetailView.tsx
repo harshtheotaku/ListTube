@@ -243,6 +243,16 @@ export const DetailView: React.FC<DetailViewProps> = ({
   }, [animeId]);
 
   useEffect(() => {
+    if (!anime) return;
+    const yr = anime.year ? ` (${anime.year})` : '';
+    document.title = `${anime.title}${yr} — ListTube`;
+    if (anime.description) {
+      const descEl = document.querySelector('meta[name="description"]');
+      if (descEl) descEl.setAttribute('content', anime.description.slice(0, 160));
+    }
+  }, [anime?.id, anime?.title, anime?.year, anime?.description]);
+
+  useEffect(() => {
     let cancelled = false;
     if (!anime?.malId || anime.mediaType === 'MANGA') {
       setThemes({ openings: [], endings: [] });

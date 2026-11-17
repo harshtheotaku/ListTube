@@ -1,0 +1,19 @@
+{
+  "name": "ListTube — Anime & Manga Tracker & Discovery",
+  "short_name": "ListTube",
+  "description": "Track anime & manga, read reviews, browse full MAL & AniList catalogs, and discover personalized recommendations.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0F0F0F",
+  "theme_color": "#0F0F0F",
+  "categories": ["entertainment", "books", "social"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

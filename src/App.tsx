@@ -176,7 +176,12 @@ export const App: React.FC = () => {
     return localStorage.getItem(MEDIA_TYPE_KEY) === 'MANGA' ? 'MANGA' : 'ANIME';
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [queriesByTab, setQueriesByTab] = useState<Record<AppTab, string>>(EMPTY_QUERIES);
+  const [queriesByTab, setQueriesByTab] = useState<Record<AppTab, string>>(() => {
+    const initialQ =
+      typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('q')?.trim() ?? '' : '';
+    if (!initialQ) return EMPTY_QUERIES;
+    return { ...EMPTY_QUERIES, [initialRoute.tab]: initialQ };
+  });
   const [trackersOpen, setTrackersOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -200,6 +205,72 @@ export const App: React.FC = () => {
       unsubOAuth();
     };
   }, []);
+
+  useEffect(() => {
+    const CANONICAL_ORIGIN = 'https://listtube.vercel.app';
+    let title = 'ListTube — Anime & Manga Tracker, Encyclopedia & Recommendations';
+    let desc =
+      'ListTube is a YouTube-inspired anime and manga tracker, encyclopedia, and discovery platform. Sync AniList & MyAnimeList, read reviews, and get personalized recommendations.';
+    let canonicalPath = '/';
+
+    if (detailId) {
+      const m = animeStore.get(detailId);
+      title = m ? `${m.title}${m.year ? ` (${m.year})` : ''} — ListTube` : 'Series Details — ListTube';
+      if (m?.description) desc = m.description.slice(0, 160);
+      canonicalPath = `/anime/${encodeURIComponent(detailId)}`;
+    } else if (channelAnime) {
+      title = `${channelAnime.title} Franchise Channel — ListTube`;
+      canonicalPath = `/channel/${encodeURIComponent(channelAnime.id)}`;
+    } else if (publicUser) {
+      title = `@${publicUser} Profile — ListTube`;
+      canonicalPath = `/user/${encodeURIComponent(publicUser)}`;
+    } else {
+      const tabMeta: Record<AppTab, { title: string; path: string }> = {
+        home: {
+          title: 'ListTube — Anime & Manga Tracker, Encyclopedia & Recommendations',
+          path: '/',
+        },
+        explore: {
+          title: 'Explore Anime & Manga Catalog — ListTube',
+          path: '/explore',
+        },
+        feed: {
+          title: 'Community Activity & People — ListTube',
+          path: '/feed',
+        },
+        schedule: {
+          title: 'Anime Airing Schedule — ListTube',
+          path: '/schedule',
+        },
+        news: {
+          title: 'Anime & Manga News — ListTube',
+          path: '/news',
+        },
+        list: {
+          title: 'My Anime & Manga Watchlist — ListTube',
+          path: '/list',
+        },
+        you: {
+          title: 'My Channel & Taste Stats — ListTube',
+          path: '/you',
+        },
+      };
+      const meta = tabMeta[tab];
+      title = meta.title;
+      canonicalPath = meta.path;
+    }
+
+    document.title = title;
+    const descEl = document.querySelector('meta[name="description"]');
+    if (descEl) descEl.setAttribute('content', desc);
+    let linkEl = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!linkEl) {
+      linkEl = document.createElement('link');
+      linkEl.rel = 'canonical';
+      document.head.appendChild(linkEl);
+    }
+    linkEl.href = `${CANONICAL_ORIGIN}${canonicalPath}`;
+  }, [tab, detailId, channelAnime, publicUser]);
 
   type NavSnapshot = {
     tab: AppTab;
