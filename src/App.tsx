@@ -79,6 +79,7 @@ const InAppBrowserModal = lazy(() =>
   import('./components/InAppBrowserModal').then((m) => ({ default: m.InAppBrowserModal }))
 );
 import { MiniPlayer } from './components/MiniPlayer';
+import { LaunchSplash } from './components/LaunchSplash';
 import { resetScrollChrome } from './services/scrollChrome';
 
 const TABS: AppTab[] = ['home', 'explore', 'list', 'schedule', 'news', 'feed', 'you'];
@@ -814,6 +815,7 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen w-full overflow-x-clip bg-[#0F0F0F] text-[#F1F1F1]">
+      <LaunchSplash />
       <TopBar
         query={activeQuery}
         onQueryChange={handleQueryChange}

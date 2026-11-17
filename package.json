@@ -1,6 +1,6 @@
 {
-  "name": "anitube-app",
-  "version": "1.0.0",
+  "name": "listtube",
+  "version": "1.2.0-beta.1",
   "description": "",
   "main": "index.js",
   "scripts": {
