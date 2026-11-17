@@ -58,6 +58,8 @@ interface ExploreViewProps {
   library: LibraryState;
   mediaType: MediaType;
   query: string;
+  initialGenre?: string | null;
+  onConsumeInitialGenre?: () => void;
   onOpen: (anime: Anime) => void;
   onOpenChannel: (anime: Anime) => void;
   onQuickAdd: (anime: Anime) => void;
@@ -86,6 +88,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   library,
   mediaType,
   query,
+  initialGenre,
+  onConsumeInitialGenre,
   onOpen,
   onOpenChannel,
   onQuickAdd,
@@ -128,6 +132,15 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const isManga = mediaType === 'MANGA';
+
+  useEffect(() => {
+    if (!initialGenre) return;
+    setSelectedGenres([initialGenre]);
+    setSelectedTags([]);
+    setSelectedSeason(null);
+    setChart('mal_home');
+    onConsumeInitialGenre?.();
+  }, [initialGenre, onConsumeInitialGenre]);
   const genres = isManga ? MANGA_GENRES : ANIME_GENRES;
 
   const gridClass = isManga

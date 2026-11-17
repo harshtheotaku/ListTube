@@ -8,6 +8,7 @@ import {
   CloudOff,
   Compass,
   Download,
+  ExternalLink,
   Film,
   Heart,
   Loader2,
@@ -190,6 +191,7 @@ export const YouView: React.FC<YouViewProps> = ({
   const [channelTab, setChannelTab] = useState<ChannelTab>('overview');
   const [confirmClear, setConfirmClear] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
+  const [selectedFavCharId, setSelectedFavCharId] = useState<string | null>(null);
   const isManga = mediaType === 'MANGA';
 
   const animeStats = useMemo(() => computeMalStats(libraryState.entries, 'ANIME'), [libraryState.entries]);
@@ -925,22 +927,91 @@ export const YouView: React.FC<YouViewProps> = ({
 
           {favChars.length > 0 && (
             <div className={CARD}>
-              <h2 className="mb-3 text-[13px] font-bold uppercase tracking-wider text-white">
-                Favorite Characters ({favChars.length})
-              </h2>
-              <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-                {favChars.map((ch) => (
-                  <div key={ch.id} className="flex flex-col items-center text-center">
-                    <img
-                      src={ch.url}
-                      alt={ch.name}
-                      className="h-16 w-16 rounded-full border-2 border-white/15 object-cover bg-black"
-                    />
-                    <p className="mt-1.5 text-[12px] font-bold text-white">{ch.name}</p>
-                    <p className="text-[10px] text-[#AAAAAA]">{ch.series}</p>
-                  </div>
-                ))}
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-[13px] font-bold uppercase tracking-wider text-white">
+                  Favorite Characters ({favChars.length})
+                </h2>
+                <span className="text-[11px] text-[#AAAAAA]">
+                  Tap character for Wikipedia / MAL links
+                </span>
               </div>
+              <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+                {favChars.map((ch) => {
+                  const active = selectedFavCharId === ch.id;
+                  const malUrl = `https://myanimelist.net/character.php?q=${encodeURIComponent(ch.name)}`;
+                  return (
+                    <button
+                      key={ch.id}
+                      type="button"
+                      onClick={() => {
+                        if (active) {
+                          window.open(malUrl, '_blank', 'noopener,noreferrer');
+                        } else {
+                          setSelectedFavCharId(ch.id);
+                        }
+                      }}
+                      className={`flex flex-col items-center rounded-2xl p-2 text-center transition ${
+                        active ? 'bg-[#FF0000]/15 ring-1 ring-[#FF0000]/50' : 'hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      <img
+                        src={ch.url}
+                        alt={ch.name}
+                        className="h-16 w-16 rounded-full border-2 border-white/15 object-cover bg-black"
+                      />
+                      <p className="mt-1.5 text-[12px] font-bold text-white">{ch.name}</p>
+                      <p className="text-[10px] text-[#AAAAAA]">{ch.series}</p>
+                    </button>
+                  );
+                })}
+              </div>
+              {(() => {
+                const picked = favChars.find((c) => c.id === selectedFavCharId);
+                if (!picked) return null;
+                const numericId = Number(picked.id);
+                return (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-[#121212] px-3.5 py-2.5 text-[12px]">
+                    <span className="font-bold text-white">
+                      {picked.name} <span className="font-normal text-[#AAAAAA]">· {picked.series}</span>
+                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <a
+                        href={`https://en.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(`${picked.name} ${picked.series}`)}`}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-white/20"
+                      >
+                        Wikipedia <ExternalLink className="h-3 w-3" />
+                      </a>
+                      <a
+                        href={`https://myanimelist.net/character.php?q=${encodeURIComponent(picked.name)}`}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="inline-flex items-center gap-1 rounded-full bg-[#3EA6FF]/15 px-2.5 py-1 text-[11px] font-bold text-[#3EA6FF] hover:bg-[#3EA6FF]/25"
+                      >
+                        MyAnimeList <ExternalLink className="h-3 w-3" />
+                      </a>
+                      {Number.isFinite(numericId) && numericId > 0 && (
+                        <a
+                          href={`https://anilist.co/character/${numericId}`}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-neutral-200 hover:bg-white/20"
+                        >
+                          AniList <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFavCharId(null)}
+                        className="text-[11px] font-semibold text-[#AAAAAA] hover:text-white"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 

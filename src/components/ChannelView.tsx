@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Bell, Check, ChevronDown, Film, Info, Star } from 'lucide-react';
+import { ArrowLeft, Bell, Check, ChevronDown, ExternalLink, Film, Info, Star } from 'lucide-react';
 import {
   Anime,
   LibraryState,
@@ -21,6 +21,7 @@ interface ChannelViewProps {
   libraryState: LibraryState;
   onOpenAnime: (anime: Anime) => void;
   onOpenChannel?: (anime: Anime) => void;
+  onSelectGenre?: (genre: string) => void;
   onQuickAdd: (anime: Anime) => void;
   onBack: () => void;
 }
@@ -40,6 +41,7 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
   libraryState,
   onOpenAnime,
   onOpenChannel,
+  onSelectGenre,
   onQuickAdd,
   onBack,
 }) => {
@@ -443,15 +445,36 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
               <div className="grid gap-3 border-t border-white/10 pt-4 text-[13px] sm:grid-cols-2">
                 <div>
                   <span className="text-[#AAAAAA]">Studios / Authors:</span>{' '}
-                  <span className="font-semibold text-white">
-                    {allStudios.join(', ') || 'Official Production'}
-                  </span>
+                  {primaryStudio ? (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('studio')}
+                      className="font-semibold text-[#3EA6FF] hover:underline"
+                    >
+                      {allStudios.join(', ')}
+                    </button>
+                  ) : (
+                    <span className="font-semibold text-white">Official Production</span>
+                  )}
                 </div>
-                <div>
-                  <span className="text-[#AAAAAA]">Genres:</span>{' '}
-                  <span className="font-semibold text-white">
-                    {seedAnime.genres.join(', ')}
-                  </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[#AAAAAA]">Genres:</span>
+                  {seedAnime.genres.map((g) =>
+                    onSelectGenre ? (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => onSelectGenre(g)}
+                        className="rounded-md bg-white/10 px-2 py-0.5 text-[11.5px] font-semibold text-white transition hover:bg-[#FF0000]"
+                      >
+                        {g}
+                      </button>
+                    ) : (
+                      <span key={g} className="font-semibold text-white">
+                        {g}
+                      </span>
+                    )
+                  )}
                 </div>
                 <div className="flex items-center gap-1">
                   <Star className="h-3.5 w-3.5 fill-amber-300 text-amber-300" />
@@ -465,6 +488,38 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
                     {seasons.length} franchise entries indexed
                   </span>
                 </div>
+              </div>
+              <div className="flex flex-wrap gap-2 border-t border-white/10 pt-4">
+                <a
+                  href={
+                    seedAnime.malId
+                      ? `https://myanimelist.net/${isManga ? 'manga' : 'anime'}/${seedAnime.malId}`
+                      : `https://myanimelist.net/search/all?q=${encodeURIComponent(channelName)}`
+                  }
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3.5 py-1.5 text-[12px] font-bold text-[#3EA6FF] transition hover:bg-[#3EA6FF]/20"
+                >
+                  MyAnimeList <ExternalLink className="h-3 w-3" />
+                </a>
+                <a
+                  href={`https://en.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(channelName)}`}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3.5 py-1.5 text-[12px] font-bold text-white transition hover:bg-white/20"
+                >
+                  Wikipedia <ExternalLink className="h-3 w-3" />
+                </a>
+                {seedAnime.anilistId && (
+                  <a
+                    href={`https://anilist.co/${isManga ? 'manga' : 'anime'}/${seedAnime.anilistId}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3.5 py-1.5 text-[12px] font-bold text-neutral-200 transition hover:bg-white/20"
+                  >
+                    AniList <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
               </div>
             </div>
           )}

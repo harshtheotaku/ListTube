@@ -27,15 +27,23 @@ import {
 import {
   Anime,
   CharacterCredit,
+  CharacterDetailExtra,
   LibraryState,
   ListStatus,
   LIST_STATUS_ORDER,
   ScoredAnime,
+  StaffCredit,
+  StaffPersonDetail,
   ThemeSong,
   mangaOriginLabel,
   statusLabel,
 } from '../types';
-import { fetchDetail, pickSingleEnglishLink } from '../services/anilist';
+import {
+  fetchCharacterExtra,
+  fetchDetail,
+  fetchStaffPersonDetail,
+  pickSingleEnglishLink,
+} from '../services/anilist';
 import { fetchAnimeThemes, fetchMALDetail } from '../services/jikan';
 import { animeStore } from '../services/animeStore';
 import { library } from '../services/library';
@@ -63,6 +71,7 @@ interface DetailViewProps {
   libraryState: LibraryState;
   onOpenId: (id: string) => void;
   onOpenChannel: (anime: Anime) => void;
+  onSelectGenre?: (genre: string) => void;
   onEditProfile?: () => void;
   onOpenUser?: (userIdOrHandle: string) => void;
   onClose: () => void;
@@ -95,11 +104,56 @@ const STATUS_PRETTY: Record<string, string> = {
   DROPPED: 'Dropped',
 };
 
+function wikipediaSearchUrl(query: string): string {
+  return `https://en.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(query.trim())}`;
+}
+
+function malPeopleSearchUrl(name: string): string {
+  return `https://myanimelist.net/people.php?q=${encodeURIComponent(name.trim())}&cat=person`;
+}
+
+function malCharacterSearchUrl(name: string): string {
+  return `https://myanimelist.net/character.php?q=${encodeURIComponent(name.trim())}`;
+}
+
+function themeYoutubeSearchUrl(
+  animeTitle: string,
+  kind: 'Opening' | 'Ending',
+  song: ThemeSong
+): string {
+  const q = [animeTitle, `${kind} ${song.number}`, song.title, song.artists].filter(Boolean).join(' ');
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+}
+
+function themeYtMusicUrl(song: ThemeSong): string {
+  const q = [song.title, song.artists].filter(Boolean).join(' ');
+  return `https://music.youtube.com/search?q=${encodeURIComponent(q)}`;
+}
+
+function cleanBioMarkdown(raw: string): string {
+  return raw
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/(^|\s)_([^_]+)_(\s|$)/g, '$1$2$3')
+    .trim();
+}
+
+function splitSpoilerText(raw?: string, reveal = false): { text: string; hasSpoiler: boolean } {
+  if (!raw) return { text: '', hasSpoiler: false };
+  const hasSpoiler = /~![\s\S]*?!~/.test(raw);
+  const prepared = reveal
+    ? raw.replace(/~!/g, '').replace(/!~/g, '')
+    : raw.replace(/~!([\s\S]*?)!~/g, '[Spoiler hidden — tap Reveal below]');
+  return { text: cleanBioMarkdown(prepared), hasSpoiler };
+}
+
 export const DetailView: React.FC<DetailViewProps> = ({
   animeId,
   libraryState,
   onOpenId,
   onOpenChannel,
+  onSelectGenre,
   onEditProfile,
   onOpenUser,
   onClose,
@@ -118,7 +172,14 @@ export const DetailView: React.FC<DetailViewProps> = ({
   const [advancedTrackOpen, setAdvancedTrackOpen] = useState(false);
   const [detailTab, setDetailTab] = useState<DetailSectionTab>('overview');
   const [vaLang, setVaLang] = useState<'JP' | 'EN'>('JP');
-  const [selectedCharacter, setSelectedCharacter] = useState<CharacterCredit | null>(null);
+  const [expandedCharId, setExpandedCharId] = useState<number | null>(null);
+  const [charExtraCache, setCharExtraCache] = useState<Record<number, CharacterDetailExtra | null>>({});
+  const [charExtraLoading, setCharExtraLoading] = useState<number | null>(null);
+  const [expandedStaffKey, setExpandedStaffKey] = useState<string | null>(null);
+  const [staffDetailCache, setStaffDetailCache] = useState<Record<number, StaffPersonDetail | null>>({});
+  const [staffLoadingId, setStaffLoadingId] = useState<number | null>(null);
+  const [expandedThemeKey, setExpandedThemeKey] = useState<string | null>(null);
+  const [revealSpoilerBio, setRevealSpoilerBio] = useState(false);
   const [themes, setThemes] = useState<{ openings: ThemeSong[]; endings: ThemeSong[] }>({
     openings: [],
     endings: [],
@@ -135,7 +196,10 @@ export const DetailView: React.FC<DetailViewProps> = ({
     setAdvancedTrackOpen(false);
     setIsDescriptionExpanded(false);
     setDetailTab('overview');
-    setSelectedCharacter(null);
+    setExpandedCharId(null);
+    setExpandedStaffKey(null);
+    setExpandedThemeKey(null);
+    setRevealSpoilerBio(false);
   }, [animeId, settings.autoplayTrailer]);
 
   useEffect(() => {
@@ -273,6 +337,58 @@ export const DetailView: React.FC<DetailViewProps> = ({
         }
       })
       .finally(() => setLoadingMoreSimilar(false));
+  };
+
+  const loadStaffPerson = async (staffId?: number) => {
+    if (!staffId || Object.prototype.hasOwnProperty.call(staffDetailCache, staffId)) return;
+    setStaffLoadingId(staffId);
+    try {
+      const detail = await fetchStaffPersonDetail(staffId);
+      setStaffDetailCache((prev) => ({ ...prev, [staffId]: detail }));
+    } catch {
+      setStaffDetailCache((prev) => ({ ...prev, [staffId]: null }));
+    } finally {
+      setStaffLoadingId((curr) => (curr === staffId ? null : curr));
+    }
+  };
+
+  const handleToggleCharacter = async (ch: CharacterCredit) => {
+    setRevealSpoilerBio(false);
+    if (expandedCharId === ch.id) {
+      window.open(ch.siteUrl || malCharacterSearchUrl(ch.name), '_blank', 'noopener,noreferrer');
+      return;
+    }
+    setExpandedCharId(ch.id);
+    const activeVa = vaLang === 'EN' && ch.englishVoiceActor ? ch.englishVoiceActor : ch.voiceActor;
+    if (activeVa?.id) void loadStaffPerson(activeVa.id);
+    if (!Object.prototype.hasOwnProperty.call(charExtraCache, ch.id)) {
+      setCharExtraLoading(ch.id);
+      try {
+        const extra = await fetchCharacterExtra(ch.id);
+        setCharExtraCache((prev) => ({ ...prev, [ch.id]: extra }));
+      } catch {
+        setCharExtraCache((prev) => ({ ...prev, [ch.id]: null }));
+      } finally {
+        setCharExtraLoading((curr) => (curr === ch.id ? null : curr));
+      }
+    }
+  };
+
+  const handleToggleStaff = (person: StaffCredit, key: string) => {
+    if (expandedStaffKey === key) {
+      window.open(wikipediaSearchUrl(person.name), '_blank', 'noopener,noreferrer');
+      return;
+    }
+    setExpandedStaffKey(key);
+    void loadStaffPerson(person.id);
+  };
+
+  const handleToggleTheme = (key: string, ytUrl: string) => {
+    if (expandedThemeKey === key) {
+      window.open(ytUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    setExpandedThemeKey(key);
   };
 
   const meta = useMemo(() => {
@@ -938,9 +1054,17 @@ export const DetailView: React.FC<DetailViewProps> = ({
                       </span>
                     ) : null}
                     <span>{meta}</span>
-                    <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-medium text-[#AAAAAA]">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenChannel(anime);
+                      }}
+                      className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-medium text-[#AAAAAA] transition hover:bg-white/20 hover:text-white"
+                      title={`Open ${studioName} channel`}
+                    >
                       {isManga ? studioName : `Studio: ${studioName}`}
-                    </span>
+                    </button>
                     {anime.status && (
                       <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-neutral-200">
                         {anime.status}
@@ -973,23 +1097,72 @@ export const DetailView: React.FC<DetailViewProps> = ({
                   </p>
 
                   {isDescriptionExpanded && (
-                    <div className="mt-4 flex flex-wrap gap-1.5 border-t border-white/10 pt-3">
-                      {anime.genres.map((genre) => (
-                        <span
-                          key={genre}
-                          className="rounded-lg bg-black/40 px-2.5 py-1 text-[11.5px] font-medium text-neutral-200"
+                    <div
+                      className="mt-4 space-y-3 border-t border-white/10 pt-3"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex flex-wrap gap-1.5">
+                        {anime.genres.map((genre) =>
+                          onSelectGenre ? (
+                            <button
+                              key={genre}
+                              type="button"
+                              onClick={() => onSelectGenre(genre)}
+                              className="rounded-lg bg-black/40 px-2.5 py-1 text-[11.5px] font-medium text-neutral-200 transition hover:bg-[#FF0000] hover:text-white"
+                              title={`Browse ${genre} on Explore`}
+                            >
+                              {genre}
+                            </button>
+                          ) : (
+                            <span
+                              key={genre}
+                              className="rounded-lg bg-black/40 px-2.5 py-1 text-[11.5px] font-medium text-neutral-200"
+                            >
+                              {genre}
+                            </span>
+                          )
+                        )}
+                        {anime.tags.slice(0, 8).map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded-lg bg-[#FF0000]/15 px-2.5 py-1 text-[11.5px] font-medium text-rose-200"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <a
+                          href={
+                            anime.malId
+                              ? `https://myanimelist.net/${isManga ? 'manga' : 'anime'}/${anime.malId}`
+                              : `https://myanimelist.net/search/all?q=${encodeURIComponent(anime.title)}`
+                          }
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="inline-flex items-center gap-1 rounded-full bg-black/40 px-3 py-1 text-[11.5px] font-bold text-[#3EA6FF] transition hover:bg-[#3EA6FF]/20"
                         >
-                          {genre}
-                        </span>
-                      ))}
-                      {anime.tags.slice(0, 8).map((tag) => (
-                        <span
-                          key={tag}
-                          className="rounded-lg bg-[#FF0000]/15 px-2.5 py-1 text-[11.5px] font-medium text-rose-200"
+                          MyAnimeList <ExternalLink className="h-3 w-3" />
+                        </a>
+                        <a
+                          href={wikipediaSearchUrl(anime.title)}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="inline-flex items-center gap-1 rounded-full bg-black/40 px-3 py-1 text-[11.5px] font-bold text-neutral-200 transition hover:bg-white/15"
                         >
-                          #{tag}
-                        </span>
-                      ))}
+                          Wikipedia <ExternalLink className="h-3 w-3" />
+                        </a>
+                        {anime.anilistId && (
+                          <a
+                            href={`https://anilist.co/${isManga ? 'manga' : 'anime'}/${anime.anilistId}`}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="inline-flex items-center gap-1 rounded-full bg-black/40 px-3 py-1 text-[11.5px] font-bold text-neutral-200 transition hover:bg-white/15"
+                          >
+                            AniList <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1083,20 +1256,30 @@ export const DetailView: React.FC<DetailViewProps> = ({
               </>
             )}
 
-            {/* DETAIL TAB: CHARACTERS & VOICE ACTORS */}
+            {/* DETAIL TAB: CHARACTERS & VOICE ACTORS (2-Tap Details + External Links) */}
             {detailTab === 'characters' && (
               <div className="space-y-4">
-                {!isManga && (
-                  <div className="flex items-center justify-between">
-                    <p className="text-[12px] text-[#AAAAAA]">
-                      Click any character to view details or pin to your Channel Favorites.
-                    </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[12px] text-[#AAAAAA]">
+                    Tap any character or cast member to expand details &amp; Wikipedia / MAL / AniList links; tap again or pick a link to open.
+                  </p>
+                  {!isManga && (
                     <div className="flex rounded-full border border-white/10 bg-[#181818] p-0.5 text-[11px] font-bold">
                       {(['JP', 'EN'] as const).map((lang) => (
                         <button
                           key={lang}
                           type="button"
-                          onClick={() => setVaLang(lang)}
+                          onClick={() => {
+                            setVaLang(lang);
+                            if (expandedCharId) {
+                              const current = characters.find((c) => c.id === expandedCharId);
+                              const nextVa =
+                                lang === 'EN' && current?.englishVoiceActor
+                                  ? current.englishVoiceActor
+                                  : current?.voiceActor;
+                              if (nextVa?.id) void loadStaffPerson(nextVa.id);
+                            }
+                          }}
                           className={`rounded-full px-3 py-1 transition ${
                             vaLang === lang ? 'bg-[#FF0000] text-white' : 'text-[#AAAAAA]'
                           }`}
@@ -1105,8 +1288,8 @@ export const DetailView: React.FC<DetailViewProps> = ({
                         </button>
                       ))}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
                 {characters.length === 0 ? (
                   <p className="rounded-2xl border border-white/[0.08] bg-[#181818] p-6 text-center text-[13px] text-[#AAAAAA]">
@@ -1116,46 +1299,284 @@ export const DetailView: React.FC<DetailViewProps> = ({
                   <div className="grid gap-3 sm:grid-cols-2">
                     {characters.map((ch) => {
                       const va = vaLang === 'EN' && ch.englishVoiceActor ? ch.englishVoiceActor : ch.voiceActor;
-                      return (
-                        <div
-                          key={ch.id}
-                          onClick={() => setSelectedCharacter(ch)}
-                          className="flex cursor-pointer items-center justify-between gap-2 rounded-2xl border border-white/[0.08] bg-[#181818] p-2.5 transition hover:border-white/20 hover:bg-[#222222]"
-                        >
-                          <div className="flex min-w-0 items-center gap-2.5">
-                            <img
-                              src={ch.image || anime.cover}
-                              alt={ch.name}
-                              className="h-14 w-11 shrink-0 rounded-lg object-cover bg-black"
-                            />
-                            <div className="min-w-0">
-                              <p className="truncate text-[13px] font-bold text-white">{ch.name}</p>
-                              <p className="text-[10.5px] font-semibold uppercase tracking-wide text-[#3EA6FF]">
-                                {ch.role}
-                              </p>
-                            </div>
-                          </div>
+                      const isExpanded = expandedCharId === ch.id;
+                      const extra = charExtraCache[ch.id];
+                      const vaDetail = va?.id ? staffDetailCache[va.id] : undefined;
+                      const bioParsed = splitSpoilerText(extra?.description || ch.description, revealSpoilerBio);
+                      const bioToShow = bioParsed.text;
+                      const isCharFav = (profile.favoriteCharactersData ?? []).some(
+                        (c) => String(c.id) === String(ch.id)
+                      );
 
-                          {!isManga && va && (
-                            <div className="flex shrink-0 items-center gap-2 text-right">
-                              <div className="min-w-0 max-w-[110px]">
-                                <p className="truncate text-[12px] font-semibold text-neutral-200">
-                                  {va.name}
+                      return (
+                        <React.Fragment key={ch.id}>
+                          <div
+                            onClick={() => void handleToggleCharacter(ch)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                void handleToggleCharacter(ch);
+                              }
+                            }}
+                            className={`flex cursor-pointer items-center justify-between gap-2 rounded-2xl border p-2.5 transition ${
+                              isExpanded
+                                ? 'sm:col-span-2 border-[#FF0000]/60 bg-[#252020]'
+                                : 'border-white/[0.08] bg-[#181818] hover:border-white/25 hover:bg-[#222222]'
+                            }`}
+                          >
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              <img
+                                src={ch.image || anime.cover}
+                                alt={ch.name}
+                                className="h-14 w-11 shrink-0 rounded-lg object-cover bg-black"
+                              />
+                              <div className="min-w-0">
+                                <p className="truncate text-[13px] font-bold text-white">{ch.name}</p>
+                                <p className="text-[10.5px] font-semibold uppercase tracking-wide text-[#3EA6FF]">
+                                  {ch.role}
                                 </p>
-                                <p className="text-[10px] text-[#AAAAAA]">
-                                  {vaLang === 'EN' && ch.englishVoiceActor ? 'English' : 'Japanese'}
+                                <p className="mt-0.5 text-[10px] text-[#888888]">
+                                  {isExpanded ? 'Tap again for MAL/AniList ↗' : 'Tap for details & links'}
                                 </p>
                               </div>
-                              {va.image && (
-                                <img
-                                  src={va.image}
-                                  alt={va.name}
-                                  className="h-12 w-10 shrink-0 rounded-lg object-cover bg-black"
-                                />
+                            </div>
+
+                            {!isManga && va && (
+                              <div className="flex shrink-0 items-center gap-2 text-right">
+                                <div className="min-w-0 max-w-[110px]">
+                                  <p className="truncate text-[12px] font-semibold text-neutral-200">
+                                    {va.name}
+                                  </p>
+                                  <p className="text-[10px] text-[#AAAAAA]">
+                                    {vaLang === 'EN' && ch.englishVoiceActor ? 'English' : 'Japanese'}
+                                  </p>
+                                </div>
+                                {va.image && (
+                                  <img
+                                    src={va.image}
+                                    alt={va.name}
+                                    className="h-12 w-10 shrink-0 rounded-lg object-cover bg-black"
+                                  />
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {isExpanded && (
+                            <div className="col-span-full space-y-4 rounded-2xl border border-[#FF0000]/35 bg-[#1B1B1B] p-4 shadow-xl">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="flex min-w-0 items-start gap-3">
+                                  <img
+                                    src={ch.image || anime.cover}
+                                    alt={ch.name}
+                                    className="h-24 w-18 shrink-0 rounded-xl object-cover bg-black"
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="text-[16px] font-black text-white">{ch.name}</p>
+                                    {ch.nativeName && (
+                                      <p className="text-[12px] text-[#AAAAAA]">{ch.nativeName}</p>
+                                    )}
+                                    <p className="mt-0.5 text-[11px] font-bold uppercase text-[#3EA6FF]">
+                                      {ch.role} · {anime.title}
+                                    </p>
+                                    <div className="mt-2.5 flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const added = profileStore.toggleFavoriteCharacterItem({
+                                            id: ch.id,
+                                            name: ch.name,
+                                            image: ch.image || anime.cover,
+                                            mediaTitle: anime.title,
+                                          });
+                                          toast(
+                                            added
+                                              ? `${ch.name} pinned to Channel Favorites ★`
+                                              : `Removed ${ch.name} from Favorites`
+                                          );
+                                        }}
+                                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-bold transition ${
+                                          isCharFav
+                                            ? 'border border-rose-500/40 bg-rose-500/20 text-rose-300'
+                                            : 'bg-[#FF0000] text-white hover:bg-[#CC0000]'
+                                        }`}
+                                      >
+                                        <Heart className={`h-3 w-3 ${isCharFav ? 'fill-current' : ''}`} />
+                                        <span>{isCharFav ? 'Favorited' : 'Pin Favorite'}</span>
+                                      </button>
+                                      <a
+                                        href={wikipediaSearchUrl(`${ch.name} ${anime.title}`)}
+                                        target="_blank"
+                                        rel="noreferrer noopener"
+                                        className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-[11.5px] font-bold text-white transition hover:bg-white/20"
+                                      >
+                                        Wikipedia <ExternalLink className="h-3 w-3" />
+                                      </a>
+                                      <a
+                                        href={malCharacterSearchUrl(ch.name)}
+                                        target="_blank"
+                                        rel="noreferrer noopener"
+                                        className="inline-flex items-center gap-1 rounded-full bg-[#3EA6FF]/15 px-3 py-1 text-[11.5px] font-bold text-[#3EA6FF] transition hover:bg-[#3EA6FF]/25"
+                                      >
+                                        MyAnimeList <ExternalLink className="h-3 w-3" />
+                                      </a>
+                                      {(extra?.siteUrl || ch.siteUrl) && (
+                                        <a
+                                          href={extra?.siteUrl || ch.siteUrl}
+                                          target="_blank"
+                                          rel="noreferrer noopener"
+                                          className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-[11.5px] font-bold text-neutral-200 transition hover:bg-white/20"
+                                        >
+                                          AniList <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedCharId(null)}
+                                  className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-[#CCCCCC] hover:bg-white/20"
+                                >
+                                  Collapse
+                                </button>
+                              </div>
+
+                              {bioToShow && (
+                                <div className="space-y-1.5">
+                                  <p className="whitespace-pre-line text-[12.5px] leading-relaxed text-[#E0E0E0]">
+                                    {bioToShow}
+                                  </p>
+                                  {bioParsed.hasSpoiler && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setRevealSpoilerBio(!revealSpoilerBio)}
+                                      className="text-[11px] font-bold text-amber-300 hover:underline"
+                                    >
+                                      {revealSpoilerBio ? 'Hide spoiler details' : 'Reveal spoiler bio'}
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+
+                              {charExtraLoading === ch.id && !extra && (
+                                <p className="text-[11.5px] text-[#AAAAAA]">Loading appearances…</p>
+                              )}
+
+                              {extra && extra.appearances.length > 0 && (
+                                <div>
+                                  <p className="mb-1.5 text-[10.5px] font-bold uppercase tracking-wider text-[#AAAAAA]">
+                                    Appears In
+                                  </p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {extra.appearances.map((work) => (
+                                      <button
+                                        key={work.id}
+                                        type="button"
+                                        onClick={() => onOpenId(work.id)}
+                                        className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#252525] px-2.5 py-1.5 text-left transition hover:border-white/30"
+                                      >
+                                        {work.cover && (
+                                          <img
+                                            src={work.cover}
+                                            alt={work.title}
+                                            className="h-8 w-6 rounded object-cover"
+                                          />
+                                        )}
+                                        <span className="max-w-[160px] truncate text-[11.5px] font-semibold text-white">
+                                          {work.title}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {!isManga && va && (
+                                <div className="border-t border-white/10 pt-3">
+                                  <p className="mb-2 text-[10.5px] font-bold uppercase tracking-wider text-[#AAAAAA]">
+                                    Cast · {vaLang === 'EN' && ch.englishVoiceActor ? 'English' : 'Japanese'} Voice Actor
+                                  </p>
+                                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#242424] p-3">
+                                    <div className="flex items-center gap-3">
+                                      {va.image && (
+                                        <img
+                                          src={va.image}
+                                          alt={va.name}
+                                          className="h-12 w-10 shrink-0 rounded-lg object-cover bg-black"
+                                        />
+                                      )}
+                                      <div>
+                                        <p className="text-[13.5px] font-bold text-white">{va.name}</p>
+                                        {vaDetail?.nativeName && (
+                                          <p className="text-[11px] text-[#AAAAAA]">{vaDetail.nativeName}</p>
+                                        )}
+                                        {vaDetail?.primaryOccupations?.length ? (
+                                          <p className="text-[11px] text-[#3EA6FF]">
+                                            {vaDetail.primaryOccupations.join(' · ')}
+                                          </p>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      <a
+                                        href={wikipediaSearchUrl(va.name)}
+                                        target="_blank"
+                                        rel="noreferrer noopener"
+                                        className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-white/20"
+                                      >
+                                        Wikipedia <ExternalLink className="h-3 w-3" />
+                                      </a>
+                                      <a
+                                        href={malPeopleSearchUrl(va.name)}
+                                        target="_blank"
+                                        rel="noreferrer noopener"
+                                        className="inline-flex items-center gap-1 rounded-full bg-[#3EA6FF]/15 px-2.5 py-1 text-[11px] font-bold text-[#3EA6FF] hover:bg-[#3EA6FF]/25"
+                                      >
+                                        MyAnimeList <ExternalLink className="h-3 w-3" />
+                                      </a>
+                                      {(vaDetail?.siteUrl || va.siteUrl) && (
+                                        <a
+                                          href={vaDetail?.siteUrl || va.siteUrl}
+                                          target="_blank"
+                                          rel="noreferrer noopener"
+                                          className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-neutral-200 hover:bg-white/20"
+                                        >
+                                          AniList <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                      )}
+                                      <a
+                                        href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${va.name} voice actor roles`)}`}
+                                        target="_blank"
+                                        rel="noreferrer noopener"
+                                        className="inline-flex items-center gap-1 rounded-full bg-[#FF0000]/20 px-2.5 py-1 text-[11px] font-bold text-rose-200 hover:bg-[#FF0000]/35"
+                                      >
+                                        YouTube <ExternalLink className="h-3 w-3" />
+                                      </a>
+                                    </div>
+                                  </div>
+                                  {vaDetail?.works && vaDetail.works.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                      {vaDetail.works.slice(0, 4).map((work) => (
+                                        <button
+                                          key={work.id}
+                                          type="button"
+                                          onClick={() => onOpenId(work.id)}
+                                          className="rounded-lg bg-black/40 px-2.5 py-1 text-[11px] font-semibold text-neutral-200 transition hover:bg-white/15 hover:text-white"
+                                        >
+                                          {work.title}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
                               )}
                             </div>
                           )}
-                        </div>
+                        </React.Fragment>
                       );
                     })}
                   </div>
@@ -1163,98 +1584,303 @@ export const DetailView: React.FC<DetailViewProps> = ({
               </div>
             )}
 
-            {/* DETAIL TAB: STAFF & OPENING/ENDING THEMES */}
+            {/* DETAIL TAB: STAFF & OPENING/ENDING THEMES (2-Tap Details + External Links) */}
             {detailTab === 'staff' && (
               <div className="space-y-5">
                 <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
-                  <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wider text-white">
-                    {isManga ? 'Creators & Authors' : 'Production Staff'}
-                  </h3>
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-[13px] font-bold uppercase tracking-wider text-white">
+                      {isManga ? 'Creators & Authors' : 'Production Staff'}
+                    </h3>
+                    <span className="text-[11px] text-[#AAAAAA]">
+                      Tap a creator for bio &amp; credits · Tap again for Wikipedia
+                    </span>
+                  </div>
                   {staff.length === 0 ? (
                     <p className="text-[12px] text-[#AAAAAA]">No detailed staff credits indexed for this entry.</p>
                   ) : (
                     <div className="grid gap-2.5 sm:grid-cols-2">
-                      {staff.map((person, idx) => (
-                        <div
-                          key={`${person.id}-${idx}`}
-                          className="flex items-center gap-3 rounded-xl bg-[#222222] p-2.5"
-                        >
-                          {person.image ? (
-                            <img
-                              src={person.image}
-                              alt={person.name}
-                              className="h-11 w-9 shrink-0 rounded-lg object-cover bg-black"
-                            />
-                          ) : (
-                            <div className="flex h-11 w-9 shrink-0 items-center justify-center rounded-lg bg-[#2E2E2E] text-xs font-bold">
-                              {person.name.slice(0, 1)}
+                      {staff.map((person, idx) => {
+                        const key = `${person.id}:${idx}`;
+                        const isExpanded = expandedStaffKey === key;
+                        const detail = staffDetailCache[person.id];
+
+                        return (
+                          <React.Fragment key={key}>
+                            <div
+                              onClick={() => handleToggleStaff(person, key)}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  handleToggleStaff(person, key);
+                                }
+                              }}
+                              className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-2.5 transition ${
+                                isExpanded
+                                  ? 'sm:col-span-2 border-[#FF0000]/60 bg-[#2A2222]'
+                                  : 'border-transparent bg-[#222222] hover:border-white/20 hover:bg-[#2A2A2A]'
+                              }`}
+                            >
+                              <div className="flex min-w-0 items-center gap-3">
+                                {person.image ? (
+                                  <img
+                                    src={person.image}
+                                    alt={person.name}
+                                    className="h-11 w-9 shrink-0 rounded-lg object-cover bg-black"
+                                  />
+                                ) : (
+                                  <div className="flex h-11 w-9 shrink-0 items-center justify-center rounded-lg bg-[#2E2E2E] text-xs font-bold">
+                                    {person.name.slice(0, 1)}
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <p className="truncate text-[13px] font-bold text-white">{person.name}</p>
+                                  <p className="truncate text-[11px] text-[#AAAAAA]">{person.role}</p>
+                                </div>
+                              </div>
+                              <span className="shrink-0 text-[10.5px] font-bold text-[#3EA6FF]">
+                                {isExpanded ? 'Wikipedia ↗' : 'Details'}
+                              </span>
                             </div>
-                          )}
-                          <div className="min-w-0">
-                            <p className="truncate text-[13px] font-bold text-white">{person.name}</p>
-                            <p className="truncate text-[11px] text-[#AAAAAA]">{person.role}</p>
-                          </div>
-                        </div>
-                      ))}
+
+                            {isExpanded && (
+                              <div className="col-span-full space-y-3 rounded-xl border border-[#FF0000]/35 bg-[#1D1D1D] p-3.5">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <p className="text-[15px] font-black text-white">
+                                      {person.name}
+                                      {(detail?.nativeName || person.nativeName) && (
+                                        <span className="ml-2 text-[12px] font-normal text-[#AAAAAA]">
+                                          {detail?.nativeName || person.nativeName}
+                                        </span>
+                                      )}
+                                    </p>
+                                    <p className="mt-0.5 text-[11.5px] font-semibold text-[#3EA6FF]">
+                                      Role in {anime.title}: {person.role}
+                                    </p>
+                                    {detail?.primaryOccupations?.length ? (
+                                      <p className="mt-0.5 text-[11px] text-[#AAAAAA]">
+                                        {[...detail.primaryOccupations, detail.homeTown].filter(Boolean).join(' · ')}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedStaffKey(null)}
+                                    className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-[#CCCCCC] hover:bg-white/20"
+                                  >
+                                    Collapse
+                                  </button>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2">
+                                  <a
+                                    href={wikipediaSearchUrl(person.name)}
+                                    target="_blank"
+                                    rel="noreferrer noopener"
+                                    className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[11.5px] font-bold text-black transition hover:bg-neutral-200"
+                                  >
+                                    Wikipedia <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                  <a
+                                    href={malPeopleSearchUrl(person.name)}
+                                    target="_blank"
+                                    rel="noreferrer noopener"
+                                    className="inline-flex items-center gap-1 rounded-full bg-[#3EA6FF]/15 px-3 py-1 text-[11.5px] font-bold text-[#3EA6FF] transition hover:bg-[#3EA6FF]/25"
+                                  >
+                                    MyAnimeList <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                  {(detail?.siteUrl || person.siteUrl) && (
+                                    <a
+                                      href={detail?.siteUrl || person.siteUrl}
+                                      target="_blank"
+                                      rel="noreferrer noopener"
+                                      className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-[11.5px] font-bold text-white transition hover:bg-white/20"
+                                    >
+                                      AniList <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                  )}
+                                </div>
+
+                                {staffLoadingId === person.id && detail === undefined && (
+                                  <p className="text-[11.5px] text-[#AAAAAA]">Loading creator details…</p>
+                                )}
+
+                                {detail?.description && (
+                                  <p className="whitespace-pre-line text-[12px] leading-relaxed text-[#DCDCDC]">
+                                    {cleanBioMarkdown(detail.description)}
+                                  </p>
+                                )}
+
+                                {detail?.works && detail.works.length > 0 && (
+                                  <div>
+                                    <p className="mb-1.5 text-[10.5px] font-bold uppercase tracking-wider text-[#AAAAAA]">
+                                      Notable Works (Tap to open show)
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                      {detail.works.map((work) => (
+                                        <button
+                                          key={work.id}
+                                          type="button"
+                                          onClick={() => onOpenId(work.id)}
+                                          className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#262626] px-2.5 py-1.5 text-left transition hover:border-white/30"
+                                        >
+                                          {work.cover && (
+                                            <img
+                                              src={work.cover}
+                                              alt={work.title}
+                                              className="h-8 w-6 rounded object-cover"
+                                            />
+                                          )}
+                                          <div className="min-w-0">
+                                            <p className="max-w-[160px] truncate text-[11.5px] font-bold text-white">
+                                              {work.title}
+                                            </p>
+                                            {work.role && (
+                                              <p className="max-w-[160px] truncate text-[10px] text-[#AAAAAA]">
+                                                {work.role}
+                                              </p>
+                                            )}
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
 
                 {!isManga && (
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
-                      <h3 className="mb-3 flex items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-white">
-                        <Music className="h-4 w-4 text-[#FF0000]" />
-                        Opening Themes ({themes.openings.length})
-                      </h3>
-                      {themes.openings.length === 0 ? (
-                        <p className="text-[12px] text-[#AAAAAA]">No OP songs listed.</p>
-                      ) : (
-                        <ul className="space-y-2">
-                          {themes.openings.map((op) => (
-                            <li key={`op-${op.number}-${op.title}`} className="rounded-xl bg-[#222222] p-2.5 text-[12px]">
-                              <p className="font-bold text-white">
-                                OP {op.number}: {op.title}
-                              </p>
-                              {(op.artists || op.episodes) && (
-                                <p className="mt-0.5 text-[11px] text-[#AAAAAA]">
-                                  {[op.artists, op.episodes ? `eps ${op.episodes}` : null]
-                                    .filter(Boolean)
-                                    .join(' · ')}
-                                </p>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
+                    {([
+                      {
+                        kind: 'Opening' as const,
+                        prefix: 'OP',
+                        keyPrefix: 'op',
+                        title: `Opening Themes (${themes.openings.length})`,
+                        empty: 'No OP songs listed.',
+                        list: themes.openings,
+                        iconColor: 'text-[#FF0000]',
+                      },
+                      {
+                        kind: 'Ending' as const,
+                        prefix: 'ED',
+                        keyPrefix: 'ed',
+                        title: `Ending Themes (${themes.endings.length})`,
+                        empty: 'No ED songs listed.',
+                        list: themes.endings,
+                        iconColor: 'text-[#3EA6FF]',
+                      },
+                    ]).map((sec) => (
+                      <div key={sec.keyPrefix} className="rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
+                        <h3 className="mb-1 flex items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-white">
+                          <Music className={`h-4 w-4 ${sec.iconColor}`} />
+                          {sec.title}
+                        </h3>
+                        <p className="mb-3 text-[10.5px] text-[#888888]">
+                          Tap once for song details &amp; YouTube link · Tap again to open YouTube
+                        </p>
+                        {sec.list.length === 0 ? (
+                          <p className="text-[12px] text-[#AAAAAA]">{sec.empty}</p>
+                        ) : (
+                          <ul className="space-y-2">
+                            {sec.list.map((song, idx) => {
+                              const tKey = `${sec.keyPrefix}-${song.number}-${idx}`;
+                              const isExpanded = expandedThemeKey === tKey;
+                              const ytUrl = themeYoutubeSearchUrl(anime.title, sec.kind, song);
+                              const ytMusic = themeYtMusicUrl(song);
+                              return (
+                                <li
+                                  key={`${tKey}-${song.title}`}
+                                  className={`rounded-xl border transition ${
+                                    isExpanded
+                                      ? 'border-[#FF0000]/60 bg-[#292020]'
+                                      : 'border-transparent bg-[#222222] hover:border-white/20 hover:bg-[#2A2A2A]'
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleTheme(tKey, ytUrl)}
+                                    className="flex w-full items-center justify-between gap-2 p-2.5 text-left text-[12px]"
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="font-bold text-white">
+                                        {sec.prefix} {song.number}: {song.title}
+                                      </p>
+                                      {(song.artists || song.episodes) && (
+                                        <p className="mt-0.5 text-[11px] text-[#AAAAAA]">
+                                          {[song.artists, song.episodes ? `eps ${song.episodes}` : null]
+                                            .filter(Boolean)
+                                            .join(' · ')}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <span className="flex shrink-0 items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[10.5px] font-bold text-white">
+                                      <Play className="h-3 w-3 text-[#FF0000]" />
+                                      <span>{isExpanded ? 'Open YT ↗' : 'YT Link'}</span>
+                                    </span>
+                                  </button>
 
-                    <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
-                      <h3 className="mb-3 flex items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-white">
-                        <Music className="h-4 w-4 text-[#3EA6FF]" />
-                        Ending Themes ({themes.endings.length})
-                      </h3>
-                      {themes.endings.length === 0 ? (
-                        <p className="text-[12px] text-[#AAAAAA]">No ED songs listed.</p>
-                      ) : (
-                        <ul className="space-y-2">
-                          {themes.endings.map((ed) => (
-                            <li key={`ed-${ed.number}-${ed.title}`} className="rounded-xl bg-[#222222] p-2.5 text-[12px]">
-                              <p className="font-bold text-white">
-                                ED {ed.number}: {ed.title}
-                              </p>
-                              {(ed.artists || ed.episodes) && (
-                                <p className="mt-0.5 text-[11px] text-[#AAAAAA]">
-                                  {[ed.artists, ed.episodes ? `eps ${ed.episodes}` : null]
-                                    .filter(Boolean)
-                                    .join(' · ')}
-                                </p>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
+                                  {isExpanded && (
+                                    <div className="space-y-2 border-t border-white/10 px-2.5 pb-2.5 pt-2 text-[11.5px]">
+                                      <p className="text-[#CCCCCC]">
+                                        <span className="font-bold text-white">{anime.title}</span> · {sec.kind}{' '}
+                                        #{song.number}
+                                        {song.artists ? ` by ${song.artists}` : ''}
+                                        {song.episodes ? ` (Episodes ${song.episodes})` : ''}
+                                      </p>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        <a
+                                          href={ytUrl}
+                                          target="_blank"
+                                          rel="noreferrer noopener"
+                                          className="inline-flex items-center gap-1 rounded-full bg-[#FF0000] px-3 py-1 text-[11px] font-bold text-white transition hover:bg-[#CC0000]"
+                                        >
+                                          <Play className="h-3 w-3 fill-current" />
+                                          Play {sec.prefix} on YouTube
+                                          <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                        <a
+                                          href={ytMusic}
+                                          target="_blank"
+                                          rel="noreferrer noopener"
+                                          className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-white/20"
+                                        >
+                                          YouTube Music <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                        <a
+                                          href={wikipediaSearchUrl(`${song.title} ${song.artists ?? ''}`)}
+                                          target="_blank"
+                                          rel="noreferrer noopener"
+                                          className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-neutral-200 transition hover:bg-white/20"
+                                        >
+                                          Wikipedia <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                        <button
+                                          type="button"
+                                          onClick={() => setExpandedThemeKey(null)}
+                                          className="rounded-full bg-black/40 px-2.5 py-1 text-[10.5px] font-semibold text-[#AAAAAA] hover:text-white"
+                                        >
+                                          Close
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1423,95 +2049,6 @@ export const DetailView: React.FC<DetailViewProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Character Modal (Full Bio + 1-Click Favorite Pin) */}
-      {selectedCharacter && (
-        <div
-          className="fixed inset-0 z-[75] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setSelectedCharacter(null);
-          }}
-        >
-          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-3xl border border-white/[0.12] bg-[#1F1F1F] p-5 text-white shadow-2xl">
-            <div className="flex items-start gap-4">
-              <img
-                src={selectedCharacter.image || anime.cover}
-                alt={selectedCharacter.name}
-                className="h-28 w-20 shrink-0 rounded-xl object-cover bg-black"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="text-[18px] font-black text-white">{selectedCharacter.name}</p>
-                {selectedCharacter.nativeName && (
-                  <p className="text-[12px] text-[#AAAAAA]">{selectedCharacter.nativeName}</p>
-                )}
-                <p className="mt-1 text-[11px] font-bold uppercase text-[#3EA6FF]">
-                  {selectedCharacter.role} · {anime.title}
-                </p>
-
-                {(() => {
-                  const isCharFav = (profile.favoriteCharactersData ?? []).some(
-                    (c) => String(c.id) === String(selectedCharacter.id)
-                  );
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const added = profileStore.toggleFavoriteCharacterItem({
-                          id: selectedCharacter.id,
-                          name: selectedCharacter.name,
-                          image: selectedCharacter.image || anime.cover,
-                          mediaTitle: anime.title,
-                        });
-                        toast(
-                          added
-                            ? `${selectedCharacter.name} pinned to Channel Favorites ★`
-                            : `Removed ${selectedCharacter.name} from Favorites`
-                        );
-                      }}
-                      className={`mt-3 flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11.5px] font-bold transition ${
-                        isCharFav
-                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                          : 'bg-[#FF0000] text-white hover:bg-[#CC0000]'
-                      }`}
-                    >
-                      <Heart className={`h-3.5 w-3.5 ${isCharFav ? 'fill-current' : ''}`} />
-                      <span>{isCharFav ? 'Favorited' : 'Pin Favorite Character'}</span>
-                    </button>
-                  );
-                })()}
-              </div>
-            </div>
-
-            {selectedCharacter.description && (
-              <p className="mt-4 whitespace-pre-line text-[12.5px] leading-relaxed text-[#E5E5E5]">
-                {selectedCharacter.description}
-              </p>
-            )}
-
-            <div className="mt-4 flex items-center justify-between border-t border-white/[0.08] pt-3">
-              {selectedCharacter.siteUrl ? (
-                <a
-                  href={selectedCharacter.siteUrl}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="flex items-center gap-1 text-[12px] font-bold text-[#3EA6FF] hover:underline"
-                >
-                  AniList Profile <ExternalLink className="h-3 w-3" />
-                </a>
-              ) : (
-                <span />
-              )}
-              <button
-                type="button"
-                onClick={() => setSelectedCharacter(null)}
-                className="rounded-full bg-white px-4 py-1.5 text-[12px] font-bold text-black"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -36,11 +36,13 @@ export interface CharacterCredit {
     name: string;
     image?: string;
     language?: string;
+    siteUrl?: string;
   };
   englishVoiceActor?: {
     id?: number;
     name: string;
     image?: string;
+    siteUrl?: string;
   };
 }
 
@@ -50,6 +52,35 @@ export interface StaffCredit {
   nativeName?: string;
   image?: string;
   role: string;
+  siteUrl?: string;
+}
+
+export interface PersonCreditWork {
+  id: string;
+  title: string;
+  cover: string;
+  mediaType: MediaType;
+  role?: string;
+  year?: number;
+}
+
+export interface StaffPersonDetail {
+  id: number;
+  name: string;
+  nativeName?: string;
+  image?: string;
+  description?: string;
+  primaryOccupations: string[];
+  homeTown?: string;
+  siteUrl?: string;
+  works: PersonCreditWork[];
+}
+
+export interface CharacterDetailExtra {
+  id: number;
+  description?: string;
+  siteUrl?: string;
+  appearances: PersonCreditWork[];
 }
 
 export interface ThemeSong {

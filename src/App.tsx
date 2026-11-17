@@ -182,6 +182,7 @@ export const App: React.FC = () => {
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [quickTarget, setQuickTarget] = useState<Anime | null>(null);
+  const [explorePresetGenre, setExplorePresetGenre] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubDb = animeStore.subscribeHydration(() => setHydrationTick((n) => n + 1));
@@ -481,6 +482,11 @@ export const App: React.FC = () => {
     scrollTop();
   };
 
+  const openGenreInExplore = (genre: string) => {
+    setExplorePresetGenre(genre);
+    navigate('explore');
+  };
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
@@ -589,6 +595,7 @@ export const App: React.FC = () => {
                 libraryState={libraryState}
                 onOpenId={openDetail}
                 onOpenChannel={openChannel}
+                onSelectGenre={openGenreInExplore}
                 onEditProfile={() => setProfileOpen(true)}
                 onOpenUser={openPublicUser}
                 onClose={closeDetail}
@@ -600,6 +607,7 @@ export const App: React.FC = () => {
                 libraryState={libraryState}
                 onOpenAnime={openAnime}
                 onOpenChannel={openChannel}
+                onSelectGenre={openGenreInExplore}
                 onQuickAdd={quickAdd}
                 onBack={closeDetail}
               />
@@ -630,6 +638,8 @@ export const App: React.FC = () => {
                     library={libraryState}
                     mediaType={mediaType}
                     query={queriesByTab.explore}
+                    initialGenre={explorePresetGenre}
+                    onConsumeInitialGenre={() => setExplorePresetGenre(null)}
                     onOpen={openAnime}
                     onOpenChannel={openChannel}
                     onQuickAdd={quickAdd}

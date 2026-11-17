@@ -1,12 +1,15 @@
 import {
   Anime,
   CharacterCredit,
+  CharacterDetailExtra,
   FavoriteCharacterItem,
   MediaType,
+  PersonCreditWork,
   RelatedTitle,
   ScheduleItem,
   ScoreDistBucket,
   StaffCredit,
+  StaffPersonDetail,
   StatusDistBucket,
   StreamingLink,
 } from '../types';
@@ -153,6 +156,7 @@ interface AniListMedia {
       voiceActors?: {
         id?: number;
         languageV2?: string | null;
+        siteUrl?: string | null;
         name?: { full?: string | null } | null;
         image?: { medium?: string | null } | null;
       }[] | null;
@@ -163,6 +167,7 @@ interface AniListMedia {
       role?: string | null;
       node?: {
         id: number;
+        siteUrl?: string | null;
         name?: { full?: string | null; native?: string | null } | null;
         image?: { medium?: string | null } | null;
       } | null;
@@ -655,6 +660,7 @@ const DETAIL_QUERY = `
           voiceActors(sort: [ROLE, RELEVANCE]) {
             id
             languageV2
+            siteUrl
             name { full }
             image { medium }
           }
@@ -665,6 +671,7 @@ const DETAIL_QUERY = `
           role
           node {
             id
+            siteUrl
             name { full native }
             image { medium }
           }
@@ -724,6 +731,7 @@ export async function fetchDetail(id: number, mediaType: MediaType = 'ANIME'): P
                 name: jp.name.full,
                 image: jp.image?.medium ?? undefined,
                 language: jp.languageV2 ?? 'Japanese',
+                siteUrl: jp.siteUrl ?? undefined,
               }
             : undefined,
           englishVoiceActor: en?.name?.full
@@ -731,6 +739,7 @@ export async function fetchDetail(id: number, mediaType: MediaType = 'ANIME'): P
                 id: en.id,
                 name: en.name.full,
                 image: en.image?.medium ?? undefined,
+                siteUrl: en.siteUrl ?? undefined,
               }
             : undefined,
         });
@@ -747,6 +756,7 @@ export async function fetchDetail(id: number, mediaType: MediaType = 'ANIME'): P
           nativeName: edge.node.name.native ?? undefined,
           image: edge.node.image?.medium ?? undefined,
           role: edge.role ?? 'Staff',
+          siteUrl: edge.node.siteUrl ?? undefined,
         });
       }
       anime.staff = staffList;
@@ -1098,4 +1108,179 @@ export async function fetchByStudio(
 
   if (out.length > 0) animeStore.rememberMany(out);
   return out.slice(0, limit);
+}
+
+const STAFF_PERSON_QUERY = `
+  query StaffPerson($id: Int) {
+    Staff(id: $id) {
+      id
+      name { full native }
+      image { large medium }
+      description(asHtml: false)
+      primaryOccupations
+      homeTown
+      siteUrl
+      staffMedia(sort: [POPULARITY_DESC], perPage: 6) {
+        edges {
+          staffRole
+          node {
+            id
+            type
+            isAdult
+            title { english romaji }
+            coverImage { extraLarge large medium }
+            startDate { year }
+          }
+        }
+      }
+    }
+  }
+`;
+
+export async function fetchStaffPersonDetail(staffId: number): Promise<StaffPersonDetail | null> {
+  if (!staffId) return null;
+  return cached(
+    `staff-detail:${staffId}`,
+    async () => {
+      type Res = {
+        Staff?: {
+          id: number;
+          name?: { full?: string | null; native?: string | null } | null;
+          image?: { large?: string | null; medium?: string | null } | null;
+          description?: string | null;
+          primaryOccupations?: (string | null)[] | null;
+          homeTown?: string | null;
+          siteUrl?: string | null;
+          staffMedia?: {
+            edges?: {
+              staffRole?: string | null;
+              node?: {
+                id: number;
+                type?: MediaType | null;
+                isAdult?: boolean | null;
+                title?: { english?: string | null; romaji?: string | null } | null;
+                coverImage?: { extraLarge?: string | null; large?: string | null; medium?: string | null } | null;
+                startDate?: { year?: number | null } | null;
+              } | null;
+            }[];
+          } | null;
+        } | null;
+      };
+      const data = await request<Res>(STAFF_PERSON_QUERY, { id: staffId });
+      const s = data.Staff;
+      if (!s?.name?.full) return null;
+      const works: PersonCreditWork[] = [];
+      const seen = new Set<string>();
+      for (const edge of s.staffMedia?.edges ?? []) {
+        const node = edge.node;
+        if (!node || node.isAdult) continue;
+        const mType: MediaType = node.type === 'MANGA' ? 'MANGA' : 'ANIME';
+        const prefix = mType === 'MANGA' ? 'anilist-manga' : 'anilist';
+        const mediaId = `${prefix}:${node.id}`;
+        if (seen.has(mediaId)) continue;
+        seen.add(mediaId);
+        works.push({
+          id: mediaId,
+          title: node.title?.english || node.title?.romaji || 'Untitled',
+          cover: node.coverImage?.extraLarge || node.coverImage?.large || node.coverImage?.medium || '',
+          mediaType: mType,
+          role: edge.staffRole ?? undefined,
+          year: node.startDate?.year ?? undefined,
+        });
+      }
+      return {
+        id: s.id,
+        name: s.name.full,
+        nativeName: s.name.native ?? undefined,
+        image: s.image?.large || s.image?.medium || undefined,
+        description: cleanDescription(s.description),
+        primaryOccupations: (s.primaryOccupations ?? []).filter((x): x is string => Boolean(x)),
+        homeTown: s.homeTown ?? undefined,
+        siteUrl: s.siteUrl ?? undefined,
+        works,
+      };
+    },
+    6 * 60 * 60 * 1000
+  );
+}
+
+const CHARACTER_EXTRA_QUERY = `
+  query CharacterExtra($id: Int) {
+    Character(id: $id) {
+      id
+      description(asHtml: false)
+      siteUrl
+      media(sort: [POPULARITY_DESC], perPage: 6) {
+        edges {
+          characterRole
+          node {
+            id
+            type
+            isAdult
+            title { english romaji }
+            coverImage { extraLarge large medium }
+            startDate { year }
+          }
+        }
+      }
+    }
+  }
+`;
+
+export async function fetchCharacterExtra(characterId: number): Promise<CharacterDetailExtra | null> {
+  if (!characterId) return null;
+  return cached(
+    `char-extra:${characterId}`,
+    async () => {
+      type Res = {
+        Character?: {
+          id: number;
+          description?: string | null;
+          siteUrl?: string | null;
+          media?: {
+            edges?: {
+              characterRole?: string | null;
+              node?: {
+                id: number;
+                type?: MediaType | null;
+                isAdult?: boolean | null;
+                title?: { english?: string | null; romaji?: string | null } | null;
+                coverImage?: { extraLarge?: string | null; large?: string | null; medium?: string | null } | null;
+                startDate?: { year?: number | null } | null;
+              } | null;
+            }[];
+          } | null;
+        } | null;
+      };
+      const data = await request<Res>(CHARACTER_EXTRA_QUERY, { id: characterId });
+      const ch = data.Character;
+      if (!ch) return null;
+      const appearances: PersonCreditWork[] = [];
+      const seen = new Set<string>();
+      for (const edge of ch.media?.edges ?? []) {
+        const node = edge.node;
+        if (!node || node.isAdult) continue;
+        const mType: MediaType = node.type === 'MANGA' ? 'MANGA' : 'ANIME';
+        const prefix = mType === 'MANGA' ? 'anilist-manga' : 'anilist';
+        const mediaId = `${prefix}:${node.id}`;
+        if (seen.has(mediaId)) continue;
+        seen.add(mediaId);
+        appearances.push({
+          id: mediaId,
+          title: node.title?.english || node.title?.romaji || 'Untitled',
+          cover: node.coverImage?.extraLarge || node.coverImage?.large || node.coverImage?.medium || '',
+          mediaType: mType,
+          role: edge.characterRole ?? undefined,
+          year: node.startDate?.year ?? undefined,
+        });
+      }
+      return {
+        id: ch.id,
+        description: cleanDescription(ch.description),
+        siteUrl: ch.siteUrl ?? undefined,
+        appearances,
+      };
+    },
+    6 * 60 * 60 * 1000
+  );
 }
