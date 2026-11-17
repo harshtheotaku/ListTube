@@ -741,24 +741,24 @@ export const DetailView: React.FC<DetailViewProps> = ({
                 </div>
               </div>
 
-              {/* Right Action Pills: Direct Read/Watch CTA, Persistent Like, Favorite, Share, Not for me */}
+              {/* Right Action Pills: Direct Read/Watch CTA (Synced identically with Recommended Link below) */}
               <div className="flex flex-wrap items-center gap-2">
                 {(() => {
+                  const q = encodeURIComponent(anime.title);
                   const primaryKey = isManga ? 'comix' : 'kotoplay';
-                  const directMatch = externalLinks.find((l) => l.key === primaryKey);
-                  const fallbackUrl = isManga
-                    ? `https://comix.to/browse?keyword=${encodeURIComponent(anime.title)}`
-                    : `https://kotoplay.to/search?keyword=${encodeURIComponent(anime.title)}`;
-                  const targetUrl = directMatch?.url || fallbackUrl;
-                  const targetSource = directMatch?.site || (isManga ? 'Comix.to' : 'KotoPlay');
+                  const fallbackLink: ResolvedReaderLink = isManga
+                    ? { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false, recommended: true }
+                    : { site: 'KotoPlay', key: 'kotoplay', url: `https://kotoplay.to/search?keyword=${q}`, isDirect: false, recommended: true };
+                  const primaryLink = externalLinks.find((l) => l.key === primaryKey) ?? fallbackLink;
                   return (
                     <button
                       type="button"
+                      data-direct-url={primaryLink.url}
                       onClick={() =>
                         openInAppViewer({
-                          url: targetUrl,
+                          url: primaryLink.url,
                           title: anime.title,
-                          sourceName: targetSource,
+                          sourceName: primaryLink.site,
                           mediaType: anime.mediaType,
                         })
                       }
@@ -766,6 +766,11 @@ export const DetailView: React.FC<DetailViewProps> = ({
                     >
                       {isManga ? <BookOpen className="h-4 w-4" /> : <Play className="h-4 w-4 fill-current" />}
                       <span>{isManga ? 'Read on Comix' : 'Watch on KotoPlay'}</span>
+                      {primaryLink.isDirect && (
+                        <span className="rounded bg-white/25 px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase tracking-wider text-white">
+                          Direct
+                        </span>
+                      )}
                     </button>
                   );
                 })()}
@@ -1612,11 +1617,12 @@ export const DetailView: React.FC<DetailViewProps> = ({
                             {communityLinks.map((site) => {
                               const isRecommended =
                                 Boolean(site.recommended) || site.key === 'kotoplay' || site.key === 'comix';
-                              return (
-                                <button
-                                  key={site.key}
-                                  type="button"
-                                  onClick={() =>
+                                return (
+                                  <button
+                                    key={site.key}
+                                    type="button"
+                                    data-direct-url={site.url}
+                                    onClick={() =>
                                     openInAppViewer({
                                       url: site.url,
                                       title: anime.title,

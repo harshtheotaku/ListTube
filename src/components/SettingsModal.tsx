@@ -17,7 +17,14 @@ import {
   Type,
   X,
 } from 'lucide-react';
-import { ContentFilterLevel, FontStylePreset, ListStatus, statusLabel, ThemePreset } from '../types';
+import {
+  ContentFilterLevel,
+  ExternalLinkMode,
+  FontStylePreset,
+  ListStatus,
+  statusLabel,
+  ThemePreset,
+} from '../types';
 import { animeStore } from '../services/animeStore';
 import { SCORE_FORMATS } from '../services/scoring';
 import { settingsStore, useSettings } from '../services/settings';
@@ -738,6 +745,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     checked={settings.autoplayTrailer}
                     onChange={(v) => settingsStore.setAutoplayTrailer(v)}
                   />
+                </div>
+                <div className="space-y-2.5 p-4">
+                  <div>
+                    <p className="text-[13px] font-bold text-white">Watch &amp; Reader Link Browser</p>
+                    <p className="text-[11px] text-[#AAAAAA]">
+                      Choose how KotoPlay, Comix &amp; community watch/read links open.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-3 rounded-full bg-black/35 p-1 ring-1 ring-white/[0.08]">
+                    {(
+                      [
+                        { id: 'external', label: 'External' },
+                        { id: 'ask', label: 'Ask Each Time' },
+                        { id: 'inapp', label: 'Built-in' },
+                      ] as { id: ExternalLinkMode; label: string }[]
+                    ).map((opt) => {
+                      const active = settings.externalLinkMode === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => {
+                            settingsStore.update({ externalLinkMode: opt.id });
+                            toast(`Link opener set to ${opt.label}`);
+                          }}
+                          className={`lt-press rounded-full py-1.5 text-[11.5px] font-semibold ${
+                            active ? 'bg-white text-black shadow' : 'text-[#CCCCCC] hover:text-white'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between gap-4 p-4">
                   <div>

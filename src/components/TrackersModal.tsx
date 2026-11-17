@@ -27,6 +27,7 @@ import {
   storeMalPkceSession,
   TrackerImport,
 } from '../services/trackers';
+import { importComixOrMihonFile } from '../services/backupImport';
 import { animeStore } from '../services/animeStore';
 import { library } from '../services/library';
 import { cloudSync, useCloudSync } from '../services/cloudSync';
@@ -236,14 +237,23 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
     setBusy(true);
     setError(null);
     try {
+      const lower = file.name.toLowerCase();
+      if (lower.endsWith('.tachibk') || lower.endsWith('.proto.gz') || lower.endsWith('.gz') || lower.endsWith('.csv')) {
+        const imported = await importComixOrMihonFile(file);
+        commitImport(imported);
+        return;
+      }
       const text = await file.text();
-      if (file.name.endsWith('.json')) {
-        const parsed = JSON.parse(text) as { entries?: Record<string, unknown> };
-        if (parsed && parsed.entries) {
+      if (lower.endsWith('.json')) {
+        const parsed = JSON.parse(text) as { entries?: Record<string, unknown>; updatedAt?: number };
+        if (parsed && parsed.entries && typeof parsed.updatedAt === 'number') {
           localStorage.setItem('anitube.library.v1', text);
           window.location.reload();
           return;
         }
+        const imported = await importComixOrMihonFile(file);
+        commitImport(imported);
+        return;
       }
       const imported = await importFromExportFile(text);
       commitImport(imported);
@@ -665,6 +675,47 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                 </p>
               )}
 
+              {/* Prominent Comix, Mihon / Tachiyomi & MAL Backup Importer */}
+              <div className="space-y-2.5 rounded-2xl border border-white/[0.1] bg-white/[0.04] p-4">
+                <div>
+                  <p className="text-[13px] font-bold text-white">
+                    Import Comix, Mihon &amp; MAL Backups
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-[#AAAAAA]">
+                    Supports Mihon / Tachiyomi (<code>.tachibk</code>, <code>.proto.gz</code>, <code>.json</code>), Comix (<code>.csv</code>, <code>.json</code>), and MAL (<code>.xml</code>).
+                  </p>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xml,.json,.csv,.tachibk,.proto.gz,.gz"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Import Comix Backup"
+                    className="lt-press flex items-center justify-center gap-1.5 rounded-xl border border-white/[0.12] bg-white/[0.08] py-2.5 text-[12px] font-bold text-white hover:bg-white/[0.15] disabled:opacity-40"
+                  >
+                    <FileUp className="h-3.5 w-3.5 text-amber-300" />
+                    Comix (.csv / .json)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Import Mihon Backup"
+                    className="lt-press flex items-center justify-center gap-1.5 rounded-xl border border-white/[0.12] bg-white/[0.08] py-2.5 text-[12px] font-bold text-white hover:bg-white/[0.15] disabled:opacity-40"
+                  >
+                    <FileUp className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                    Mihon (.tachibk)
+                  </button>
+                </div>
+              </div>
+
               {/* Apple Disclosure: Advanced Token, XML File, Custom Client ID */}
               <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.04]">
                 <button
@@ -674,7 +725,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                 >
                   <span className="inline-flex items-center gap-2">
                     <Sparkles className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                    XML / JSON Import, Token &amp; OAuth Client ID
+                    Token &amp; OAuth Client ID Setup
                   </span>
                   {showAdvancedOAuth ? (
                     <ChevronUp className="h-4 w-4 text-[#AAAAAA]" />
@@ -717,13 +768,6 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                         Connect
                       </button>
                     </form>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".xml,.json"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}

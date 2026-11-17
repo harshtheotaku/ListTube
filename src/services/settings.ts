@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import {
   AppSettings,
   ContentFilterLevel,
+  ExternalLinkMode,
   FontStylePreset,
   ListStatus,
   ProfileVisibilitySettings,
@@ -45,6 +46,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ambientMode: true,
   dimAmbientOnScroll: true,
   autoSkipFillerNotice: true,
+  externalLinkMode: 'external',
   contentFilter: 'balanced',
   blockedGenres: [],
   showHomeForYou: true,
@@ -71,6 +73,10 @@ function mergeSettings(raw: Partial<AppSettings>): AppSettings {
     preset === 'custom'
       ? raw.themeColors ?? PRESET_THEME_COLORS.main
       : PRESET_THEME_COLORS[preset];
+  const externalLinkMode: ExternalLinkMode =
+    raw.externalLinkMode && ['external', 'ask', 'inapp'].includes(raw.externalLinkMode)
+      ? raw.externalLinkMode
+      : 'external';
   const fontFamily: FontStylePreset =
     raw.fontFamily && ['default', 'rounded', 'serif', 'mono'].includes(raw.fontFamily)
       ? raw.fontFamily
@@ -103,6 +109,7 @@ function mergeSettings(raw: Partial<AppSettings>): AppSettings {
       raw.dimAmbientOnScroll !== undefined ? Boolean(raw.dimAmbientOnScroll) : true,
     autoSkipFillerNotice:
       raw.autoSkipFillerNotice !== undefined ? Boolean(raw.autoSkipFillerNotice) : true,
+    externalLinkMode,
     contentFilter:
       raw.contentFilter && ['safe', 'balanced', 'mature'].includes(raw.contentFilter)
         ? raw.contentFilter

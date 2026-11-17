@@ -4,6 +4,7 @@ import { computePacingPlan } from './pacingGoal';
 import { settingsStore } from './settings';
 import { buildThemeQuizRound } from './themeQuiz';
 import { computeWrappedSummary } from './wrappedStats';
+import { decodeMihonProtobufBytes, parseComixOrJsonBackup } from './backupImport';
 import { Anime, LibraryState } from '../types';
 
 const makeAnime = (p: Partial<Anime> & { id: string }): Anime => ({
@@ -106,5 +107,36 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
       expect(q.options).toHaveLength(4);
       expect(q.options).toContain(q.correctAnswer);
     });
+  });
+
+  it('defaults externalLinkMode to external and decodes Comix CSV/JSON & Mihon protobuf backups', () => {
+    expect(settingsStore.getSnapshot().externalLinkMode).toBe('external');
+    settingsStore.update({ externalLinkMode: 'ask' });
+    expect(settingsStore.getSnapshot().externalLinkMode).toBe('ask');
+
+    const comixCsv = 'title,status,chapters_read,score\n"Berserk",reading,364,10\n"Vagabond",completed,327,9.5';
+    const parsedCsv = parseComixOrJsonBackup(comixCsv);
+    expect(parsedCsv).toHaveLength(2);
+    expect(parsedCsv[0]).toMatchObject({ title: 'Berserk', status: 'watching', progress: 364, score: 10 });
+
+    const comixJson = JSON.stringify({
+      comics: [{ title: 'Vinland Saga', status: 'reading', read: 210, rating: 9 }],
+    });
+    const parsedJson = parseComixOrJsonBackup(comixJson);
+    expect(parsedJson[0]).toMatchObject({ title: 'Vinland Saga', status: 'watching', progress: 210, score: 9 });
+
+    // Encode minimal Mihon protobuf: root field 1 (BackupManga) -> field 3 ("Vagabond"), field 8 (status=1)
+    const titleBytes = new TextEncoder().encode('Vagabond');
+    const mangaMsg = new Uint8Array([
+      (3 << 3) | 2,
+      titleBytes.length,
+      ...titleBytes,
+      (8 << 3) | 0,
+      1,
+    ]);
+    const rootMsg = new Uint8Array([(1 << 3) | 2, mangaMsg.length, ...mangaMsg]);
+    const decoded = decodeMihonProtobufBytes(rootMsg);
+    expect(decoded).toHaveLength(1);
+    expect(decoded[0]).toMatchObject({ title: 'Vagabond', mediaType: 'MANGA', status: 'watching' });
   });
 });

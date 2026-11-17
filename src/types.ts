@@ -252,6 +252,7 @@ export interface ScoredAnime {
 export type ThemePreset = 'main' | 'dark' | 'light' | 'custom';
 export type ContentFilterLevel = 'safe' | 'balanced' | 'mature';
 export type FontStylePreset = 'default' | 'rounded' | 'serif' | 'mono';
+export type ExternalLinkMode = 'external' | 'ask' | 'inapp';
 
 export interface ThemeColors {
   bg: string;
@@ -281,6 +282,7 @@ export interface AppSettings {
   ambientMode: boolean;
   dimAmbientOnScroll: boolean;
   autoSkipFillerNotice: boolean;
+  externalLinkMode: ExternalLinkMode;
   contentFilter: ContentFilterLevel;
   blockedGenres: string[];
   showHomeForYou: boolean;
