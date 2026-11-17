@@ -38,6 +38,7 @@ interface TrackersModalProps {
   onClose: () => void;
   trackers: TrackerAccount[];
   onImported: (count: number) => void;
+  onOpenSyncDiff?: () => void;
 }
 
 type Provider = 'anilist' | 'mal';
@@ -64,6 +65,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
   onClose,
   trackers,
   onImported,
+  onOpenSyncDiff,
 }) => {
   const cloud = useCloudSync();
   const [provider, setProvider] = useState<Provider>('anilist');
@@ -436,6 +438,20 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                       <span>MAL OAuth (PKCE)</span>
                     </button>
                   </div>
+
+                  {onOpenSyncDiff && (trackers.length > 0 || cloud.anilistWritebackToken || cloud.malConnected) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenSyncDiff();
+                      }}
+                      className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/[0.12] bg-[#222222] py-2 text-[11.5px] font-bold text-white transition hover:bg-[#2E2E2E]"
+                    >
+                      <Sparkles className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                      <span>Compare &amp; Resolve 3-Way Diff (ListTube · AniList · MAL)</span>
+                    </button>
+                  )}
 
                   {activeConnected && (
                     <div className="flex items-center justify-between rounded-xl bg-[#272727] px-3 py-2 text-[11.5px]">

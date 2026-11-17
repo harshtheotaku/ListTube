@@ -31,6 +31,12 @@ import { cloudSync, MergedComment, useCloudSync } from '../services/cloudSync';
 import { useProfile } from '../services/profile';
 import { fetchPinnedSpoilerFreeReview, PinnedReview } from '../services/reviews';
 import { formatUserScore } from '../services/scoring';
+import {
+  EpisodeCanonTag,
+  fetchJikanEpisodeFlags,
+  getEpisodeClassification,
+  summarizeFillerPacing,
+} from '../services/fillerGuide';
 import { useSettings } from '../services/settings';
 import { toast } from './Toast';
 
@@ -67,6 +73,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
   const [blockedIds, setBlockedIds] = useState<string[]>([]);
   const [episodePoll, setEpisodePoll] = useState<EpisodePollSummary | null>(null);
   const [pollBusy, setPollBusy] = useState(false);
+  const [dynamicFillerMap, setDynamicFillerMap] = useState<Record<number, EpisodeCanonTag>>({});
   const [sectionTab, setSectionTab] = useState<'discussions' | 'reviews'>('discussions');
 
   // Episode discussion filter & replies
@@ -102,6 +109,15 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
     setEpisodeFilter('all');
     setComposeEpisode(null);
     setReplyTo(null);
+    setDynamicFillerMap({});
+
+    if (!isManga && anime.malId) {
+      fetchJikanEpisodeFlags(anime.malId)
+        .then((flags) => {
+          if (!cancelled && Object.keys(flags).length > 0) setDynamicFillerMap(flags);
+        })
+        .catch(() => {});
+    }
 
     fetchPinnedSpoilerFreeReview(anime)
       .then((res) => {
@@ -566,6 +582,24 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
       {/* TAB 1: EPISODE DISCUSSIONS & THREADED COMMENTS */}
       {sectionTab === 'discussions' && (
         <div className="space-y-4">
+          {!isManga && (() => {
+            const pacing = summarizeFillerPacing(anime, dynamicFillerMap);
+            if (!pacing.hasData || pacing.fillerCount + pacing.recapCount === 0) return null;
+            return (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-3.5 py-2.5 text-[11.5px]">
+                <span className="font-bold text-amber-200">
+                  Pacing &amp; Filler Guide: {pacing.canonPercent}% Manga Canon
+                  {pacing.fillerCount > 0 ? ` · ${pacing.fillerCount} filler eps` : ''}
+                </span>
+                {pacing.hoursSaved > 0 && (
+                  <span className="rounded-full bg-amber-400/20 px-2.5 py-0.5 text-[10.5px] font-bold text-amber-300">
+                    Skip filler to save ~{pacing.hoursSaved}h
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+
           {!isManga && (
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
               <button
@@ -586,18 +620,31 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
               >
                 General
               </button>
-              {episodeOptions.map((ep) => (
-                <button
-                  key={ep}
-                  type="button"
-                  onClick={() => setEpisodeFilter(ep)}
-                  className={`shrink-0 rounded-lg px-2.5 py-1 text-[11.5px] font-semibold transition ${
-                    episodeFilter === ep ? 'bg-[#3EA6FF] text-black font-bold' : 'bg-[#222222] text-[#AAAAAA] hover:text-white'
-                  }`}
-                >
-                  Ep {ep}
-                </button>
-              ))}
+              {episodeOptions.map((ep) => {
+                const fTag = getEpisodeClassification(anime, ep, dynamicFillerMap);
+                const isFiller = fTag === 'FILLER' || fTag === 'RECAP';
+                const isMixed = fTag === 'MIXED';
+                return (
+                  <button
+                    key={ep}
+                    type="button"
+                    onClick={() => setEpisodeFilter(ep)}
+                    className={`shrink-0 rounded-lg px-2.5 py-1 text-[11.5px] font-semibold transition ${
+                      episodeFilter === ep
+                        ? 'bg-[#3EA6FF] text-black font-bold'
+                        : isFiller
+                        ? 'border border-amber-500/35 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                        : isMixed
+                        ? 'border border-sky-400/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20'
+                        : 'bg-[#222222] text-[#AAAAAA] hover:text-white'
+                    }`}
+                    title={fTag ? `Episode ${ep}: ${fTag}` : undefined}
+                  >
+                    Ep {ep}
+                    {isFiller ? ' · Filler' : isMixed ? ' · Mix' : ''}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -605,9 +652,28 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
             <div className="rounded-2xl border border-white/[0.08] bg-[#161616] p-3.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="text-[12.5px] font-bold text-white">
-                    Episode {episodeFilter} Community Poll
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[12.5px] font-bold text-white">
+                      Episode {episodeFilter} Community Poll
+                    </p>
+                    {(() => {
+                      const fTag = getEpisodeClassification(anime, episodeFilter, dynamicFillerMap);
+                      if (!fTag) return null;
+                      return (
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase ${
+                            fTag === 'FILLER' || fTag === 'RECAP'
+                              ? 'bg-amber-500/20 text-amber-300'
+                              : fTag === 'MIXED'
+                              ? 'bg-sky-500/20 text-sky-300'
+                              : 'bg-emerald-500/20 text-emerald-300'
+                          }`}
+                        >
+                          {fTag}
+                        </span>
+                      );
+                    })()}
+                  </div>
                   <p className="text-[11px] text-[#AAAAAA]">
                     {episodePoll.totalVotes > 0
                       ? `${episodePoll.average.toFixed(1)}★ average across ${episodePoll.totalVotes} vote${episodePoll.totalVotes === 1 ? '' : 's'}`

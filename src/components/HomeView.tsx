@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, BookOpen, Film, Loader2, RefreshCw, Sparkles, Upload, X } from 'lucide-react';
+import { ArrowRight, BookOpen, Dice5, Film, Loader2, RefreshCw, Sparkles, Upload, X } from 'lucide-react';
 import { Anime, LibraryState, MediaType, ScoredAnime } from '../types';
 import {
   getRecommendationPage,
@@ -481,35 +481,53 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </p>
         </div>
 
-        <div
-          className="flex shrink-0 items-center rounded-full border border-white/[0.12] bg-[#181818] p-1"
-          role="group"
-          aria-label="Switch between Anime and Manga"
-        >
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => onMediaTypeChange('ANIME')}
-            className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
-              mediaType === 'ANIME'
-                ? 'bg-[#FF0000] text-white shadow'
-                : 'text-[#AAAAAA] hover:text-white'
-            }`}
+            onClick={() => {
+              const pool = (bundle?.forYou ?? []).map((x) => x.anime);
+              if (pool.length === 0) return;
+              const pick = pool[Math.floor(Math.random() * Math.min(pool.length, 14))];
+              if (pick) onOpen(pick);
+            }}
+            disabled={!bundle?.forYou?.length}
+            className="flex items-center gap-1.5 rounded-full border border-white/[0.12] bg-[#181818] px-3.5 py-2 text-[12px] font-bold text-amber-300 transition hover:bg-[#272727] disabled:opacity-40"
+            title="Spin personalized roulette from your top matches"
           >
-            <Film className="h-3.5 w-3.5" />
-            Anime
+            <Dice5 className="h-3.5 w-3.5" />
+            <span>Roulette</span>
           </button>
-          <button
-            type="button"
-            onClick={() => onMediaTypeChange('MANGA')}
-            className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
-              mediaType === 'MANGA'
-                ? 'bg-[#FF0000] text-white shadow'
-                : 'text-[#AAAAAA] hover:text-white'
-            }`}
+
+          <div
+            className="flex shrink-0 items-center rounded-full border border-white/[0.12] bg-[#181818] p-1"
+            role="group"
+            aria-label="Switch between Anime and Manga"
           >
-            <BookOpen className="h-3.5 w-3.5" />
-            Manga
-          </button>
+            <button
+              type="button"
+              onClick={() => onMediaTypeChange('ANIME')}
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
+                mediaType === 'ANIME'
+                  ? 'bg-[#FF0000] text-white shadow'
+                  : 'text-[#AAAAAA] hover:text-white'
+              }`}
+            >
+              <Film className="h-3.5 w-3.5" />
+              Anime
+            </button>
+            <button
+              type="button"
+              onClick={() => onMediaTypeChange('MANGA')}
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
+                mediaType === 'MANGA'
+                  ? 'bg-[#FF0000] text-white shadow'
+                  : 'text-[#AAAAAA] hover:text-white'
+              }`}
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+              Manga
+            </button>
+          </div>
         </div>
       </div>
 

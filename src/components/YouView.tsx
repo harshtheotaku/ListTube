@@ -46,6 +46,7 @@ interface YouViewProps {
   onExplore: () => void;
   onOpenFeed?: () => void;
   onOpenAnime?: (animeId: string) => void;
+  onOpenSyncDiff?: () => void;
 }
 
 type ChannelTab = 'overview' | 'stats' | 'favorites' | 'about';
@@ -157,6 +158,7 @@ export const YouView: React.FC<YouViewProps> = ({
   onExplore,
   onOpenFeed,
   onOpenAnime,
+  onOpenSyncDiff,
 }) => {
   const settings = useSettings();
   const [channelTab, setChannelTab] = useState<ChannelTab>('overview');
@@ -166,12 +168,24 @@ export const YouView: React.FC<YouViewProps> = ({
   const isManga = mediaType === 'MANGA';
 
   const animeStats = useMemo(
-    () => computeMediaStats(libraryState.entries, 'ANIME', (id) => animeStore.get(id)),
-    [libraryState.entries]
+    () =>
+      computeMediaStats(
+        libraryState.entries,
+        'ANIME',
+        (id) => animeStore.get(id),
+        libraryState.events
+      ),
+    [libraryState.entries, libraryState.events]
   );
   const mangaStats = useMemo(
-    () => computeMediaStats(libraryState.entries, 'MANGA', (id) => animeStore.get(id)),
-    [libraryState.entries]
+    () =>
+      computeMediaStats(
+        libraryState.entries,
+        'MANGA',
+        (id) => animeStore.get(id),
+        libraryState.events
+      ),
+    [libraryState.entries, libraryState.events]
   );
   const activeStats = isManga ? mangaStats : animeStats;
 
@@ -882,6 +896,99 @@ export const YouView: React.FC<YouViewProps> = ({
               emptyText={`Track ${isManga ? 'manga authors' : 'anime studios'} to compare average ratings.`}
             />
           </div>
+
+          {/* 26-Week Contribution Activity Heatmap */}
+          <div className={CARD}>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[12px] font-bold uppercase tracking-wider text-white">
+                26-Week Activity Heatmap
+              </p>
+              <span className="text-[11px] text-[#AAAAAA]">
+                Daily progress updates, additions &amp; scores
+              </span>
+            </div>
+            <div className="grid grid-flow-col grid-rows-7 gap-1 overflow-x-auto pb-1">
+              {activeStats.heatmap.map((cell) => {
+                const bg =
+                  cell.level === 0
+                    ? 'bg-white/[0.06]'
+                    : cell.level === 1
+                    ? 'bg-emerald-900/80'
+                    : cell.level === 2
+                    ? 'bg-emerald-700'
+                    : cell.level === 3
+                    ? 'bg-emerald-500'
+                    : 'bg-emerald-400';
+                return (
+                  <div
+                    key={cell.date}
+                    title={`${cell.date}: ${cell.count} update${cell.count === 1 ? '' : 's'}`}
+                    className={`h-3 w-3 rounded-[3px] ${bg}`}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Hot Takes & Global Score Delta */}
+          <div className={CARD}>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[12px] font-bold uppercase tracking-wider text-white">
+                Your Ratings vs Global Mean (“Hot Takes”)
+              </p>
+              <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-bold text-amber-300">
+                Avg Bias: {activeStats.globalBiasDelta >= 0 ? `+${activeStats.globalBiasDelta}` : activeStats.globalBiasDelta}★ vs crowd
+              </span>
+            </div>
+            {activeStats.hotTakes.length === 0 ? (
+              <p className="text-[12px] italic text-[#AAAAAA]">
+                Rate tracked series to compare your scores against community averages.
+              </p>
+            ) : (
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                {activeStats.hotTakes.map((ht) => (
+                  <button
+                    key={`ht-${ht.animeId}`}
+                    type="button"
+                    onClick={() => onOpenAnime?.(ht.animeId)}
+                    className="flex items-center justify-between gap-2 rounded-xl bg-[#222222]/80 px-3 py-2 text-left transition hover:bg-[#2C2C2C]"
+                  >
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <img src={ht.cover} alt="" className="h-10 w-7 shrink-0 rounded object-cover bg-black" />
+                      <div className="min-w-0">
+                        <p className="truncate text-[12px] font-bold text-white">{ht.title}</p>
+                        <p className="text-[10.5px] text-[#AAAAAA]">
+                          You: ★ {ht.userScore} · Global: ★ {ht.globalScore.toFixed(1)}
+                        </p>
+                      </div>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-extrabold ${
+                        ht.delta >= 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
+                      }`}
+                    >
+                      {ht.delta >= 0 ? `+${ht.delta}` : ht.delta}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {onOpenSyncDiff && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#181818] px-4 py-3 text-[12px]">
+              <span className="text-[#CCCCCC]">
+                Verify consistency between your local ListTube library, AniList, and MyAnimeList.
+              </span>
+              <button
+                type="button"
+                onClick={onOpenSyncDiff}
+                className="rounded-full bg-[#3EA6FF] px-4 py-1.5 text-[11.5px] font-bold text-black hover:bg-[#65B8FF]"
+              >
+                Open 3-Way Diff &amp; Conflict Resolver
+              </button>
+            </div>
+          )}
 
           {cloud.pendingOutboxCount > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[12px]">

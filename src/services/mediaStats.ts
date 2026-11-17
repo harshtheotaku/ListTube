@@ -1,9 +1,24 @@
-import { Anime, ListEntry, MediaType } from '../types';
+import { Anime, FeedbackEvent, ListEntry, MediaType } from '../types';
 
 export interface DistEntry {
   label: string;
   count: number;
   meanScore?: number;
+}
+
+export interface HeatmapCell {
+  date: string;
+  count: number;
+  level: 0 | 1 | 2 | 3 | 4;
+}
+
+export interface HotTakeItem {
+  animeId: string;
+  title: string;
+  cover: string;
+  userScore: number;
+  globalScore: number;
+  delta: number;
 }
 
 export interface MediaStatsSummary {
@@ -22,6 +37,9 @@ export interface MediaStatsSummary {
   decadeDist: DistEntry[];
   genreStats: DistEntry[];
   studioStats: DistEntry[];
+  heatmap: HeatmapCell[];
+  globalBiasDelta: number;
+  hotTakes: HotTakeItem[];
 }
 
 interface ScoreBucket {
@@ -53,7 +71,9 @@ function finalizeRanked(map: Record<string, ScoreBucket>, limit = 6): DistEntry[
 export function computeMediaStats(
   entries: Record<string, ListEntry>,
   targetType: MediaType,
-  resolveMedia: (id: string) => Anime | undefined
+  resolveMedia: (id: string) => Anime | undefined,
+  events: FeedbackEvent[] = [],
+  nowMs = Date.now()
 ): MediaStatsSummary {
   const list = Object.values(entries).filter((e) => {
     const a = resolveMedia(e.animeId);
@@ -64,11 +84,21 @@ export function computeMediaStats(
   let units = 0;
   let scoreSum = 0;
   let scoredCount = 0;
+  let biasSum = 0;
+  let biasCount = 0;
+  const hotTakesAll: HotTakeItem[] = [];
   const scoreDist: Record<number, number> = { 10: 0, 9: 0, 8: 0, 7: 0, 6: 0, 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
   const formatMap: Record<string, number> = {};
   const decadeMap: Record<string, number> = {};
   const genreBuckets: Record<string, ScoreBucket> = {};
   const studioBuckets: Record<string, ScoreBucket> = {};
+  const dayCounts: Record<string, number> = {};
+
+  const addDayTs = (ts?: number) => {
+    if (!ts || !Number.isFinite(ts)) return;
+    const key = new Date(ts).toISOString().slice(0, 10);
+    dayCounts[key] = (dayCounts[key] ?? 0) + 1;
+  };
 
   let watching = 0;
   let completed = 0;
@@ -83,6 +113,9 @@ export function computeMediaStats(
     else if (e.status === 'dropped') dropped++;
     else if (e.status === 'planned') planned++;
 
+    addDayTs(e.updatedAt);
+    addDayTs(e.addedAt);
+
     const a = resolveMedia(e.animeId);
     const prog = e.progress ?? 0;
     units += prog;
@@ -93,6 +126,20 @@ export function computeMediaStats(
       scoredCount += 1;
       const bucket = Math.min(10, Math.max(1, Math.round(e.score)));
       scoreDist[bucket] = (scoreDist[bucket] ?? 0) + 1;
+
+      if (a?.score && a.score > 0) {
+        const delta = Math.round((e.score - a.score) * 10) / 10;
+        biasSum += delta;
+        biasCount += 1;
+        hotTakesAll.push({
+          animeId: e.animeId,
+          title: a.title,
+          cover: a.cover,
+          userScore: e.score,
+          globalScore: a.score,
+          delta,
+        });
+      }
     }
 
     const fmt = a?.format?.trim();
@@ -114,6 +161,10 @@ export function computeMediaStats(
     }
   }
 
+  for (const ev of events) {
+    addDayTs(ev.at);
+  }
+
   const formatDist = Object.entries(formatMap)
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count)
@@ -123,6 +174,20 @@ export function computeMediaStats(
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.label.localeCompare(a.label))
     .slice(0, 6);
+
+  const TOTAL_DAYS = 182; // 26-week activity heatmap
+  const heatmap: HeatmapCell[] = [];
+  for (let i = TOTAL_DAYS - 1; i >= 0; i--) {
+    const dayKey = new Date(nowMs - i * 86_400_000).toISOString().slice(0, 10);
+    const count = dayCounts[dayKey] ?? 0;
+    const level: 0 | 1 | 2 | 3 | 4 =
+      count === 0 ? 0 : count === 1 ? 1 : count <= 3 ? 2 : count <= 6 ? 3 : 4;
+    heatmap.push({ date: dayKey, count, level });
+  }
+
+  const hotTakes = hotTakesAll
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, 8);
 
   return {
     total: list.length,
@@ -140,5 +205,8 @@ export function computeMediaStats(
     decadeDist,
     genreStats: finalizeRanked(genreBuckets, 6),
     studioStats: finalizeRanked(studioBuckets, 6),
+    heatmap,
+    globalBiasDelta: biasCount > 0 ? Math.round((biasSum / biasCount) * 100) / 100 : 0,
+    hotTakes,
   };
 }

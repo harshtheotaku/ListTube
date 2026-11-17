@@ -49,9 +49,12 @@ import {
 } from '../services/anilist';
 import { fetchAnimeThemes, fetchMALDetail } from '../services/jikan';
 import { animeStore } from '../services/animeStore';
+import { predictTasteAndDropRisk } from '../services/dropPredictor';
 import { library } from '../services/library';
+import { miniPlayer } from '../services/miniPlayer';
 import { getSimilar } from '../services/recommender';
 import { franchiseNameOf } from '../services/franchise';
+import { buildWatchOrderGuide } from '../services/watchOrder';
 import {
   canonical10ToDisplayValue,
   formatUserScore,
@@ -191,6 +194,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
     endings: [],
   });
   const [externalLinks, setExternalLinks] = useState<ResolvedReaderLink[]>([]);
+  const [essentialOrderOnly, setEssentialOrderOnly] = useState(false);
   const [customShelfDraft, setCustomShelfDraft] = useState('');
   const profile = useProfile();
 
@@ -516,13 +520,30 @@ export const DetailView: React.FC<DetailViewProps> = ({
             {/* 16:9 Hero */}
             <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-2xl">
               {anime.trailerYoutubeId && isTrailerPlaying ? (
-                <iframe
-                  src={`https://www.youtube-nocookie.com/embed/${anime.trailerYoutubeId}?autoplay=1&rel=0&modestbranding=1`}
-                  title={`${anime.title} Official Trailer`}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                  className="h-full w-full border-0"
-                />
+                <div className="relative h-full w-full">
+                  <iframe
+                    src={`https://www.youtube-nocookie.com/embed/${anime.trailerYoutubeId}?autoplay=1&rel=0&modestbranding=1`}
+                    title={`${anime.title} Official Trailer`}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                    className="h-full w-full border-0"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsTrailerPlaying(false);
+                      miniPlayer.open({
+                        youtubeId: anime.trailerYoutubeId!,
+                        title: anime.title,
+                        subtitle: 'Official Trailer · Mini-Player',
+                        animeId: anime.id,
+                      });
+                    }}
+                    className="absolute right-3 top-3 z-10 rounded-full border border-white/20 bg-black/75 px-3 py-1 text-[11px] font-bold text-white backdrop-blur-md transition hover:bg-black"
+                  >
+                    Pop out Mini-Player ↘
+                  </button>
+                </div>
               ) : (
                 <div className="relative h-full w-full bg-[#121216]">
                   {widePreview ? (
@@ -1282,6 +1303,97 @@ export const DetailView: React.FC<DetailViewProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Taste Fit & Drop-Risk Analyzer Badge */}
+                {(() => {
+                  const pred = predictTasteAndDropRisk(anime, libraryState, (id) => animeStore.get(id));
+                  if (pred.positives.length === 0 && pred.warnings.length === 0) return null;
+                  const tone =
+                    pred.verdict === 'HIGH_DROP_RISK'
+                      ? 'border-rose-500/35 bg-rose-500/10 text-rose-200'
+                      : pred.verdict === 'CAUTION'
+                      ? 'border-amber-500/35 bg-amber-500/10 text-amber-200'
+                      : pred.verdict === 'GREAT_FIT'
+                      ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200'
+                      : 'border-sky-500/30 bg-sky-500/10 text-sky-200';
+                  return (
+                    <div className={`rounded-2xl border px-3.5 py-2.5 text-[11.5px] ${tone}`}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-extrabold">
+                          Taste Match: {pred.matchScore}% · Drop Risk: {pred.dropRiskPercent}%
+                        </span>
+                        <span className="rounded-full bg-black/30 px-2 py-0.5 text-[10px] font-bold uppercase">
+                          {pred.verdict.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] opacity-90">
+                        {[...pred.warnings, ...pred.positives].join(' · ')}
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                {/* Interactive Franchise Watch-Order Flowchart */}
+                {(() => {
+                  const guide = buildWatchOrderGuide(anime);
+                  if (!guide) return null;
+                  const visibleSteps = essentialOrderOnly
+                    ? guide.steps.filter((s) => s.essential || s.isCurrent)
+                    : guide.steps;
+                  return (
+                    <div className="space-y-2.5 rounded-2xl border border-white/[0.08] bg-[#161616] p-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-[12.5px] font-bold text-white">
+                            Watch Order Guide: {guide.franchiseName}
+                          </p>
+                          <p className="text-[10.5px] text-[#AAAAAA]">
+                            Follow steps left-to-right for recommended story continuity
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setEssentialOrderOnly((v) => !v)}
+                          className={`rounded-full px-3 py-1 text-[10.5px] font-bold transition ${
+                            essentialOrderOnly
+                              ? 'bg-[#3EA6FF] text-black'
+                              : 'bg-[#272727] text-neutral-300 hover:text-white'
+                          }`}
+                        >
+                          {essentialOrderOnly ? 'Showing Essential Canon' : 'Essential Canon Only'}
+                        </button>
+                      </div>
+                      <div className="flex items-stretch gap-2 overflow-x-auto pb-1 no-scrollbar">
+                        {visibleSteps.map((st, idx) => (
+                          <button
+                            key={`${st.step}-${st.title}`}
+                            type="button"
+                            onClick={() => {
+                              if (st.id && st.id !== anime.id) onOpenId(st.id);
+                            }}
+                            disabled={!st.id || st.isCurrent}
+                            className={`flex min-w-[175px] max-w-[205px] shrink-0 flex-col justify-between rounded-xl border p-2.5 text-left transition ${
+                              st.isCurrent
+                                ? 'border-[#FF0000] bg-[#FF0000]/15'
+                                : 'border-white/[0.08] bg-[#202020] hover:border-white/25 hover:bg-[#2A2A2A]'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-1 text-[10px] font-extrabold uppercase">
+                              <span className="text-[#3EA6FF]">Step {idx + 1}</span>
+                              <span className="rounded bg-black/40 px-1.5 py-0.5 text-amber-300">
+                                {st.badge}
+                              </span>
+                            </div>
+                            <p className="mt-1 line-clamp-2 text-[12px] font-bold text-white">
+                              {st.title}
+                            </p>
+                            <p className="mt-1 line-clamp-1 text-[10px] text-[#AAAAAA]">{st.note}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Always-Visible Direct Community, Database, Wiki & Forum Links */}
                 <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/[0.08] bg-[#161616] px-3.5 py-2.5 text-[11.5px]">
@@ -2060,6 +2172,28 @@ export const DetailView: React.FC<DetailViewProps> = ({
                                         {song.episodes ? ` (Episodes ${song.episodes})` : ''}
                                       </p>
                                       <div className="flex flex-wrap gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const queue = [...themes.openings, ...themes.endings].map((s, qi) => ({
+                                              label: `${qi < themes.openings.length ? 'OP' : 'ED'} ${s.number}: ${s.title}`,
+                                              searchQuery: `${anime.title} ${s.title} ${s.artists ?? ''}`,
+                                            }));
+                                            miniPlayer.open({
+                                              title: anime.title,
+                                              subtitle: `${sec.prefix} ${song.number}: ${song.title}`,
+                                              searchQuery: `${anime.title} ${sec.kind} ${song.title} ${song.artists ?? ''}`,
+                                              animeId: anime.id,
+                                              queue,
+                                              queueIndex:
+                                                sec.prefix === 'OP' ? idx : themes.openings.length + idx,
+                                            });
+                                          }}
+                                          className="inline-flex items-center gap-1 rounded-full bg-[#3EA6FF] px-3 py-1 text-[11px] font-bold text-black transition hover:bg-[#65B8FF]"
+                                        >
+                                          <Play className="h-3 w-3 fill-current" />
+                                          Mini-Player Queue
+                                        </button>
                                         <a
                                           href={ytUrl}
                                           target="_blank"

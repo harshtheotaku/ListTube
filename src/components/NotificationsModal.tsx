@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import {
   Bell,
+  BellRing,
   CheckCheck,
   ExternalLink,
   MessageSquare,
   Newspaper,
+  Plus,
   RefreshCw,
   Sparkles,
   Tv,
@@ -16,6 +18,8 @@ import {
   notificationsService,
   useNotifications,
 } from '../services/notifications';
+import { animeStore } from '../services/animeStore';
+import { library } from '../services/library';
 import { toast } from './Toast';
 
 interface NotificationsModalProps {
@@ -35,6 +39,9 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
 }) => {
   const { items, unreadCount, loading } = useNotifications();
   const [filter, setFilter] = useState<FilterKey>('all');
+  const [pushPerm, setPushPerm] = useState<string>(() =>
+    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
+  );
 
   const filtered = useMemo(
     () => (filter === 'all' ? items : items.filter((item) => item.kind === filter)),
@@ -120,28 +127,57 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
           </div>
         </div>
 
-        {/* MAL & Social Category Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto border-b border-white/[0.08] bg-[#161616] px-4 py-2.5 no-scrollbar">
-          {([
-            { id: 'all', label: 'All' },
-            { id: 'social', label: 'Community' },
-            { id: 'episodes', label: 'Airing Episodes' },
-            { id: 'sequels', label: 'Sequels' },
-            { id: 'news', label: 'MAL News' },
-          ] as { id: FilterKey; label: string }[]).map((chip) => (
+        {/* MAL & Social Category Filter Pills + Push Opt-In */}
+        <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] bg-[#161616] px-4 py-2">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            {([
+              { id: 'all', label: 'All' },
+              { id: 'social', label: 'Community' },
+              { id: 'episodes', label: 'Airing Episodes' },
+              { id: 'sequels', label: 'Sequels' },
+              { id: 'news', label: 'MAL News' },
+            ] as { id: FilterKey; label: string }[]).map((chip) => (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => setFilter(chip.id)}
+                className={`shrink-0 rounded-full px-3 py-1 text-[11.5px] font-semibold transition ${
+                  filter === chip.id
+                    ? 'bg-[#F1F1F1] text-[#0F0F0F]'
+                    : 'bg-[#272727] text-[#CCCCCC] hover:bg-[#353535]'
+                }`}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+
+          {typeof Notification !== 'undefined' && pushPerm !== 'granted' && (
             <button
-              key={chip.id}
               type="button"
-              onClick={() => setFilter(chip.id)}
-              className={`shrink-0 rounded-full px-3 py-1 text-[11.5px] font-semibold transition ${
-                filter === chip.id
-                  ? 'bg-[#F1F1F1] text-[#0F0F0F]'
-                  : 'bg-[#272727] text-[#CCCCCC] hover:bg-[#353535]'
-              }`}
+              onClick={async () => {
+                try {
+                  const res = await Notification.requestPermission();
+                  setPushPerm(res);
+                  if (res === 'granted') {
+                    toast('Live browser airing alerts enabled!');
+                    new Notification('ListTube Airing Alerts Active', {
+                      body: 'You will be notified when tracked seasonal episodes air.',
+                    });
+                  } else {
+                    toast('Notification permission dismissed');
+                  }
+                } catch {
+                  /* ignore */
+                }
+              }}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#3EA6FF]/15 px-2.5 py-1 text-[10.5px] font-bold text-[#3EA6FF] hover:bg-[#3EA6FF]/25"
+              title="Enable browser airing push alerts"
             >
-              {chip.label}
+              <BellRing className="h-3 w-3" />
+              Push
             </button>
-          ))}
+          )}
         </div>
 
         {/* Notification Feed */}
@@ -195,10 +231,35 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
                     )}
                   </div>
                   <p className="mt-1 line-clamp-1 text-[11px] text-[#AAAAAA]">{item.subtitle}</p>
-                  <div className="mt-1 flex items-center gap-2 text-[10px]">
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px]">
                     <span className="rounded bg-white/[0.08] px-1.5 py-0.5 font-semibold text-neutral-300">
                       {item.timeLabel}
                     </span>
+                    {item.kind === 'episodes' && item.animeId && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const libSnap = library.getSnapshot();
+                          const media = animeStore.get(item.animeId!);
+                          const prevProg = libSnap.entries[item.animeId!]?.progress ?? 0;
+                          if (media && !libSnap.entries[item.animeId!]) {
+                            library.setStatus(media, 'watching');
+                          }
+                          library.setProgress(item.animeId!, prevProg + 1);
+                          notificationsService.markRead(item.id);
+                          toast(`Logged Ep ${prevProg + 1}!`);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') (e.currentTarget as HTMLSpanElement).click();
+                        }}
+                        className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/20 px-2 py-0.5 font-bold text-emerald-300 hover:bg-emerald-500/35"
+                      >
+                        <Plus className="h-2.5 w-2.5" />
+                        +1 Ep
+                      </span>
+                    )}
                     {item.externalUrl && (
                       <span className="inline-flex items-center gap-0.5 text-[#3EA6FF]">
                         Open <ExternalLink className="h-2.5 w-2.5" />

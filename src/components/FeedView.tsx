@@ -21,6 +21,7 @@ import {
   fetchActivityFeed,
   fetchBlockedUserIds,
   fetchFollowingIds,
+  fetchPublicUserLibrary,
   fetchPublicUsers,
   postActivityReply,
   publishActivity,
@@ -29,6 +30,9 @@ import {
   toggleBlockUser,
   toggleFollowUser,
 } from '../services/community';
+import { buildGroupRecommendations, GroupPickResult } from '../services/groupPicker';
+import { fetchDetail } from '../services/anilist';
+import { animeStore } from '../services/animeStore';
 import { useCloudSync } from '../services/cloudSync';
 import { useProfile } from '../services/profile';
 import { formatUserScore } from '../services/scoring';
@@ -42,7 +46,7 @@ interface FeedViewProps {
   onOpenTrackers: () => void;
 }
 
-type FeedTab = 'global' | 'following' | 'people';
+type FeedTab = 'global' | 'following' | 'people' | 'group';
 
 function timeAgo(ts: number): string {
   const sec = Math.max(1, Math.floor((Date.now() - ts) / 1000));
@@ -74,6 +78,9 @@ export const FeedView: React.FC<FeedViewProps> = ({
   const [posting, setPosting] = useState(false);
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [openReplies, setOpenReplies] = useState<Set<string>>(new Set());
+  const [selectedFriends, setSelectedFriends] = useState<PublicUserSummary[]>([]);
+  const [groupPicks, setGroupPicks] = useState<GroupPickResult[]>([]);
+  const [groupBusy, setGroupBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,7 +93,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
       if (cancelled) return;
       setFollowingIds(fIds);
 
-      if (tab === 'people') {
+      if (tab === 'people' || tab === 'group') {
         const blockedSet = new Set(bIds);
         const list = await fetchPublicUsers(userSearch, 36);
         if (!cancelled) setUsers(list.filter((u) => !blockedSet.has(u.id)));
@@ -202,11 +209,12 @@ export const FeedView: React.FC<FeedViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center rounded-full border border-white/[0.1] bg-[#181818] p-1 text-[12px] font-bold">
+        <div className="flex items-center overflow-x-auto rounded-full border border-white/[0.1] bg-[#181818] p-1 text-[12px] font-bold no-scrollbar">
           {([
             { id: 'global', label: 'Global' },
             { id: 'following', label: 'Following' },
             { id: 'people', label: 'People' },
+            { id: 'group', label: 'Pick For Us Both' },
           ] as { id: FeedTab; label: string }[]).map((t) => (
             <button
               key={t.id}
@@ -261,7 +269,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
       </div>
 
       {/* Status Composer */}
-      {tab !== 'people' && (
+      {tab !== 'people' && tab !== 'group' && (
         <form
           onSubmit={handlePublishStatus}
           className="rounded-2xl border border-white/[0.08] bg-[#181818] p-4"
@@ -312,8 +320,119 @@ export const FeedView: React.FC<FeedViewProps> = ({
         </form>
       )}
 
-      {/* PEOPLE DIRECTORY */}
-      {tab === 'people' ? (
+      {/* PEOPLE DIRECTORY / GROUP PICKER */}
+      {tab === 'group' ? (
+        <div className="space-y-4">
+          <div className="space-y-3 rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-[14.5px] font-bold text-white">
+                  Group Watch Picker (“Pick For Us Both”)
+                </h2>
+                <p className="text-[11.5px] text-[#AAAAAA]">
+                  Select 1–3 members to intersect tastes and exclude titles anyone has already watched.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={groupBusy || selectedFriends.length === 0}
+                onClick={async () => {
+                  setGroupBusy(true);
+                  try {
+                    const libs = await Promise.all(
+                      selectedFriends.map((f) => fetchPublicUserLibrary(f.id))
+                    );
+                    const missingIds = libs
+                      .flat()
+                      .map((e) => e.animeId)
+                      .filter((id) => !animeStore.get(id) && id.startsWith('anilist:'))
+                      .slice(0, 12);
+                    if (missingIds.length > 0) {
+                      await Promise.allSettled(
+                        missingIds.map((id) => fetchDetail(Number(id.split(':')[1]), 'ANIME'))
+                      );
+                    }
+                    const picks = buildGroupRecommendations({
+                      myLibrary,
+                      friendLibraries: libs,
+                      limit: 12,
+                    });
+                    setGroupPicks(picks);
+                    if (picks.length === 0) {
+                      toast('Browse more shows or select different friends for shared picks');
+                    }
+                  } finally {
+                    setGroupBusy(false);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#FF0000] px-4 py-2 text-[12px] font-bold text-white hover:bg-[#CC0000] disabled:opacity-40"
+              >
+                {groupBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                <span>Find Shared Picks ({selectedFriends.length})</span>
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {users
+                .filter((u) => u.id !== cloud.userId)
+                .slice(0, 12)
+                .map((u) => {
+                  const chosen = selectedFriends.some((f) => f.id === u.id);
+                  return (
+                    <button
+                      key={`pick-${u.id}`}
+                      type="button"
+                      onClick={() => {
+                        setSelectedFriends((prev) =>
+                          chosen
+                            ? prev.filter((x) => x.id !== u.id)
+                            : prev.length >= 3
+                            ? prev
+                            : [...prev, u]
+                        );
+                      }}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11.5px] font-semibold transition ${
+                        chosen
+                          ? 'border-[#3EA6FF] bg-[#3EA6FF]/20 text-white'
+                          : 'border-white/10 bg-[#242424] text-[#CCCCCC] hover:text-white'
+                      }`}
+                    >
+                      <img src={u.avatarUrl} alt="" className="h-5 w-5 rounded-full object-cover" />
+                      <span>{u.displayName}</span>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+
+          {groupPicks.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+              {groupPicks.map(({ anime: item, sharedReasons }) => (
+                <button
+                  key={`gp-${item.id}`}
+                  type="button"
+                  onClick={() => onOpenAnime(item.id)}
+                  className="group flex gap-3 rounded-2xl border border-white/[0.08] bg-[#181818] p-3 text-left transition hover:border-white/25 hover:bg-[#222222]"
+                >
+                  <img
+                    src={item.cover}
+                    alt={item.title}
+                    className="h-24 w-16 shrink-0 rounded-xl object-cover bg-black"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-[13px] font-bold text-white group-hover:text-[#3EA6FF]">
+                      {item.title}
+                    </p>
+                    <p className="mt-1 text-[11px] font-semibold text-emerald-300">
+                      {sharedReasons.join(' · ')}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : tab === 'people' ? (
         <div className="space-y-4">
           <div className="flex items-center gap-2 rounded-2xl border border-white/[0.1] bg-[#181818] px-3.5 py-2.5">
             <Search className="h-4 w-4 text-[#AAAAAA]" />

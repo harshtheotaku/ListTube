@@ -63,6 +63,13 @@ const ProfileModal = lazy(() =>
 const NotificationsModal = lazy(() =>
   import('./components/NotificationsModal').then((m) => ({ default: m.NotificationsModal }))
 );
+const SyncConflictModal = lazy(() =>
+  import('./components/SyncConflictModal').then((m) => ({ default: m.SyncConflictModal }))
+);
+const CommandPaletteModal = lazy(() =>
+  import('./components/CommandPaletteModal').then((m) => ({ default: m.CommandPaletteModal }))
+);
+import { MiniPlayer } from './components/MiniPlayer';
 
 const TABS: AppTab[] = ['home', 'explore', 'list', 'schedule', 'news', 'feed', 'you'];
 const MEDIA_TYPE_KEY = 'anitube.mediaType.v1';
@@ -230,8 +237,21 @@ export const App: React.FC = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [syncDiffOpen, setSyncDiffOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [quickTarget, setQuickTarget] = useState<Anime | null>(null);
   const [explorePresetGenre, setExplorePresetGenre] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onGlobalKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onGlobalKey);
+    return () => window.removeEventListener('keydown', onGlobalKey);
+  }, []);
 
   useEffect(() => {
     const unsubDb = animeStore.subscribeHydration(() => setHydrationTick((n) => n + 1));
@@ -935,6 +955,7 @@ export const App: React.FC = () => {
                     onExplore={() => navigate('explore')}
                     onOpenFeed={() => navigate('feed')}
                     onOpenAnime={openDetail}
+                    onOpenSyncDiff={() => setSyncDiffOpen(true)}
                   />
                 )}
               </>
@@ -944,6 +965,7 @@ export const App: React.FC = () => {
       </div>
 
       <BottomNav active={tab} onNavigate={navigate} />
+      <MiniPlayer onOpenAnimeId={openDetail} />
       <ToastHost />
 
       <Suspense fallback={null}>
@@ -953,6 +975,26 @@ export const App: React.FC = () => {
             onClose={() => setTrackersOpen(false)}
             trackers={libraryState.trackers}
             onImported={() => navigate('home')}
+            onOpenSyncDiff={() => setSyncDiffOpen(true)}
+          />
+        )}
+        {syncDiffOpen && (
+          <SyncConflictModal
+            isOpen={syncDiffOpen}
+            onClose={() => setSyncDiffOpen(false)}
+            libraryState={libraryState}
+            trackers={libraryState.trackers}
+          />
+        )}
+        {paletteOpen && (
+          <CommandPaletteModal
+            isOpen={paletteOpen}
+            onClose={() => setPaletteOpen(false)}
+            mediaType={mediaType}
+            libraryState={libraryState}
+            onNavigate={navigate}
+            onOpenAnime={openAnime}
+            onOpenConflicts={() => setSyncDiffOpen(true)}
           />
         )}
         {settingsOpen && (
