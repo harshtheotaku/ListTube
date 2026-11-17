@@ -441,7 +441,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const visibleExtra = useMemo(() => filterList(extraFeed), [filterList, extraFeed]);
 
   return (
-    <div className="min-h-screen space-y-7 bg-[#0F0F0F] pb-24 text-white lg:pb-16">
+    <div className="min-h-screen space-y-6 bg-[#0F0F0F] pb-32 text-white lg:pb-16">
       {/* Pull-to-Refresh YouTube Floating Spinner Indicator */}
       {(pullPx > 8 || refreshing) && (
         <div
@@ -477,10 +477,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
               key={chip}
               type="button"
               onClick={() => setSelectedChip(chip)}
-              className={`shrink-0 rounded-lg px-3 py-1.5 text-[13px] font-medium transition ${
+              className={`lt-press shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-medium ${
                 isSelected
-                  ? 'bg-[#F1F1F1] font-semibold text-[#0F0F0F]'
-                  : 'bg-[#272727] text-[#F1F1F1] hover:bg-[#3F3F3F]'
+                  ? 'bg-[#F1F1F1] font-semibold text-[#0F0F0F] shadow-sm'
+                  : 'bg-[#272727]/90 text-[#F1F1F1] hover:bg-[#3F3F3F]'
               }`}
             >
               {chip}
@@ -666,6 +666,106 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         </section>
       )}
+
+      {/* Mobile BitChord Spotlight Carousel + Compact Recents */}
+      {!loading &&
+        !error &&
+        settings.showHomeForYou &&
+        selectedChip === 'All' &&
+        visibleInitial.length >= 3 && (
+          <section className="space-y-5 sm:hidden" aria-label="Mobile Spotlight">
+            <div>
+              <div className="mb-2.5 flex items-center justify-between px-4">
+                <h2 className="text-[19px] font-extrabold tracking-tight text-white">
+                  Top Picks for You
+                </h2>
+                <span className="text-[11px] font-semibold text-[#8E8E93]">Swipe →</span>
+              </div>
+              <div className="lt-snap-x flex gap-3.5 overflow-x-auto px-4 pb-1 no-scrollbar">
+                {visibleInitial.slice(0, 6).map((item, idx) => (
+                  <button
+                    key={`spot-${item.anime.id}`}
+                    type="button"
+                    onClick={() => onOpen(item.anime)}
+                    className="lt-press lt-snap-start relative aspect-[3/4] w-[72vw] max-w-[260px] shrink-0 overflow-hidden rounded-[26px] border border-white/[0.12] bg-[#141418] text-left shadow-2xl"
+                  >
+                    <img
+                      src={item.anime.cover}
+                      alt={item.anime.title}
+                      loading={idx < 2 ? 'eager' : 'lazy'}
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="lt-ambient-blend pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.08] via-transparent to-black/30" />
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black via-black/45 to-transparent" />
+                    <span className="absolute right-3.5 top-3.5 rounded-full bg-black/55 px-2.5 py-1 text-[10.5px] font-bold text-white backdrop-blur-md">
+                      {item.anime.score ? `★ ${item.anime.score.toFixed(1)}` : item.anime.format || 'Pick'}
+                    </span>
+                    <div className="absolute inset-x-0 bottom-0 p-4">
+                      <p className="text-[11px] font-semibold text-white/75 line-clamp-1">
+                        {item.reason || 'Tailored for your taste'}
+                      </p>
+                      <h3 className="mt-0.5 line-clamp-2 text-[17px] font-extrabold leading-tight tracking-tight text-white">
+                        {item.anime.title}
+                      </h3>
+                      <p className="mt-1 line-clamp-1 text-[11px] font-medium text-white/70">
+                        {item.anime.genres.slice(0, 3).join(' · ')}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {settings.showHomeSubscriptions && visibleSubscriptions.length > 0 && (
+              <div>
+                <div className="mb-2 flex items-center justify-between px-4">
+                  <h2 className="text-[17px] font-extrabold tracking-tight text-white">
+                    {isManga ? 'Recent Reads' : 'Recent Episodes'}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('list')}
+                    className="text-[11.5px] font-bold text-[#3EA6FF]"
+                  >
+                    See all
+                  </button>
+                </div>
+                <div className="lt-snap-x grid auto-cols-[84vw] grid-flow-col grid-rows-3 gap-x-3 gap-y-2 overflow-x-auto px-4 no-scrollbar">
+                  {visibleSubscriptions.slice(0, 9).map((anime) => {
+                    const entry = library.entries[anime.id];
+                    const totalCount = isManga ? anime.chapters : anime.episodes;
+                    return (
+                      <button
+                        key={`rec-${anime.id}`}
+                        type="button"
+                        onClick={() => onOpen(anime)}
+                        className="lt-press lt-snap-start flex items-center gap-3 rounded-2xl bg-white/[0.04] p-2 pr-3 text-left ring-1 ring-white/[0.06] hover:bg-white/[0.08]"
+                      >
+                        <img
+                          src={anime.cover}
+                          alt={anime.title}
+                          loading="lazy"
+                          className="h-12 w-12 shrink-0 rounded-xl object-cover bg-black"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[13.5px] font-semibold text-white">
+                            {anime.title}
+                          </p>
+                          <p className="truncate text-[11.5px] text-[#8E8E93]">
+                            {entry?.progress
+                              ? `${isManga ? 'Ch' : 'Ep'} ${entry.progress}${totalCount ? ` / ${totalCount}` : ''}`
+                              : anime.studios[0] || anime.genres[0] || 'Subscribed'}
+                          </p>
+                        </div>
+                        <ArrowRight className="h-4 w-4 shrink-0 text-[#6E6E73]" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
       {/* Top Personalized Feed */}
       {settings.showHomeForYou && (

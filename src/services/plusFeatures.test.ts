@@ -38,6 +38,17 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
     settingsStore.setThemePreset('light');
     expect(settingsStore.getSnapshot().themePreset).toBe('light');
 
+    settingsStore.update({
+      fontFamily: 'rounded',
+      reduceMotion: true,
+      reduceBlur: true,
+      disableBlend: true,
+    });
+    expect(settingsStore.getSnapshot().fontFamily).toBe('rounded');
+    expect(settingsStore.getSnapshot().reduceMotion).toBe(true);
+    expect(settingsStore.getSnapshot().reduceBlur).toBe(true);
+    expect(settingsStore.getSnapshot().disableBlend).toBe(true);
+
     settingsStore.setContentFilter('safe');
     settingsStore.toggleBlockedGenre('Mecha');
 

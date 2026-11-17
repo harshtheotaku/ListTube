@@ -8,6 +8,7 @@ import {
   X,
 } from 'lucide-react';
 import { miniPlayer, useMiniPlayer } from '../services/miniPlayer';
+import { useSettings } from '../services/settings';
 
 interface MiniPlayerProps {
   onOpenAnimeId: (animeId: string) => void;
@@ -15,6 +16,7 @@ interface MiniPlayerProps {
 
 export const MiniPlayer: React.FC<MiniPlayerProps> = ({ onOpenAnimeId }) => {
   const state = useMiniPlayer();
+  const settings = useSettings();
   if (!state) return null;
 
   const hasQueue = Boolean(state.queue && state.queue.length > 1);
@@ -24,12 +26,20 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ onOpenAnimeId }) => {
 
   return (
     <div
-      className="fixed bottom-16 right-3 z-[65] w-[300px] overflow-hidden rounded-2xl border border-white/[0.16] bg-[#161616] text-white shadow-2xl sm:bottom-5 sm:right-5 sm:w-[360px]"
+      className={`lt-sheet-up fixed inset-x-3 bottom-[84px] z-[65] mx-auto max-w-[440px] overflow-hidden rounded-[24px] border text-white shadow-2xl sm:inset-x-auto sm:bottom-5 sm:right-5 sm:mx-0 sm:w-[360px] ${
+        settings.liquidGlass
+          ? 'liquid-glass border-white/[0.2]'
+          : 'border-white/[0.16] bg-[#161616]'
+      }`}
       role="region"
       aria-label="Persistent Mini-Player"
     >
       {/* Top Bar */}
-      <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] bg-[#1E1E1E] px-3 py-2">
+      <div
+        className={`flex items-center justify-between gap-2 border-b border-white/[0.08] px-3.5 py-2.5 ${
+          settings.liquidGlass ? 'bg-white/[0.04]' : 'bg-[#1E1E1E]'
+        }`}
+      >
         <button
           type="button"
           onClick={() => {

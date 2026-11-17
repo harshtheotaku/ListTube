@@ -23,7 +23,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({ active, onNavigate }) => {
     return (
       <nav
         aria-label="Mobile Navigation"
-        className="safe-pb fixed inset-x-3 bottom-3 z-40 mx-auto max-w-md rounded-[28px] border border-white/[0.18] px-2 py-1.5 liquid-glass lg:hidden"
+        style={{ paddingBottom: 'max(6px, env(safe-area-inset-bottom, 0px))' }}
+        className="fixed inset-x-3 bottom-2.5 z-40 mx-auto max-w-[440px] rounded-[30px] border border-white/[0.18] px-1.5 pt-1.5 liquid-glass lg:hidden"
       >
         <div className="flex items-stretch justify-around gap-1">
           {ITEMS.map((item) => {
@@ -35,14 +36,16 @@ export const BottomNav: React.FC<BottomNavProps> = ({ active, onNavigate }) => {
                 type="button"
                 onClick={() => onNavigate(item.id)}
                 aria-current={isActive ? 'page' : undefined}
-                className={`flex flex-1 flex-col items-center gap-0.5 rounded-[20px] py-1.5 text-[10px] font-semibold transition ${
+                className={`lt-press flex flex-1 flex-col items-center gap-0.5 rounded-[22px] py-1.5 text-[10px] font-semibold transition-all duration-200 ${
                   isActive
-                    ? 'bg-white/[0.16] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]'
-                    : 'text-[#AAAAAA] hover:text-white'
+                    ? 'bg-white/[0.15] text-white shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.28)]'
+                    : 'text-[#A6A6AE] hover:text-white'
                 }`}
               >
                 <Icon
-                  className={`h-5 w-5 transition ${isActive ? 'scale-105' : ''}`}
+                  className={`h-[19px] w-[19px] transition-transform duration-200 ${
+                    isActive ? 'scale-110' : 'scale-100'
+                  }`}
                   style={isActive ? { color: 'var(--lt-accent)' } : undefined}
                 />
                 <span>{item.label}</span>

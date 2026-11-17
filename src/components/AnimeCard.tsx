@@ -84,10 +84,10 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
   };
 
   return (
-    <div className="group relative flex w-full flex-col">
+    <div className="lt-press group relative flex w-full flex-col">
       {/* Thumbnail Container: 4:5 Portrait for Manga, 16:9 Landscape for Anime */}
       <div
-        className={`relative w-full overflow-hidden rounded-xl bg-[#141418] ${
+        className={`relative w-full overflow-hidden rounded-2xl bg-[#141418] ring-1 ring-white/[0.06] ${
           isManga ? 'aspect-[4/5]' : 'aspect-video'
         }`}
       >
@@ -117,7 +117,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
                   alt=""
                   aria-hidden="true"
                   loading="eager"
-                  className="absolute inset-0 h-full w-full scale-125 object-cover opacity-35 blur-2xl"
+                  className="lt-ambient-blend absolute inset-0 h-full w-full scale-125 object-cover opacity-35 blur-2xl"
                 />
                 <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/15 to-black/75" />
                 <div className="absolute inset-0 z-[1] flex items-center justify-center">

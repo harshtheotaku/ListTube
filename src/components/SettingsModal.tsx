@@ -2,7 +2,11 @@ import React, { useState } from 'react';
 import {
   Bell,
   Check,
+  ChevronRight,
+  Contrast,
+  Droplets,
   Eye,
+  Gauge,
   Layout,
   Palette,
   Play,
@@ -10,9 +14,10 @@ import {
   RotateCcw,
   Shield,
   Sparkles,
+  Type,
   X,
 } from 'lucide-react';
-import { ContentFilterLevel, ListStatus, statusLabel, ThemePreset } from '../types';
+import { ContentFilterLevel, FontStylePreset, ListStatus, statusLabel, ThemePreset } from '../types';
 import { animeStore } from '../services/animeStore';
 import { SCORE_FORMATS } from '../services/scoring';
 import { settingsStore, useSettings } from '../services/settings';
@@ -85,7 +90,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-4"
+      className="lt-backdrop-in fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="settings-title"
@@ -93,12 +98,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="liquid-glass flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-t-[28px] border border-white/[0.16] text-white sm:rounded-[28px]">
+      <div className="liquid-glass lt-sheet-up flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-[30px] border border-white/[0.16] text-white sm:rounded-[28px]">
         {/* Header + Category Bar */}
-        <div className="border-b border-white/[0.08] px-5 pb-3 pt-4">
+        <div className="border-b border-white/[0.08] px-5 pb-3 pt-3">
+          <div className="mx-auto mb-2.5 h-1 w-9 rounded-full bg-white/25 sm:hidden" />
           <div className="flex items-center justify-between">
             <div>
-              <h2 id="settings-title" className="text-[17px] font-bold tracking-tight text-white">
+              <h2 id="settings-title" className="text-[20px] font-extrabold tracking-tight text-white">
                 Settings
               </h2>
               <p className="text-[11px] text-[#AAAAAA]">
@@ -109,7 +115,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               type="button"
               onClick={onClose}
               aria-label="Close settings"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.1] text-[#CCCCCC] hover:bg-white/[0.2] hover:text-white"
+              className="lt-press flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.1] text-[#CCCCCC] hover:bg-white/[0.2] hover:text-white"
             >
               <X className="h-4 w-4" />
             </button>
@@ -132,7 +138,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   key={item.id}
                   type="button"
                   onClick={() => setSection(item.id)}
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition ${
+                  className={`lt-press inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-semibold ${
                     active
                       ? 'bg-white text-black shadow'
                       : 'bg-white/[0.07] text-[#CCCCCC] hover:bg-white/[0.14] hover:text-white'
@@ -150,71 +156,169 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         <div className="flex-1 space-y-4 overflow-y-auto p-5">
           {section === 'appearance' && (
             <>
-              {/* Liquid Glass Navigation Toggle */}
-              <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/[0.1] bg-white/[0.05] p-4">
-                <div className="flex items-start gap-3">
-                  <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-[#3EA6FF]" />
-                  <div>
-                    <p className="text-[13.5px] font-bold text-white">Liquid Glass Navigation</p>
-                    <p className="mt-0.5 text-[11.5px] text-[#AAAAAA]">
-                      Frosted floating Apple-style translucent TopBar &amp; mobile pill dock.
-                    </p>
+              {/* BitChord-inspired Apple Grouped Appearance Card */}
+              <div className="divide-y divide-white/[0.07] overflow-hidden rounded-[22px] border border-white/[0.09] bg-white/[0.04]">
+                {/* Theme Segmented Control Row */}
+                <div className="space-y-3 p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2.5 text-[14px] font-semibold text-white">
+                      <Palette className="h-4 w-4 text-[#AAAAAA]" />
+                      Theme
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        settingsStore.resetTheme();
+                        toast('Theme colors reset');
+                      }}
+                      className="text-[11px] font-semibold text-[#3EA6FF] hover:underline"
+                    >
+                      Reset colors
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-4 rounded-full bg-black/35 p-1 ring-1 ring-white/[0.07]">
+                    {(
+                      [
+                        { id: 'main', label: 'Obsidian' },
+                        { id: 'dark', label: 'OLED' },
+                        { id: 'light', label: 'Daylight' },
+                        { id: 'custom', label: 'Custom' },
+                      ] as { id: ThemePreset; label: string }[]
+                    ).map((p) => {
+                      const active = settings.themePreset === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => settingsStore.setThemePreset(p.id)}
+                          className={`lt-press rounded-full py-1.5 text-[12px] font-semibold ${
+                            active
+                              ? 'bg-white/[0.2] text-white shadow'
+                              : 'text-[#9E9EA7] hover:text-white'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-                <AppleSwitch
-                  label="Toggle Liquid Glass Navigation"
-                  checked={settings.liquidGlass}
-                  onChange={(v) => {
-                    settingsStore.setLiquidGlass(v);
-                    toast(v ? 'Liquid Glass Navigation enabled' : 'Classic Navigation enabled');
-                  }}
-                />
+
+                {/* Font Style Row */}
+                {(() => {
+                  const fonts: { id: FontStylePreset; label: string; desc: string }[] = [
+                    { id: 'default', label: 'Default', desc: 'SF Pro Display · Apple weights' },
+                    { id: 'rounded', label: 'Rounded', desc: 'Soft SF Pro Rounded feel' },
+                    { id: 'serif', label: 'Editorial', desc: 'Crisp serif magazine contrast' },
+                    { id: 'mono', label: 'Studio Mono', desc: 'Technical monospace rhythm' },
+                  ];
+                  const cur = fonts.find((f) => f.id === settings.fontFamily) ?? fonts[0];
+                  const next = fonts[(fonts.findIndex((f) => f.id === cur.id) + 1) % fonts.length];
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        settingsStore.update({ fontFamily: next.id });
+                        toast(`Font changed to ${next.label}`);
+                      }}
+                      className="lt-press flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-white/[0.03]"
+                    >
+                      <div className="flex items-start gap-3">
+                        <Type className="mt-0.5 h-[18px] w-[18px] shrink-0 text-[#CCCCCC]" />
+                        <div>
+                          <p className="text-[13.5px] font-semibold text-white">Font</p>
+                          <p className="text-[11.5px] text-[#8E8E93]">{cur.desc}</p>
+                        </div>
+                      </div>
+                      <span className="flex shrink-0 items-center gap-1 text-[12.5px] font-medium text-[#AAAAAA]">
+                        {cur.label}
+                        <ChevronRight className="h-4 w-4 text-[#77777A]" />
+                      </span>
+                    </button>
+                  );
+                })()}
+
+                {/* Reduce Animation */}
+                <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                  <div className="flex items-start gap-3">
+                    <Gauge className="mt-0.5 h-[18px] w-[18px] shrink-0 text-[#CCCCCC]" />
+                    <div>
+                      <p className="text-[13.5px] font-semibold text-white">Reduce animation</p>
+                      <p className="text-[11.5px] text-[#8E8E93]">
+                        Freezes drifting spotlights and spring motion transitions
+                      </p>
+                    </div>
+                  </div>
+                  <AppleSwitch
+                    label="Reduce animation"
+                    checked={settings.reduceMotion}
+                    onChange={(v) => settingsStore.update({ reduceMotion: v })}
+                  />
+                </div>
+
+                {/* Reduce Dynamic Blur */}
+                <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                  <div className="flex items-start gap-3">
+                    <Droplets className="mt-0.5 h-[18px] w-[18px] shrink-0 text-[#CCCCCC]" />
+                    <div>
+                      <p className="text-[13.5px] font-semibold text-white">Reduce dynamic blur</p>
+                      <p className="text-[11.5px] text-[#8E8E93]">
+                        Swaps frosted glass for solid fills across the app
+                      </p>
+                    </div>
+                  </div>
+                  <AppleSwitch
+                    label="Reduce dynamic blur"
+                    checked={settings.reduceBlur}
+                    onChange={(v) => settingsStore.update({ reduceBlur: v })}
+                  />
+                </div>
+
+                {/* Disable Blend Effects */}
+                <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                  <div className="flex items-start gap-3">
+                    <Contrast className="mt-0.5 h-[18px] w-[18px] shrink-0 text-[#CCCCCC]" />
+                    <div>
+                      <p className="text-[13.5px] font-semibold text-white">Disable blend effects</p>
+                      <p className="text-[11.5px] text-[#8E8E93]">
+                        Shows clean neutral cards instead of tinting with cover art
+                      </p>
+                    </div>
+                  </div>
+                  <AppleSwitch
+                    label="Disable blend effects"
+                    checked={settings.disableBlend}
+                    onChange={(v) => settingsStore.update({ disableBlend: v })}
+                  />
+                </div>
+
+                {/* Liquid Glass Navigation Toggle */}
+                <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                  <div className="flex items-start gap-3">
+                    <Sparkles className="mt-0.5 h-[18px] w-[18px] shrink-0 text-[#3EA6FF]" />
+                    <div>
+                      <p className="text-[13.5px] font-semibold text-white">Liquid Glass Navigation</p>
+                      <p className="text-[11.5px] text-[#8E8E93]">
+                        Real refracting glass on the floating dock and top navigation bar
+                      </p>
+                    </div>
+                  </div>
+                  <AppleSwitch
+                    label="Toggle Liquid Glass Navigation"
+                    checked={settings.liquidGlass}
+                    onChange={(v) => {
+                      settingsStore.setLiquidGlass(v);
+                      toast(v ? 'Liquid Glass Navigation enabled' : 'Classic Navigation enabled');
+                    }}
+                  />
+                </div>
               </div>
 
-              {/* Theme Preset + Swatches + Custom Color Pickers */}
-              <div className="space-y-4 rounded-2xl border border-white/[0.1] bg-white/[0.05] p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-[12px] font-bold uppercase tracking-wider text-[#CCCCCC]">
-                    Theme
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      settingsStore.resetTheme();
-                      toast('Theme colors reset');
-                    }}
-                    className="text-[11px] font-semibold text-[#3EA6FF] hover:underline"
-                  >
-                    Reset colors
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-4 gap-2">
-                  {(
-                    [
-                      { id: 'main', label: 'Obsidian' },
-                      { id: 'dark', label: 'AMOLED' },
-                      { id: 'light', label: 'Daylight' },
-                      { id: 'custom', label: 'Custom' },
-                    ] as { id: ThemePreset; label: string }[]
-                  ).map((p) => {
-                    const active = settings.themePreset === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => settingsStore.setThemePreset(p.id)}
-                        className={`rounded-xl border py-2 text-[12px] font-bold transition ${
-                          active
-                            ? 'border-white bg-white/[0.18] text-white'
-                            : 'border-white/[0.08] bg-black/25 text-[#AAAAAA] hover:text-white'
-                        }`}
-                      >
-                        {p.label}
-                      </button>
-                    );
-                  })}
-                </div>
+              {/* Swatches & Custom Colors */}
+              <div className="space-y-4 rounded-[22px] border border-white/[0.09] bg-white/[0.04] p-4">
+                <p className="text-[11.5px] font-bold uppercase tracking-wider text-[#8E8E93]">
+                  Accent &amp; Palette Swatches
+                </p>
 
                 {/* Curated Color Swatch Circles */}
                 <div className="flex flex-wrap gap-2.5 pt-1">

@@ -251,6 +251,7 @@ export interface ScoredAnime {
 
 export type ThemePreset = 'main' | 'dark' | 'light' | 'custom';
 export type ContentFilterLevel = 'safe' | 'balanced' | 'mature';
+export type FontStylePreset = 'default' | 'rounded' | 'serif' | 'mono';
 
 export interface ThemeColors {
   bg: string;
@@ -272,6 +273,10 @@ export interface AppSettings {
   liquidGlass: boolean;
   themePreset: ThemePreset;
   themeColors: ThemeColors;
+  fontFamily: FontStylePreset;
+  reduceMotion: boolean;
+  reduceBlur: boolean;
+  disableBlend: boolean;
   contentFilter: ContentFilterLevel;
   blockedGenres: string[];
   showHomeForYou: boolean;

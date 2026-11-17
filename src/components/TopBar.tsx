@@ -415,7 +415,11 @@ export const TopBar: React.FC<TopBarProps> = ({
             type="button"
             onClick={onOpenTrackers}
             aria-label={connected ? `Connected as ${connected.username}` : 'Sign in'}
-            className="flex items-center gap-1.5 rounded-full border border-white/[0.16] bg-[#222222] py-1.5 pl-1.5 pr-2.5 text-[12px] font-semibold text-white transition hover:bg-[#333333] sm:pr-3"
+            className={`lt-press flex items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 text-[12px] font-semibold text-white transition sm:py-1.5 sm:pl-1.5 sm:pr-3 ${
+              settings.liquidGlass
+                ? 'border-white/[0.18] bg-white/[0.08] backdrop-blur-md hover:bg-white/[0.16]'
+                : 'border-white/[0.16] bg-[#222222] hover:bg-[#333333]'
+            }`}
           >
             <div className="relative">
               <img

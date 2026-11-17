@@ -280,7 +280,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-4"
+      className="lt-backdrop-in fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="tracker-title"
@@ -288,7 +288,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
         if (event.target === event.currentTarget && !busy) onClose();
       }}
     >
-      <div className="liquid-glass flex max-h-[92vh] w-full max-w-[440px] flex-col overflow-hidden rounded-t-[28px] border border-white/[0.16] text-white sm:rounded-[28px]">
+      <div className="liquid-glass lt-sheet-up flex max-h-[92vh] w-full max-w-[440px] flex-col overflow-hidden rounded-t-[30px] border border-white/[0.16] text-white sm:rounded-[28px]">
         {/* Apple Sheet Drag Handle + Header */}
         <div className="border-b border-white/[0.08] px-6 pb-4 pt-3.5">
           <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-white/25 sm:hidden" />

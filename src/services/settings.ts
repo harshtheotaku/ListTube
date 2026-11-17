@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import {
   AppSettings,
   ContentFilterLevel,
+  FontStylePreset,
   ListStatus,
   ProfileVisibilitySettings,
   ScoreFormat,
@@ -18,6 +19,17 @@ export const PRESET_THEME_COLORS: Record<Exclude<ThemePreset, 'custom'>, ThemeCo
   light: { bg: '#F4F4F7', text: '#111115', accent: '#FF0000' },
 };
 
+export const FONT_STACKS: Record<FontStylePreset, string> = {
+  default:
+    '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif',
+  rounded:
+    '"SF Pro Rounded", "Quicksand", "Nunito", ui-rounded, -apple-system, BlinkMacSystemFont, sans-serif',
+  serif:
+    '"New York", Georgia, "Times New Roman", serif',
+  mono:
+    '"SF Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+};
+
 export const DEFAULT_SETTINGS: AppSettings = {
   autoplayTrailer: false,
   scoreFormat: 'POINT_10_DECIMAL',
@@ -25,6 +37,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   liquidGlass: true,
   themePreset: 'main',
   themeColors: { ...PRESET_THEME_COLORS.main },
+  fontFamily: 'default',
+  reduceMotion: false,
+  reduceBlur: false,
+  disableBlend: false,
   contentFilter: 'balanced',
   blockedGenres: [],
   showHomeForYou: true,
@@ -51,6 +67,10 @@ function mergeSettings(raw: Partial<AppSettings>): AppSettings {
     preset === 'custom'
       ? raw.themeColors ?? PRESET_THEME_COLORS.main
       : PRESET_THEME_COLORS[preset];
+  const fontFamily: FontStylePreset =
+    raw.fontFamily && ['default', 'rounded', 'serif', 'mono'].includes(raw.fontFamily)
+      ? raw.fontFamily
+      : 'default';
 
   return {
     autoplayTrailer: Boolean(raw.autoplayTrailer ?? DEFAULT_SETTINGS.autoplayTrailer),
@@ -67,6 +87,10 @@ function mergeSettings(raw: Partial<AppSettings>): AppSettings {
       text: baseColors.text || PRESET_THEME_COLORS.main.text,
       accent: baseColors.accent || PRESET_THEME_COLORS.main.accent,
     },
+    fontFamily,
+    reduceMotion: Boolean(raw.reduceMotion ?? false),
+    reduceBlur: Boolean(raw.reduceBlur ?? false),
+    disableBlend: Boolean(raw.disableBlend ?? false),
     contentFilter:
       raw.contentFilter && ['safe', 'balanced', 'mature'].includes(raw.contentFilter)
         ? raw.contentFilter
@@ -117,8 +141,12 @@ export function applyThemeToDocument(s: AppSettings): void {
   root.style.setProperty('--lt-bg', s.themeColors.bg);
   root.style.setProperty('--lt-text', s.themeColors.text);
   root.style.setProperty('--lt-accent', s.themeColors.accent);
+  root.style.setProperty('--font-sans', FONT_STACKS[s.fontFamily] ?? FONT_STACKS.default);
   root.dataset.theme = s.themePreset === 'light' ? 'light' : 'dark';
   root.dataset.liquidGlass = s.liquidGlass ? '1' : '0';
+  root.dataset.reduceMotion = s.reduceMotion ? '1' : '0';
+  root.dataset.reduceBlur = s.reduceBlur ? '1' : '0';
+  root.dataset.disableBlend = s.disableBlend ? '1' : '0';
 }
 
 let currentSettings = loadSettings();
