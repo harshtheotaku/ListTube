@@ -49,44 +49,63 @@
     transition: background-color 180ms ease, color 180ms ease;
   }
 
-  /* Daylight Light Theme Adaptation across Obsidian Utilities */
+  /* Daylight Light Theme Adaptation across Obsidian & Alpha Utilities */
   html[data-theme="light"] body {
-    background-color: #f4f4f7;
-    color: #121216;
-  }
-  html[data-theme="light"] main,
-  html[data-theme="light"] .bg-\[\#0F0F0F\] {
     background-color: #f4f4f7 !important;
     color: #121216 !important;
   }
-  html[data-theme="light"] .bg-\[\#181818\],
-  html[data-theme="light"] .bg-\[\#1F1F1F\],
-  html[data-theme="light"] .bg-\[\#161616\],
-  html[data-theme="light"] .bg-\[\#121212\] {
+  html[data-theme="light"] main,
+  html[data-theme="light"] [class*="bg-[#0F0F0F]"] {
+    background-color: #f4f4f7 !important;
+    color: #121216 !important;
+  }
+  html[data-theme="light"] [class*="bg-[#181818]"],
+  html[data-theme="light"] [class*="bg-[#1F1F1F]"],
+  html[data-theme="light"] [class*="bg-[#161616]"],
+  html[data-theme="light"] [class*="bg-[#141418]"],
+  html[data-theme="light"] [class*="bg-[#1A1A1A]"],
+  html[data-theme="light"] [class*="bg-[#212121]"],
+  html[data-theme="light"] [class*="bg-[#121212]"] {
     background-color: #ffffff !important;
     color: #141418 !important;
   }
-  html[data-theme="light"] .bg-\[\#272727\],
-  html[data-theme="light"] .bg-\[\#222222\] {
-    background-color: #e9eaef !important;
+  html[data-theme="light"] [class*="bg-[#272727]"],
+  html[data-theme="light"] [class*="bg-[#222222]"],
+  html[data-theme="light"] [class*="bg-[#2C2C2C]"] {
+    background-color: #e4e7ef !important;
     color: #141418 !important;
   }
   html[data-theme="light"] .text-white,
-  html[data-theme="light"] .text-\[\#F1F1F1\] {
+  html[data-theme="light"] [class*="text-[#F1F1F1]"],
+  html[data-theme="light"] [class*="text-[#CCCCCC]"],
+  html[data-theme="light"] .text-neutral-200,
+  html[data-theme="light"] .text-neutral-300 {
     color: #121216 !important;
   }
-  html[data-theme="light"] .text-\[\#AAAAAA\] {
-    color: #555762 !important;
+  html[data-theme="light"] [class*="text-[#AAAAAA]"],
+  html[data-theme="light"] [class*="text-[#8E8E93]"],
+  html[data-theme="light"] [class*="text-[#888888]"] {
+    color: #555866 !important;
   }
+  /* Preserve crisp white/gold labels inside dark poster badges even in Daylight mode */
+  html[data-theme="light"] .lt-overlay-badge,
+  html[data-theme="light"] [class*="bg-black/"] .text-white {
+    color: #ffffff !important;
+  }
+  html[data-theme="light"] .border-white\/\[0\.06\],
   html[data-theme="light"] .border-white\/\[0\.08\],
   html[data-theme="light"] .border-white\/\[0\.1\],
   html[data-theme="light"] .border-white\/\[0\.12\] {
     border-color: rgba(15, 18, 30, 0.12) !important;
   }
 
-  /* Custom User Accent & Background Overrides when Custom Theme is selected */
-  html[data-theme="dark"] .bg-\[\#0F0F0F\] {
-    background-color: var(--lt-bg);
+  /* Custom User Accent, Text & Background Overrides across Custom/OLED/Obsidian presets */
+  html[data-theme="dark"] [class*="bg-[#0F0F0F]"] {
+    background-color: var(--lt-bg) !important;
+  }
+  html[data-theme="dark"] body {
+    background-color: var(--lt-bg) !important;
+    color: var(--lt-text) !important;
   }
   .lt-accent-bg {
     background-color: var(--lt-accent) !important;

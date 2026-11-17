@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, BookOpen, Dice5, Film, Loader2, Music, RefreshCw, Sparkles, Upload, X } from 'lucide-react';
+import { ArrowRight, Loader2, RefreshCw, Sparkles, Upload, X } from 'lucide-react';
 import { Anime, LibraryState, MediaType, ScoredAnime } from '../types';
 import {
   getRecommendationPage,
@@ -123,7 +123,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onNavigate,
   onOpenTrackers,
   onQuickAdd,
-  onOpenQuiz,
 }) => {
   const settings = useSettings();
   const initialRotation = useMemo(() => readRotation(mediaType), [mediaType]);
@@ -392,7 +391,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
   };
 
   const showOnboarding = !dismissed && trackedCount === 0 && !library.trackers.length;
-  const genresLabel = bundle?.profile.genres.slice(0, 3).map((g) => g.name).join(' · ');
 
   const initialCombined = useMemo(() => {
     if (!bundle) return [];
@@ -468,8 +466,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
       )}
 
-      {/* YouTube Category Chips Bar */}
-      <div className="sticky top-14 z-30 flex items-center gap-2.5 overflow-x-auto border-b border-white/[0.06] bg-[#0F0F0F]/95 px-4 py-3 backdrop-blur-xl no-scrollbar sm:px-6 lg:px-8">
+      {/* YouTube Category Chips Bar (Scrolls cleanly with feed for fullscreen immersion) */}
+      <div className="flex items-center gap-2 overflow-x-auto px-4 pb-1 pt-2.5 no-scrollbar sm:px-6 lg:px-8">
         {chips.map((chip) => {
           const isSelected = selectedChip === chip;
           return (
@@ -477,94 +475,23 @@ export const HomeView: React.FC<HomeViewProps> = ({
               key={chip}
               type="button"
               onClick={() => setSelectedChip(chip)}
-              className={`lt-press shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-medium ${
+              className={`lt-press shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold ${
                 isSelected
-                  ? 'bg-[#F1F1F1] font-semibold text-[#0F0F0F] shadow-sm'
-                  : 'bg-[#272727]/90 text-[#F1F1F1] hover:bg-[#3F3F3F]'
+                  ? 'bg-[#F1F1F1] text-[#0F0F0F] shadow-sm'
+                  : 'bg-[#272727] text-[#F1F1F1] hover:bg-[#3F3F3F]'
               }`}
             >
               {chip}
             </button>
           );
         })}
-      </div>
-
-      {/* For You Header + Accessible Anime | Manga Mode Switch (Refresh works via pull/scroll at top like YouTube) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-        <div>
-          <h1 className="text-[20px] font-bold tracking-tight text-white sm:text-[22px]">
-            {selectedChip === 'All'
-              ? isManga
-                ? 'For You · Manga & Manhwa'
-                : 'For You'
-              : selectedChip}
-          </h1>
-          <p className="mt-0.5 text-[12.5px] text-[#AAAAAA]">
-            {trackedCount > 0
-              ? `Tuned to ${genresLabel || 'your subscriptions'} · Scroll up at top to refresh`
-              : `Subscribe to ${isManga ? 'manga' : 'anime'} · Pull down at top for fresh picks`}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {onOpenQuiz && (
-            <button
-              type="button"
-              onClick={onOpenQuiz}
-              className="flex items-center gap-1.5 rounded-full border border-white/[0.12] bg-[#181818] px-3.5 py-2 text-[12px] font-bold text-[#3EA6FF] transition hover:bg-[#272727]"
-              title="Play Opening & Ending Theme Song Trivia"
-            >
-              <Music className="h-3.5 w-3.5" />
-              <span>OP/ED Quiz</span>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              const pool = (bundle?.forYou ?? []).map((x) => x.anime);
-              if (pool.length === 0) return;
-              const pick = pool[Math.floor(Math.random() * Math.min(pool.length, 14))];
-              if (pick) onOpen(pick);
-            }}
-            disabled={!bundle?.forYou?.length}
-            className="flex items-center gap-1.5 rounded-full border border-white/[0.12] bg-[#181818] px-3.5 py-2 text-[12px] font-bold text-amber-300 transition hover:bg-[#272727] disabled:opacity-40"
-            title="Spin personalized roulette from your top matches"
-          >
-            <Dice5 className="h-3.5 w-3.5" />
-            <span>Roulette</span>
-          </button>
-
-          <div
-            className="flex shrink-0 items-center rounded-full border border-white/[0.12] bg-[#181818] p-1"
-            role="group"
-            aria-label="Switch between Anime and Manga"
-          >
-            <button
-              type="button"
-              onClick={() => onMediaTypeChange('ANIME')}
-              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
-                mediaType === 'ANIME'
-                  ? 'bg-[#FF0000] text-white shadow'
-                  : 'text-[#AAAAAA] hover:text-white'
-              }`}
-            >
-              <Film className="h-3.5 w-3.5" />
-              Anime
-            </button>
-            <button
-              type="button"
-              onClick={() => onMediaTypeChange('MANGA')}
-              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
-                mediaType === 'MANGA'
-                  ? 'bg-[#FF0000] text-white shadow'
-                  : 'text-[#AAAAAA] hover:text-white'
-              }`}
-            >
-              <BookOpen className="h-3.5 w-3.5" />
-              Manga
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={() => onMediaTypeChange(isManga ? 'ANIME' : 'MANGA')}
+          className="lt-press shrink-0 rounded-lg bg-[#272727] px-3 py-1.5 text-[12.5px] font-semibold text-[#F1F1F1] hover:bg-[#3F3F3F]"
+        >
+          {isManga ? 'Switch: Anime' : 'Switch: Manga'}
+        </button>
       </div>
 
       {/* Inline Home Search Results when Home's Search Bar has input */}
@@ -667,107 +594,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </section>
       )}
 
-      {/* Mobile BitChord Spotlight Carousel + Compact Recents */}
-      {!loading &&
-        !error &&
-        settings.showHomeForYou &&
-        selectedChip === 'All' &&
-        visibleInitial.length >= 3 && (
-          <section className="space-y-5 sm:hidden" aria-label="Mobile Spotlight">
-            <div>
-              <div className="mb-2.5 flex items-center justify-between px-4">
-                <h2 className="text-[19px] font-extrabold tracking-tight text-white">
-                  Top Picks for You
-                </h2>
-                <span className="text-[11px] font-semibold text-[#8E8E93]">Swipe →</span>
-              </div>
-              <div className="lt-snap-x flex gap-3.5 overflow-x-auto px-4 pb-1 no-scrollbar">
-                {visibleInitial.slice(0, 6).map((item, idx) => (
-                  <button
-                    key={`spot-${item.anime.id}`}
-                    type="button"
-                    onClick={() => onOpen(item.anime)}
-                    className="lt-press lt-snap-start relative aspect-[3/4] w-[72vw] max-w-[260px] shrink-0 overflow-hidden rounded-[26px] border border-white/[0.12] bg-[#141418] text-left shadow-2xl"
-                  >
-                    <img
-                      src={item.anime.cover}
-                      alt={item.anime.title}
-                      loading={idx < 2 ? 'eager' : 'lazy'}
-                      className="h-full w-full object-cover"
-                    />
-                    <div className="lt-ambient-blend pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.08] via-transparent to-black/30" />
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black via-black/45 to-transparent" />
-                    <span className="absolute right-3.5 top-3.5 rounded-full bg-black/55 px-2.5 py-1 text-[10.5px] font-bold text-white backdrop-blur-md">
-                      {item.anime.score ? `★ ${item.anime.score.toFixed(1)}` : item.anime.format || 'Pick'}
-                    </span>
-                    <div className="absolute inset-x-0 bottom-0 p-4">
-                      <p className="text-[11px] font-semibold text-white/75 line-clamp-1">
-                        {item.reason || 'Tailored for your taste'}
-                      </p>
-                      <h3 className="mt-0.5 line-clamp-2 text-[17px] font-extrabold leading-tight tracking-tight text-white">
-                        {item.anime.title}
-                      </h3>
-                      <p className="mt-1 line-clamp-1 text-[11px] font-medium text-white/70">
-                        {item.anime.genres.slice(0, 3).join(' · ')}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {settings.showHomeSubscriptions && visibleSubscriptions.length > 0 && (
-              <div>
-                <div className="mb-2 flex items-center justify-between px-4">
-                  <h2 className="text-[17px] font-extrabold tracking-tight text-white">
-                    {isManga ? 'Recent Reads' : 'Recent Episodes'}
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => onNavigate('list')}
-                    className="text-[11.5px] font-bold text-[#3EA6FF]"
-                  >
-                    See all
-                  </button>
-                </div>
-                <div className="lt-snap-x grid auto-cols-[84vw] grid-flow-col grid-rows-3 gap-x-3 gap-y-2 overflow-x-auto px-4 no-scrollbar">
-                  {visibleSubscriptions.slice(0, 9).map((anime) => {
-                    const entry = library.entries[anime.id];
-                    const totalCount = isManga ? anime.chapters : anime.episodes;
-                    return (
-                      <button
-                        key={`rec-${anime.id}`}
-                        type="button"
-                        onClick={() => onOpen(anime)}
-                        className="lt-press lt-snap-start flex items-center gap-3 rounded-2xl bg-white/[0.04] p-2 pr-3 text-left ring-1 ring-white/[0.06] hover:bg-white/[0.08]"
-                      >
-                        <img
-                          src={anime.cover}
-                          alt={anime.title}
-                          loading="lazy"
-                          className="h-12 w-12 shrink-0 rounded-xl object-cover bg-black"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13.5px] font-semibold text-white">
-                            {anime.title}
-                          </p>
-                          <p className="truncate text-[11.5px] text-[#8E8E93]">
-                            {entry?.progress
-                              ? `${isManga ? 'Ch' : 'Ep'} ${entry.progress}${totalCount ? ` / ${totalCount}` : ''}`
-                              : anime.studios[0] || anime.genres[0] || 'Subscribed'}
-                          </p>
-                        </div>
-                        <ArrowRight className="h-4 w-4 shrink-0 text-[#6E6E73]" />
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </section>
-        )}
-
-      {/* Top Personalized Feed */}
+      {/* Main YouTube Feed Grid */}
       {settings.showHomeForYou && (
         <section className="px-4 sm:px-6 lg:px-8">
           {loading ? (

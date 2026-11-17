@@ -792,6 +792,26 @@ export const App: React.FC = () => {
     }
   };
 
+  const spinRoulette = () => {
+    const excluded = new Set([
+      ...Object.keys(libraryState.entries),
+      ...libraryState.notInterested,
+    ]);
+    const pool = animeStore
+      .all()
+      .filter(
+        (a) =>
+          (a.mediaType ?? 'ANIME') === mediaType &&
+          !excluded.has(a.id) &&
+          a.cover &&
+          (a.score ?? 0) >= 7.3
+      );
+    const list = pool.length ? pool : animeStore.all().filter((a) => (a.mediaType ?? 'ANIME') === mediaType && a.cover);
+    if (!list.length) return;
+    const picked = list[Math.floor(Math.random() * Math.min(list.length, 30))];
+    if (picked) openAnime(picked);
+  };
+
   return (
     <div className="min-h-screen w-full overflow-x-clip bg-[#0F0F0F] text-[#F1F1F1]">
       <TopBar
@@ -827,6 +847,8 @@ export const App: React.FC = () => {
           onOpenTrackers={() => setTrackersOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenNotifications={() => setNotificationsOpen(true)}
+          onOpenQuiz={() => setQuizOpen(true)}
+          onSpinRoulette={spinRoulette}
           trackers={libraryState.trackers}
           stats={stats}
         />
@@ -847,6 +869,8 @@ export const App: React.FC = () => {
           onOpenTrackers={() => setTrackersOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenNotifications={() => setNotificationsOpen(true)}
+          onOpenQuiz={() => setQuizOpen(true)}
+          onSpinRoulette={spinRoulette}
           trackers={libraryState.trackers}
           stats={stats}
         />
@@ -938,6 +962,7 @@ export const App: React.FC = () => {
                 {tab === 'schedule' && (
                   <ScheduleView
                     libraryState={libraryState}
+                    mediaType={mediaType}
                     query={queriesByTab.schedule}
                     onOpen={openAnime}
                     onOpenChannel={openChannel}

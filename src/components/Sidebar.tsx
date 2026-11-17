@@ -6,9 +6,11 @@ import {
   ChevronDown,
   ChevronRight,
   Compass,
+  Dice5,
   Film,
   Home,
   Menu,
+  Music,
   Newspaper,
   Settings,
   Sparkles,
@@ -38,6 +40,8 @@ interface SidebarProps {
   onOpenTrackers: () => void;
   onOpenSettings: () => void;
   onOpenNotifications?: () => void;
+  onOpenQuiz?: () => void;
+  onSpinRoulette?: () => void;
   trackers: TrackerAccount[];
   stats: { tracked: number; watching: number };
 }
@@ -55,6 +59,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenTrackers,
   onOpenSettings,
   onOpenNotifications,
+  onOpenQuiz,
+  onSpinRoulette,
   trackers,
   stats,
 }) => {
@@ -182,6 +188,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
           active={active === 'explore'}
           onClick={() => handleNav('explore')}
         />
+        <SidebarItem
+          icon={Sparkles}
+          label="For You"
+          active={active === 'feed'}
+          onClick={() => handleNav('feed')}
+        />
+        {onOpenQuiz && (
+          <SidebarItem
+            icon={Music}
+            label="OP/ED Quiz"
+            active={false}
+            onClick={() => {
+              onClose?.();
+              onOpenQuiz();
+            }}
+          />
+        )}
+        {onSpinRoulette && (
+          <SidebarItem
+            icon={Dice5}
+            label="Roulette"
+            active={false}
+            onClick={() => {
+              onClose?.();
+              onSpinRoulette();
+            }}
+          />
+        )}
       </nav>
 
       <div className="my-3 border-t border-white/[0.08]" />

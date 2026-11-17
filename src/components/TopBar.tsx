@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Building2, Cloud, Menu, Search, Star, User, Users, X } from 'lucide-react';
+import { ArrowLeft, Building2, Menu, Search, Star, User, Users, X } from 'lucide-react';
 import {
   Anime,
   FavoriteCharacterItem,
@@ -11,8 +11,6 @@ import {
 import { searchSmart } from '../services/search';
 import { searchAniListCharacters, searchAniListStaff } from '../services/anilist';
 import { fetchPublicUsers } from '../services/community';
-import { useProfile } from '../services/profile';
-import { useCloudSync } from '../services/cloudSync';
 import { useSettings } from '../services/settings';
 import { useChromeVisible } from '../services/scrollChrome';
 import { EntityRouteTarget } from './EntityView';
@@ -28,10 +26,10 @@ interface TopBarProps {
   onOpenAnime: (anime: Anime) => void;
   onOpenEntity?: (target: EntityRouteTarget) => void;
   onOpenUser?: (userIdOrHandle: string) => void;
-  onOpenTrackers: () => void;
+  onOpenTrackers?: () => void;
   onToggleSidebar?: () => void;
   mediaType: MediaType;
-  trackers: TrackerAccount[];
+  trackers?: TrackerAccount[];
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -42,10 +40,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenAnime,
   onOpenEntity,
   onOpenUser,
-  onOpenTrackers,
   onToggleSidebar,
   mediaType,
-  trackers,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -56,11 +52,12 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [userResults, setUserResults] = useState<PublicUserSummary[]>([]);
   const [dropdownBusy, setDropdownBusy] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const searchTicket = useRef(0);
-  const profile = useProfile();
-  const cloud = useCloudSync();
   const settings = useSettings();
   const chromeVisible = useChromeVisible();
+
+  const showSearchBar = searchExpanded || Boolean(query.trim());
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -68,12 +65,16 @@ export const TopBar: React.FC<TopBarProps> = ({
         const target = event.target as HTMLElement | null;
         if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
         event.preventDefault();
-        inputRef.current?.focus();
+        setSearchExpanded(true);
+        setTimeout(() => inputRef.current?.focus(), 20);
+      } else if (event.key === 'Escape' && showSearchBar) {
+        setDropdownOpen(false);
+        setSearchExpanded(false);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [showSearchBar]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -126,9 +127,7 @@ export const TopBar: React.FC<TopBarProps> = ({
     return () => clearTimeout(timer);
   }, [query, mediaType, searchEntity]);
 
-  const connected = trackers[0];
-
-  const headerShown = chromeVisible || dropdownOpen || Boolean(query.trim());
+  const headerShown = chromeVisible || dropdownOpen || showSearchBar;
 
   return (
     <header
@@ -143,86 +142,118 @@ export const TopBar: React.FC<TopBarProps> = ({
       }`}
     >
       <div className="flex h-14 items-center justify-between gap-2 px-3 sm:gap-3 sm:px-5">
-        {/* Left: Three-Line Menu Button + ListTube Logo */}
-        <div className="flex shrink-0 items-center gap-2">
-          {onToggleSidebar && (
-            <button
-              type="button"
-              onClick={onToggleSidebar}
-              aria-label="Toggle menu"
-              className="flex rounded-full p-2 text-white transition hover:bg-[#272727]"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onHome}
-            className="flex shrink-0 items-center focus:outline-none"
-            aria-label="ListTube Home"
-          >
-            <ListTubeLogo />
-          </button>
-        </div>
-
-        {/* Center: Clean Search Bar with Autocomplete Dropdown */}
-        <div ref={dropdownRef} className="relative min-w-0 flex-1 sm:max-w-xl">
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              setDropdownOpen(false);
-              onSubmit();
-            }}
-            className="flex items-center"
-            role="search"
-          >
-            <div className="relative flex flex-1 items-center">
-              <input
-                ref={inputRef}
-                value={query}
-                onFocus={() => setDropdownOpen(true)}
-                onChange={(event) => {
-                  onQueryChange(event.target.value);
-                  setDropdownOpen(true);
-                }}
-                placeholder={
-                  mediaType === 'MANGA'
-                    ? 'Search manga (e.g. "vagab", "berserk")…'
-                    : 'Search anime (e.g. "shang", "frieren", "aot")…'
-                }
-                className={`h-9 w-full rounded-l-full border pl-4 pr-8 text-[16px] text-white placeholder:text-[13px] placeholder:text-[#888888] outline-none transition focus:border-[#3EA6FF] lg:text-[13px] ${
-                  settings.liquidGlass
-                    ? 'border-white/[0.18] bg-white/[0.07]'
-                    : 'border-white/[0.15] bg-[#121212]'
-                }`}
-                aria-label="Search"
-              />
-              {query && (
+        {!showSearchBar ? (
+          <>
+            {/* YouTube-Minimal Left: Hamburger + Authentic Non-AI Mascot Logo */}
+            <div className="flex shrink-0 items-center gap-2">
+              {onToggleSidebar && (
                 <button
                   type="button"
-                  onClick={() => {
-                    onQueryChange('');
-                    setSuggestions([]);
-                  }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#AAAAAA] hover:bg-white/10 hover:text-white"
-                  aria-label="Clear search"
+                  onClick={onToggleSidebar}
+                  aria-label="Toggle menu"
+                  className="lt-press flex rounded-full p-2 text-white transition hover:bg-[#272727]"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <Menu className="h-5 w-5" />
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchExpanded(false);
+                  onHome();
+                }}
+                className="lt-press flex shrink-0 items-center focus:outline-none"
+                aria-label="ListTube Home"
+              >
+                <ListTubeLogo />
+              </button>
             </div>
+
+            {/* YouTube-Clean Right: Search Icon Button Only (Account moved to You tab!) */}
+            <div className="flex shrink-0 items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchExpanded(true);
+                  setTimeout(() => inputRef.current?.focus(), 20);
+                }}
+                aria-label="Open search"
+                className="lt-press flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-white/[0.1]"
+              >
+                <Search className="h-[21px] w-[21px]" />
+              </button>
+            </div>
+          </>
+        ) : (
+          <div ref={dropdownRef} className="relative flex flex-1 items-center gap-2">
             <button
-              type="submit"
-              aria-label="Search"
-              className={`flex h-9 items-center justify-center rounded-r-full border border-l-0 px-4 text-white transition ${
-                settings.liquidGlass
-                  ? 'border-white/[0.18] bg-white/[0.12] hover:bg-white/[0.2]'
-                  : 'border-white/[0.15] bg-[#222222] hover:bg-[#2F2F2F]'
-              }`}
+              type="button"
+              onClick={() => {
+                setDropdownOpen(false);
+                setSearchExpanded(false);
+                if (query) onQueryChange('');
+              }}
+              aria-label="Close search"
+              className="lt-press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white hover:bg-white/[0.1]"
             >
-              <Search className="h-4 w-4" />
+              <ArrowLeft className="h-5 w-5" />
             </button>
-          </form>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                setDropdownOpen(false);
+                onSubmit();
+              }}
+              className="flex min-w-0 flex-1 items-center"
+              role="search"
+            >
+              <div className="relative flex flex-1 items-center">
+                <input
+                  ref={inputRef}
+                  value={query}
+                  onFocus={() => setDropdownOpen(true)}
+                  onChange={(event) => {
+                    onQueryChange(event.target.value);
+                    setDropdownOpen(true);
+                  }}
+                  placeholder={
+                    mediaType === 'MANGA'
+                      ? 'Search manga, manhwa, characters, staff…'
+                      : 'Search anime, characters, voice actors, users…'
+                  }
+                  className={`h-9 w-full rounded-l-full border pl-4 pr-8 text-[16px] text-white placeholder:text-[13px] placeholder:text-[#888888] outline-none transition focus:border-[#3EA6FF] lg:text-[13.5px] ${
+                    settings.liquidGlass
+                      ? 'border-white/[0.18] bg-white/[0.08]'
+                      : 'border-white/[0.15] bg-[#121212]'
+                  }`}
+                  aria-label="Search"
+                />
+                {query && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onQueryChange('');
+                      setSuggestions([]);
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#AAAAAA] hover:bg-white/10 hover:text-white"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <button
+                type="submit"
+                aria-label="Search"
+                className={`flex h-9 items-center justify-center rounded-r-full border border-l-0 px-4 text-white transition ${
+                  settings.liquidGlass
+                    ? 'border-white/[0.18] bg-white/[0.12] hover:bg-white/[0.2]'
+                    : 'border-white/[0.15] bg-[#222222] hover:bg-[#2F2F2F]'
+                }`}
+              >
+                <Search className="h-4 w-4" />
+              </button>
+            </form>
 
           {/* Multi-Entity Live Autocomplete Dropdown */}
           {dropdownOpen && query.trim().length >= 2 && (
@@ -369,11 +400,17 @@ export const TopBar: React.FC<TopBarProps> = ({
                       }}
                       className="flex w-full items-center gap-3 px-4 py-1.5 text-left transition hover:bg-white/[0.08]"
                     >
-                      <img
-                        src={u.avatarUrl || profile.avatarUrl}
-                        alt=""
-                        className="h-9 w-9 shrink-0 rounded-full object-cover bg-black"
-                      />
+                      {u.avatarUrl ? (
+                        <img
+                          src={u.avatarUrl}
+                          alt=""
+                          className="h-9 w-9 shrink-0 rounded-full object-cover bg-black"
+                        />
+                      ) : (
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white">
+                          <User className="h-4 w-4" />
+                        </span>
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[12.5px] font-semibold text-white">{u.displayName}</p>
                         <p className="truncate text-[10.5px] text-[#AAAAAA]">{u.handle}</p>
@@ -415,51 +452,8 @@ export const TopBar: React.FC<TopBarProps> = ({
               </button>
             </div>
           )}
-        </div>
-
-        {/* Minimal Corner Sign In Pill (Only corner control beside search!) */}
-        <div className="flex shrink-0 items-center">
-          <button
-            type="button"
-            onClick={onOpenTrackers}
-            aria-label={connected ? `Connected as ${connected.username}` : 'Sign in'}
-            className={`lt-press flex items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 text-[12px] font-semibold text-white transition sm:py-1.5 sm:pl-1.5 sm:pr-3 ${
-              settings.liquidGlass
-                ? 'border-white/[0.18] bg-white/[0.08] backdrop-blur-md hover:bg-white/[0.16]'
-                : 'border-white/[0.16] bg-[#222222] hover:bg-[#333333]'
-            }`}
-          >
-            <div className="relative">
-              <img
-                src={profile.avatarUrl}
-                alt={profile.name}
-                className="h-6 w-6 rounded-full object-cover"
-              />
-              {cloud.isLinked && (
-                <span
-                  title={cloud.userEmail ? `Cloud Sync: ${cloud.userEmail}` : cloud.state}
-                  className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-[#222222] ${
-                    cloud.state === 'syncing'
-                      ? 'bg-amber-400'
-                      : cloud.state === 'error'
-                      ? 'bg-rose-400'
-                      : 'bg-emerald-400'
-                  }`}
-                />
-              )}
-            </div>
-            {connected ? (
-              <span className="hidden max-w-[90px] truncate sm:block">{connected.username}</span>
-            ) : cloud.isLinked ? (
-              <span className="hidden items-center gap-1 text-emerald-300 sm:inline-flex">
-                <Cloud className="h-3.5 w-3.5" />
-                Synced
-              </span>
-            ) : (
-              <span className="text-[11.5px] font-bold text-[#3EA6FF]">Sign In</span>
-            )}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
     </header>
   );

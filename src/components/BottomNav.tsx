@@ -1,7 +1,9 @@
 import React from 'react';
-import { Compass, Home, MessageSquareHeart, Tv, User } from 'lucide-react';
+import { Compass, Home, MessageSquareHeart, Tv } from 'lucide-react';
 import { useSettings } from '../services/settings';
 import { useChromeVisible } from '../services/scrollChrome';
+import { useProfile } from '../services/profile';
+import { useCloudSync } from '../services/cloudSync';
 import { AppTab } from './Sidebar';
 
 interface BottomNavProps {
@@ -9,21 +11,53 @@ interface BottomNavProps {
   onNavigate: (tab: AppTab) => void;
 }
 
-const ITEMS: { id: AppTab; label: string; icon: React.ElementType }[] = [
+const ITEMS: { id: AppTab; label: string; icon?: React.ElementType }[] = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'explore', label: 'Explore', icon: Compass },
   { id: 'feed', label: 'Feed', icon: MessageSquareHeart },
   { id: 'list', label: 'Subs', icon: Tv },
-  { id: 'you', label: 'You', icon: User },
+  { id: 'you', label: 'You' },
 ];
 
 export const BottomNav: React.FC<BottomNavProps> = ({ active, onNavigate }) => {
   const settings = useSettings();
   const chromeVisible = useChromeVisible();
+  const profile = useProfile();
+  const cloud = useCloudSync();
 
   const hideClass = chromeVisible
     ? 'translate-y-0 opacity-100'
     : 'translate-y-[145%] opacity-0 pointer-events-none';
+
+  const renderIcon = (item: (typeof ITEMS)[number], isActive: boolean) => {
+    if (item.id === 'you' || !item.icon) {
+      return (
+        <span className="relative inline-flex">
+          <img
+            src={profile.avatarUrl}
+            alt="You"
+            className={`h-[20px] w-[20px] rounded-full object-cover transition-transform duration-200 ${
+              isActive
+                ? 'scale-110 ring-2 ring-white'
+                : 'ring-1 ring-white/25'
+            }`}
+          />
+          {cloud.isLinked && (
+            <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-[#0F0F0F] bg-emerald-400" />
+          )}
+        </span>
+      );
+    }
+    const Icon = item.icon;
+    return (
+      <Icon
+        className={`h-[19px] w-[19px] transition-transform duration-200 ${
+          isActive ? 'scale-110' : 'scale-100'
+        }`}
+        style={isActive ? { color: 'var(--lt-accent)' } : undefined}
+      />
+    );
+  };
 
   if (settings.liquidGlass) {
     return (
@@ -34,7 +68,6 @@ export const BottomNav: React.FC<BottomNavProps> = ({ active, onNavigate }) => {
       >
         <div className="flex items-stretch justify-around gap-1">
           {ITEMS.map((item) => {
-            const Icon = item.icon;
             const isActive = active === item.id;
             return (
               <button
@@ -48,12 +81,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ active, onNavigate }) => {
                     : 'text-[#A6A6AE] hover:text-white'
                 }`}
               >
-                <Icon
-                  className={`h-[19px] w-[19px] transition-transform duration-200 ${
-                    isActive ? 'scale-110' : 'scale-100'
-                  }`}
-                  style={isActive ? { color: 'var(--lt-accent)' } : undefined}
-                />
+                {renderIcon(item, isActive)}
                 <span>{item.label}</span>
               </button>
             );
@@ -70,7 +98,6 @@ export const BottomNav: React.FC<BottomNavProps> = ({ active, onNavigate }) => {
     >
       <div className="mx-auto flex max-w-md items-stretch justify-around">
         {ITEMS.map((item) => {
-          const Icon = item.icon;
           const isActive = active === item.id;
           return (
             <button
@@ -82,10 +109,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ active, onNavigate }) => {
                 isActive ? 'text-white' : 'text-[#AAAAAA]'
               }`}
             >
-              <Icon
-                className="h-5 w-5"
-                style={isActive ? { color: 'var(--lt-accent)' } : undefined}
-              />
+              {renderIcon(item, isActive)}
               <span>{item.label}</span>
             </button>
           );

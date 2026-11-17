@@ -385,9 +385,11 @@ export const YouView: React.FC<YouViewProps> = ({
             <button
               type="button"
               onClick={onOpenTrackers}
-              className="rounded-full bg-[#F1F1F1] px-4 py-2 text-[12px] font-bold text-[#0F0F0F] transition hover:bg-white"
+              aria-label="Account and Sync"
+              className="lt-press inline-flex items-center gap-1.5 rounded-full bg-[#F1F1F1] px-4 py-2 text-[12px] font-bold text-[#0F0F0F] transition hover:bg-white"
             >
-              {connected || cloud.isLinked ? 'Manage Sync' : 'Connect Account'}
+              <Cloud className="h-3.5 w-3.5 text-[#0F0F0F]" />
+              <span>{connected || cloud.isLinked ? 'Manage Sync' : 'Account & Sync'}</span>
             </button>
           </div>
         </div>

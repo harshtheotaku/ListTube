@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Bell, Check, ChevronDown, ExternalLink, Film, Info, Star } from 'lucide-react';
+import { ArrowLeft, Bell, Calendar, Check, ChevronDown, Clock, ExternalLink, Film, Info, Star } from 'lucide-react';
 import {
   Anime,
   LibraryState,
@@ -9,7 +9,7 @@ import {
   statusLabel,
 } from '../types';
 import { channelHandleOf, fetchFranchiseSeasons, franchiseNameOf, isExtraWatchEntry } from '../services/franchise';
-import { fetchByStudio } from '../services/anilist';
+import { fetchByStudio, fetchFranchiseSchedule, FranchiseScheduleEntry } from '../services/anilist';
 import { getSimilar } from '../services/recommender';
 import { library } from '../services/library';
 import { AnimeCard } from './AnimeCard';
@@ -55,6 +55,8 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
   const [sortMode, setSortMode] = useState<SortMode>('oldest');
   const [descExpanded, setDescExpanded] = useState(false);
   const [listMenuOpen, setListMenuOpen] = useState(false);
+  const [franchiseSchedule, setFranchiseSchedule] = useState<FranchiseScheduleEntry[]>([]);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
 
   const isManga = (seedAnime.mediaType ?? 'ANIME') === 'MANGA';
   const channelName = franchiseNameOf(seedAnime.title);
@@ -98,6 +100,27 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
       cancelled = true;
     };
   }, [activeTab, seedAnime, seasons, related.length]);
+
+  useEffect(() => {
+    if (activeTab !== 'about' || seasons.length === 0) return;
+    let cancelled = false;
+    const ids = seasons
+      .map((s) => s.anilistId)
+      .filter((id): id is number => typeof id === 'number' && id > 0);
+    if (!ids.length) return;
+    setLoadingSchedule(true);
+    fetchFranchiseSchedule(ids)
+      .then((res) => {
+        if (!cancelled) setFranchiseSchedule(res);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoadingSchedule(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, seasons]);
 
   const primaryStudio =
     seedAnime.studios[0] || seasons.find((s) => s.studios.length > 0)?.studios[0] || '';
@@ -489,6 +512,62 @@ export const ChannelView: React.FC<ChannelViewProps> = ({
                   </span>
                 </div>
               </div>
+              {/* Release & Broadcast Schedule in Channel About */}
+              <div className="border-t border-white/10 pt-4">
+                <h3 className="mb-2.5 flex items-center gap-2 text-[14px] font-bold text-white">
+                  <Calendar className="h-4 w-4 text-[#FF0000]" />
+                  Broadcast &amp; Release Schedule
+                </h3>
+                {loadingSchedule ? (
+                  <p className="text-[12px] text-[#AAAAAA]">Checking live broadcast &amp; serialization status…</p>
+                ) : (() => {
+                  const airingEntries = franchiseSchedule.filter(
+                    (f) => f.nextEpisode || f.status === 'RELEASING' || f.status === 'NOT_YET_RELEASED'
+                  );
+                  if (airingEntries.length === 0) {
+                    return (
+                      <p className="text-[12.5px] text-[#AAAAAA]">
+                        All indexed entries in this {isManga ? 'manga series' : 'franchise'} have completed their original run ({seedAnime.status || 'Finished'}).
+                      </p>
+                    );
+                  }
+                  return (
+                    <div className="space-y-2">
+                      {airingEntries.map((entryItem) => {
+                        const matchedSeason = seasons.find((s) => s.anilistId === entryItem.anilistId);
+                        const next = entryItem.nextEpisode;
+                        const dt = next ? new Date(next.airingAt * 1000) : null;
+                        return (
+                          <button
+                            key={entryItem.anilistId}
+                            type="button"
+                            onClick={() => matchedSeason && onOpenAnime(matchedSeason)}
+                            className="flex w-full items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-black/25 px-3.5 py-2.5 text-left transition hover:bg-white/[0.06]"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[13px] font-bold text-white">{entryItem.title}</p>
+                              <p className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-[#AAAAAA]">
+                                <Clock className="h-3 w-3 text-[#FF0000]" />
+                                {next && dt
+                                  ? `Episode ${next.episode} · ${dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} at ${dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
+                                  : entryItem.status === 'NOT_YET_RELEASED'
+                                  ? 'Upcoming release (TBA / Pre-release)'
+                                  : isManga
+                                  ? 'Ongoing Serialization (New chapters releasing periodically)'
+                                  : 'Currently Airing'}
+                              </p>
+                            </div>
+                            <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10.5px] font-bold text-emerald-300">
+                              {next ? `EP ${next.episode}` : entryItem.status === 'NOT_YET_RELEASED' ? 'Upcoming' : 'Ongoing'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
               <div className="flex flex-wrap gap-2 border-t border-white/10 pt-4">
                 <a
                   href={

@@ -999,6 +999,122 @@ export async function fetchAiringSchedule(): Promise<ScheduleItem[]> {
   );
 }
 
+export interface MangaScheduleItem {
+  id: string;
+  group: 'Weekly & Ongoing Serialization' | 'Korean Manhwa Updates' | 'Upcoming Manga Debuts';
+  badge: string;
+  subtitle: string;
+  anime: Anime;
+}
+
+const MANGA_SCHEDULE_QUERY = `
+  query MangaSchedule($page: Int) {
+    Page(page: $page, perPage: 40) {
+      media(type: MANGA, status_in: [RELEASING, NOT_YET_RELEASED], sort: [TRENDING_DESC, POPULARITY_DESC], isAdult: false) {
+        ${CORE}
+      }
+    }
+  }
+`;
+
+export async function fetchMangaReleaseSchedule(): Promise<MangaScheduleItem[]> {
+  return cached(
+    `manga_schedule:v1`,
+    async () => {
+      const data = await request<{ Page?: { media?: AniListMedia[] } }>(MANGA_SCHEDULE_QUERY, { page: 1 });
+      const rows = data.Page?.media ?? [];
+      const out: MangaScheduleItem[] = [];
+      const toRemember: Anime[] = [];
+      for (const raw of rows) {
+        const manga = mapMedia(raw, 'MANGA');
+        if (!manga.cover) continue;
+        toRemember.push(manga);
+        const upcoming = raw.status === 'NOT_YET_RELEASED';
+        const isKorean = raw.countryOfOrigin === 'KR';
+        const group: MangaScheduleItem['group'] = upcoming
+          ? 'Upcoming Manga Debuts'
+          : isKorean
+          ? 'Korean Manhwa Updates'
+          : 'Weekly & Ongoing Serialization';
+        out.push({
+          id: `msched-${manga.id}`,
+          group,
+          badge: upcoming
+            ? 'UPCOMING'
+            : manga.chapters
+            ? `${manga.chapters} CH`
+            : isKorean
+            ? 'MANHWA'
+            : 'ONGOING',
+          subtitle: upcoming
+            ? manga.year
+              ? `Expected ${manga.year}`
+              : 'Scheduled upcoming release'
+            : manga.chapters
+            ? `${manga.chapters} chapters released · Ongoing serialization`
+            : 'Active ongoing serialization',
+          anime: manga,
+        });
+      }
+      animeStore.rememberMany(toRemember);
+      return out;
+    },
+    15 * 60 * 1000
+  );
+}
+
+export interface FranchiseScheduleEntry {
+  anilistId: number;
+  title: string;
+  status: string;
+  nextEpisode?: {
+    episode: number;
+    airingAt: number;
+  };
+}
+
+const FRANCHISE_SCHEDULE_QUERY = `
+  query FranchiseSchedule($ids: [Int]) {
+    Page(page: 1, perPage: 30) {
+      media(id_in: $ids) {
+        id
+        status
+        title { english romaji }
+        nextAiringEpisode { airingAt episode }
+      }
+    }
+  }
+`;
+
+export async function fetchFranchiseSchedule(ids: number[]): Promise<FranchiseScheduleEntry[]> {
+  const cleanIds = [...new Set(ids.filter((id) => Number.isFinite(id) && id > 0))].slice(0, 25);
+  if (!cleanIds.length) return [];
+  return cached(
+    `fsched:${cleanIds.join(',')}`,
+    async () => {
+      const data = await request<{
+        Page?: {
+          media?: {
+            id: number;
+            status?: string;
+            title?: { english?: string; romaji?: string };
+            nextAiringEpisode?: { airingAt: number; episode: number } | null;
+          }[];
+        };
+      }>(FRANCHISE_SCHEDULE_QUERY, { ids: cleanIds });
+      return (data.Page?.media ?? []).map((m) => ({
+        anilistId: m.id,
+        title: m.title?.english || m.title?.romaji || `#${m.id}`,
+        status: m.status || 'FINISHED',
+        nextEpisode: m.nextAiringEpisode
+          ? { episode: m.nextAiringEpisode.episode, airingAt: m.nextAiringEpisode.airingAt }
+          : undefined,
+      }));
+    },
+    15 * 60 * 1000
+  );
+}
+
 const BY_MAL_IDS_QUERY = `
   query ByMalIds($ids: [Int], $type: MediaType) {
     Page(page: 1, perPage: 50) {

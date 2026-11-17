@@ -85,10 +85,12 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
 
   return (
     <div className="lt-press group relative flex w-full flex-col">
-      {/* Thumbnail Container: 4:5 Portrait for Manga, 16:9 Landscape for Anime */}
+      {/* Thumbnail Container: 4:5 Portrait for Manga, Full-bleed 16:9 Landscape on phones for Anime */}
       <div
-        className={`relative w-full overflow-hidden rounded-2xl bg-[#141418] ring-1 ring-white/[0.06] ${
-          isManga ? 'aspect-[4/5]' : 'aspect-video'
+        className={`relative overflow-hidden bg-[#141418] ring-1 ring-white/[0.06] ${
+          isManga
+            ? 'aspect-[4/5] w-full rounded-2xl'
+            : '-mx-4 w-[calc(100%+2rem)] aspect-video rounded-none sm:mx-0 sm:w-full sm:rounded-2xl'
         }`}
       >
         {isManga ? (
@@ -145,13 +147,13 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
         />
 
         {isManga && originLabel && (
-          <span className="pointer-events-none absolute left-2 top-2 z-[3] rounded bg-black/80 px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-white/95 backdrop-blur-sm">
+          <span className="lt-overlay-badge pointer-events-none absolute left-2 top-2 z-[3] rounded bg-black/80 px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-white/95 backdrop-blur-sm">
             {originLabel}
           </span>
         )}
 
         {!isManga && anime.trailerYoutubeId && (
-          <span className="pointer-events-none absolute left-2 top-2 z-[3] flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
+          <span className="lt-overlay-badge pointer-events-none absolute left-2 top-2 z-[3] flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-[10px] font-bold text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
             <Play className="h-2.5 w-2.5 fill-white" />
             Trailer
           </span>
@@ -159,8 +161,8 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
 
         {!isManga && status && (
           <span
-            className={`pointer-events-none absolute right-2 top-2 z-[3] flex items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide backdrop-blur-md ${
-              status === 'watching' ? 'bg-[#FF0000] text-white' : 'bg-black/80 text-neutral-200'
+            className={`lt-overlay-badge pointer-events-none absolute right-2 top-2 z-[3] flex items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide backdrop-blur-md ${
+              status === 'watching' ? 'bg-[#FF0000] text-white' : 'bg-black/80 text-white'
             }`}
           >
             {status === 'watching' ? (
@@ -173,7 +175,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
         )}
 
         {badgeDuration && (
-          <span className="pointer-events-none absolute bottom-2 right-2 z-[3] rounded bg-black/85 px-1.5 py-0.5 text-[11px] font-semibold tracking-tight text-white">
+          <span className="lt-overlay-badge pointer-events-none absolute bottom-2 right-2 z-[3] rounded bg-black/85 px-1.5 py-0.5 text-[11px] font-semibold tracking-tight text-white">
             {badgeDuration}
           </span>
         )}

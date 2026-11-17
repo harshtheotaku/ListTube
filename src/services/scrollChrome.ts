@@ -9,25 +9,38 @@ function emit() {
   listeners.forEach((l) => l());
 }
 
+function readScrollOffset(ev?: Event): number {
+  const target = ev?.target as HTMLElement | Document | undefined;
+  const targetTop =
+    target && target !== document && 'scrollTop' in target ? Number(target.scrollTop) || 0 : 0;
+  return Math.max(
+    0,
+    window.scrollY || 0,
+    document.documentElement?.scrollTop || 0,
+    document.body?.scrollTop || 0,
+    targetTop
+  );
+}
+
 function attachListener() {
   if (initialized || typeof window === 'undefined') return;
   initialized = true;
-  let lastY = window.scrollY || 0;
+  let lastY = readScrollOffset();
   let rafPending = false;
 
-  const onScroll = () => {
+  const onScroll = (ev: Event) => {
     if (rafPending) return;
     rafPending = true;
     window.requestAnimationFrame(() => {
       rafPending = false;
-      const y = Math.max(0, window.scrollY || 0);
+      const y = readScrollOffset(ev);
       const delta = y - lastY;
 
       const hasOpenModal = Boolean(document.querySelector('[role="dialog"]'));
       const activeTag = document.activeElement?.tagName;
       const typing = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
 
-      if (y <= 44 || hasOpenModal || typing) {
+      if (y <= 36 || hasOpenModal || typing) {
         if (!chromeVisible) {
           chromeVisible = true;
           emit();
@@ -36,13 +49,13 @@ function attachListener() {
         return;
       }
 
-      if (delta > 12 && y > 68) {
+      if (delta > 8 && y > 52) {
         if (chromeVisible) {
           chromeVisible = false;
           emit();
         }
         lastY = y;
-      } else if (delta < -8) {
+      } else if (delta < -6) {
         if (!chromeVisible) {
           chromeVisible = true;
           emit();
@@ -53,6 +66,7 @@ function attachListener() {
   };
 
   window.addEventListener('scroll', onScroll, { passive: true });
+  document.addEventListener('scroll', onScroll, { passive: true, capture: true });
 }
 
 function applyChromeDataset(visible: boolean, autoHide: boolean) {
