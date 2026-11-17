@@ -277,6 +277,10 @@ export interface AppSettings {
   reduceMotion: boolean;
   reduceBlur: boolean;
   disableBlend: boolean;
+  autoHideBars: boolean;
+  ambientMode: boolean;
+  dimAmbientOnScroll: boolean;
+  autoSkipFillerNotice: boolean;
   contentFilter: ContentFilterLevel;
   blockedGenres: string[];
   showHomeForYou: boolean;

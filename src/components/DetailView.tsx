@@ -14,6 +14,8 @@ import {
   Heart,
   Layers,
   Lock,
+  Maximize2,
+  Minimize2,
   Minus,
   Music,
   Play,
@@ -71,6 +73,8 @@ import {
 } from '../services/supabase';
 import { CommentsSection } from './CommentsSection';
 import { EntityRouteTarget } from './EntityView';
+import { openInAppViewer } from '../services/inAppBrowser';
+import { useChromeVisible } from '../services/scrollChrome';
 import { toast } from './Toast';
 import { CardSkeleton } from './Skeleton';
 
@@ -198,6 +202,8 @@ export const DetailView: React.FC<DetailViewProps> = ({
   const [essentialOrderOnly, setEssentialOrderOnly] = useState(false);
   const [dailyPace, setDailyPace] = useState<number>(() => getSavedDailyPace(animeId, 3));
   const [customShelfDraft, setCustomShelfDraft] = useState('');
+  const [theaterMode, setTheaterMode] = useState(false);
+  const chromeVisible = useChromeVisible();
   const profile = useProfile();
 
   const entry = libraryState.entries[animeId];
@@ -519,9 +525,33 @@ export const DetailView: React.FC<DetailViewProps> = ({
       <div className="mx-auto max-w-[1380px] px-4 pt-4 sm:px-6 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_410px]">
           {/* Left Column */}
-          <div className="min-w-0 space-y-4">
-            {/* 16:9 Hero */}
-            <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-2xl">
+          <div className={`min-w-0 space-y-4 ${theaterMode ? 'lg:col-span-2' : ''}`}>
+            {/* 16:9 Hero + Morphe Enhanced Ambient Mode Aura */}
+            <div className="relative">
+              {settings.ambientMode && !settings.disableBlend && (widePreview || anime.cover) && (
+                <div
+                  aria-hidden="true"
+                  className={`lt-ambient-blend pointer-events-none absolute -inset-x-6 -top-4 bottom-0 z-0 overflow-hidden rounded-3xl transition-opacity duration-700 ${
+                    settings.dimAmbientOnScroll && !chromeVisible ? 'opacity-15' : 'opacity-45'
+                  }`}
+                >
+                  <img
+                    src={widePreview || anime.cover}
+                    alt=""
+                    className="h-full w-full scale-125 object-cover blur-[72px] saturate-150"
+                  />
+                </div>
+              )}
+              <div className="relative z-[1] aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-2xl">
+                <button
+                  type="button"
+                  onClick={() => setTheaterMode((v) => !v)}
+                  aria-label={theaterMode ? 'Exit theater mode' : 'Enter theater mode'}
+                  className="lt-press absolute left-3 top-3 z-10 hidden items-center gap-1 rounded-full border border-white/20 bg-black/70 px-2.5 py-1 text-[10.5px] font-bold text-white backdrop-blur-md hover:bg-black lg:inline-flex"
+                >
+                  {theaterMode ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+                  <span>{theaterMode ? 'Default' : 'Theater'}</span>
+                </button>
               {anime.trailerYoutubeId && isTrailerPlaying ? (
                 <div className="relative h-full w-full">
                   <iframe
@@ -605,6 +635,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
                   </div>
                 </div>
               )}
+              </div>
             </div>
 
             {/* Video Title */}
@@ -710,16 +741,34 @@ export const DetailView: React.FC<DetailViewProps> = ({
                 </div>
               </div>
 
-              {/* Right Action Pills: All Seasons, Persistent Like, Favorite, Share, Not for me */}
+              {/* Right Action Pills: Direct Read/Watch CTA, Persistent Like, Favorite, Share, Not for me */}
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onOpenChannel(anime)}
-                  className="flex items-center gap-1.5 rounded-full bg-[#272727] px-4 py-2 text-[12.5px] font-semibold text-white transition hover:bg-[#3F3F3F]"
-                >
-                  <Tv className="h-4 w-4 text-[#FF0000]" />
-                  <span>{isManga ? 'Series Channel' : 'All Seasons'}</span>
-                </button>
+                {(() => {
+                  const primaryKey = isManga ? 'comix' : 'kotoplay';
+                  const directMatch = externalLinks.find((l) => l.key === primaryKey);
+                  const fallbackUrl = isManga
+                    ? `https://comix.to/browse?keyword=${encodeURIComponent(anime.title)}`
+                    : `https://kotoplay.to/search?keyword=${encodeURIComponent(anime.title)}`;
+                  const targetUrl = directMatch?.url || fallbackUrl;
+                  const targetSource = directMatch?.site || (isManga ? 'Comix.to' : 'KotoPlay');
+                  return (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openInAppViewer({
+                          url: targetUrl,
+                          title: anime.title,
+                          sourceName: targetSource,
+                          mediaType: anime.mediaType,
+                        })
+                      }
+                      className="lt-press flex items-center gap-1.5 rounded-full bg-[#FF0000] px-4 py-2 text-[12.5px] font-bold text-white shadow-lg transition hover:bg-[#D90000]"
+                    >
+                      {isManga ? <BookOpen className="h-4 w-4" /> : <Play className="h-4 w-4 fill-current" />}
+                      <span>{isManga ? 'Read on Comix' : 'Watch on KotoPlay'}</span>
+                    </button>
+                  );
+                })()}
 
                 <button
                   type="button"
@@ -1564,12 +1613,18 @@ export const DetailView: React.FC<DetailViewProps> = ({
                               const isRecommended =
                                 Boolean(site.recommended) || site.key === 'kotoplay' || site.key === 'comix';
                               return (
-                                <a
+                                <button
                                   key={site.key}
-                                  href={site.url}
-                                  target="_blank"
-                                  rel="noreferrer noopener"
-                                  className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-[12px] font-bold text-white transition ${
+                                  type="button"
+                                  onClick={() =>
+                                    openInAppViewer({
+                                      url: site.url,
+                                      title: anime.title,
+                                      sourceName: site.site,
+                                      mediaType: anime.mediaType,
+                                    })
+                                  }
+                                  className={`lt-press flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-[12px] font-bold text-white transition ${
                                     isRecommended
                                       ? 'border-amber-400/35 bg-amber-500/10 hover:border-amber-300/60 hover:bg-amber-500/20'
                                       : 'border-white/[0.08] bg-[#222222] hover:border-white/25 hover:bg-[#303030]'
@@ -1587,7 +1642,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
                                     </span>
                                   )}
                                   <ExternalLink className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                                </a>
+                                </button>
                               );
                             })}
                           </div>

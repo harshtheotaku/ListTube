@@ -98,6 +98,26 @@ export function bootstrapMediaDb(): Promise<void> {
       await idbPutMediaBatch(existingSync);
       flushFallbackPinnedToLocalStorage();
     }
+    // Seed offline curated catalog on cold start so search & recommendations work instantaneously even offline
+    if (store.size < 100) {
+      try {
+        const mod = await import('../data/offlineStarter.json');
+        const starter = (mod.default ?? mod) as Anime[];
+        const toPersist: Anime[] = [];
+        for (const item of starter) {
+          if (item?.id && item?.title && !store.has(item.id)) {
+            store.set(item.id, item);
+            toPersist.push(item);
+            added = true;
+          }
+        }
+        if (toPersist.length > 0) {
+          void idbPutMediaBatch(toPersist);
+        }
+      } catch {
+        /* optional starter seed */
+      }
+    }
     hydratedFromIdb = true;
     if (added) notifyHydration();
   })();

@@ -138,6 +138,16 @@
     display: none !important;
   }
 
+  /* Smooth slide-up clearance when YouTube-style auto-hide header disappears */
+  .sticky.top-14,
+  aside.top-14 {
+    transition: top 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  html[data-chrome-hidden="1"] .sticky.top-14,
+  html[data-chrome-hidden="1"] aside.top-14 {
+    top: 0px !important;
+  }
+
   /* iOS / BitChord spring animations & tactile press physics */
   @keyframes ltSheetUp {
     from {

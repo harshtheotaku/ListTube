@@ -1,6 +1,7 @@
 import React from 'react';
 import { Compass, Home, MessageSquareHeart, Tv, User } from 'lucide-react';
 import { useSettings } from '../services/settings';
+import { useChromeVisible } from '../services/scrollChrome';
 import { AppTab } from './Sidebar';
 
 interface BottomNavProps {
@@ -18,13 +19,18 @@ const ITEMS: { id: AppTab; label: string; icon: React.ElementType }[] = [
 
 export const BottomNav: React.FC<BottomNavProps> = ({ active, onNavigate }) => {
   const settings = useSettings();
+  const chromeVisible = useChromeVisible();
+
+  const hideClass = chromeVisible
+    ? 'translate-y-0 opacity-100'
+    : 'translate-y-[145%] opacity-0 pointer-events-none';
 
   if (settings.liquidGlass) {
     return (
       <nav
         aria-label="Mobile Navigation"
         style={{ paddingBottom: 'max(6px, env(safe-area-inset-bottom, 0px))' }}
-        className="fixed inset-x-3 bottom-2.5 z-40 mx-auto max-w-[440px] rounded-[30px] border border-white/[0.18] px-1.5 pt-1.5 liquid-glass lg:hidden"
+        className={`fixed inset-x-3 bottom-2.5 z-40 mx-auto max-w-[440px] rounded-[30px] border border-white/[0.18] px-1.5 pt-1.5 liquid-glass transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:hidden ${hideClass}`}
       >
         <div className="flex items-stretch justify-around gap-1">
           {ITEMS.map((item) => {
@@ -60,7 +66,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ active, onNavigate }) => {
   return (
     <nav
       aria-label="Mobile Navigation"
-      className="safe-pb fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.08] bg-[#0F0F0F]/95 backdrop-blur-xl lg:hidden"
+      className={`safe-pb fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.08] bg-[#0F0F0F]/95 backdrop-blur-xl transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:hidden ${hideClass}`}
     >
       <div className="mx-auto flex max-w-md items-stretch justify-around">
         {ITEMS.map((item) => {

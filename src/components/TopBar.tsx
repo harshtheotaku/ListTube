@@ -14,6 +14,7 @@ import { fetchPublicUsers } from '../services/community';
 import { useProfile } from '../services/profile';
 import { useCloudSync } from '../services/cloudSync';
 import { useSettings } from '../services/settings';
+import { useChromeVisible } from '../services/scrollChrome';
 import { EntityRouteTarget } from './EntityView';
 import { ListTubeLogo } from './ListTubeLogo';
 
@@ -59,6 +60,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   const profile = useProfile();
   const cloud = useCloudSync();
   const settings = useSettings();
+  const chromeVisible = useChromeVisible();
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -126,9 +128,15 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   const connected = trackers[0];
 
+  const headerShown = chromeVisible || dropdownOpen || Boolean(query.trim());
+
   return (
     <header
-      className={`sticky top-0 z-40 transition-colors ${
+      className={`fixed inset-x-0 top-0 z-40 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        headerShown
+          ? 'translate-y-0 opacity-100'
+          : '-translate-y-full opacity-0 pointer-events-none'
+      } ${
         settings.liquidGlass
           ? 'liquid-glass border-b border-white/[0.15]'
           : 'border-b border-white/[0.08] bg-[#0F0F0F]/95 backdrop-blur-xl'

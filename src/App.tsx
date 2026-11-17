@@ -75,7 +75,11 @@ const WrappedModal = lazy(() =>
 const ThemeQuizModal = lazy(() =>
   import('./components/ThemeQuizModal').then((m) => ({ default: m.ThemeQuizModal }))
 );
+const InAppBrowserModal = lazy(() =>
+  import('./components/InAppBrowserModal').then((m) => ({ default: m.InAppBrowserModal }))
+);
 import { MiniPlayer } from './components/MiniPlayer';
+import { resetScrollChrome } from './services/scrollChrome';
 
 const TABS: AppTab[] = ['home', 'explore', 'list', 'schedule', 'news', 'feed', 'you'];
 const MEDIA_TYPE_KEY = 'anitube.mediaType.v1';
@@ -848,7 +852,7 @@ export const App: React.FC = () => {
         />
       )}
 
-      <div className={isWatchMode ? 'lg:pl-0' : sidebarCollapsed ? 'lg:pl-[74px]' : 'lg:pl-[236px]'}>
+      <div className={`pt-14 ${isWatchMode ? 'lg:pl-0' : sidebarCollapsed ? 'lg:pl-[74px]' : 'lg:pl-[236px]'}`}>
         <main>
           <Suspense
             fallback={
@@ -974,8 +978,11 @@ export const App: React.FC = () => {
         </main>
       </div>
 
-      <BottomNav active={tab} onNavigate={navigate} />
+      <BottomNav active={tab} onNavigate={(t) => { resetScrollChrome(); navigate(t); }} />
       <MiniPlayer onOpenAnimeId={openDetail} />
+      <Suspense fallback={null}>
+        <InAppBrowserModal />
+      </Suspense>
       <ToastHost />
 
       <Suspense fallback={null}>

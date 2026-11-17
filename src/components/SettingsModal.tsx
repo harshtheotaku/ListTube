@@ -689,6 +689,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               <div className="divide-y divide-white/[0.08] overflow-hidden rounded-2xl border border-white/[0.1] bg-white/[0.04]">
                 <div className="flex items-center justify-between gap-4 p-4">
                   <div>
+                    <p className="text-[13px] font-bold text-white">Auto-hide Header &amp; Dock on Scroll</p>
+                    <p className="text-[11px] text-[#AAAAAA]">
+                      Hide TopBar and bottom navigation when scrolling down for full-screen browsing.
+                    </p>
+                  </div>
+                  <AppleSwitch
+                    label="Auto-hide Header & Dock on Scroll"
+                    checked={settings.autoHideBars}
+                    onChange={(v) => settingsStore.update({ autoHideBars: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4 p-4">
+                  <div>
+                    <p className="text-[13px] font-bold text-white">Enhanced Ambient Mode</p>
+                    <p className="text-[11px] text-[#AAAAAA]">
+                      Morphe-style cinema glow behind watch players and banners.
+                    </p>
+                  </div>
+                  <AppleSwitch
+                    label="Enhanced Ambient Mode"
+                    checked={settings.ambientMode}
+                    onChange={(v) => settingsStore.update({ ambientMode: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4 p-4">
+                  <div>
+                    <p className="text-[13px] font-bold text-white">Dim Ambient While Scrolling</p>
+                    <p className="text-[11px] text-[#AAAAAA]">
+                      Softly fades ambient cinema backlight when scrolling into comments.
+                    </p>
+                  </div>
+                  <AppleSwitch
+                    label="Dim Ambient While Scrolling"
+                    checked={settings.dimAmbientOnScroll}
+                    onChange={(v) => settingsStore.update({ dimAmbientOnScroll: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4 p-4">
+                  <div>
                     <p className="text-[13px] font-bold text-white">Auto-Play Trailers</p>
                     <p className="text-[11px] text-[#AAAAAA]">
                       Start trailers automatically when opening an anime watch page.

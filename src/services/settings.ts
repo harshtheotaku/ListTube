@@ -21,13 +21,13 @@ export const PRESET_THEME_COLORS: Record<Exclude<ThemePreset, 'custom'>, ThemeCo
 
 export const FONT_STACKS: Record<FontStylePreset, string> = {
   default:
-    '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif',
+    '"Inter Variable", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif',
   rounded:
-    '"SF Pro Rounded", "Quicksand", "Nunito", ui-rounded, -apple-system, BlinkMacSystemFont, sans-serif',
+    '"Plus Jakarta Sans Variable", "SF Pro Rounded", ui-rounded, -apple-system, BlinkMacSystemFont, sans-serif',
   serif:
-    '"New York", Georgia, "Times New Roman", serif',
+    '"Newsreader Variable", "New York", Georgia, "Times New Roman", serif',
   mono:
-    '"SF Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+    '"JetBrains Mono", "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -41,6 +41,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   reduceMotion: false,
   reduceBlur: false,
   disableBlend: false,
+  autoHideBars: true,
+  ambientMode: true,
+  dimAmbientOnScroll: true,
+  autoSkipFillerNotice: true,
   contentFilter: 'balanced',
   blockedGenres: [],
   showHomeForYou: true,
@@ -91,6 +95,14 @@ function mergeSettings(raw: Partial<AppSettings>): AppSettings {
     reduceMotion: Boolean(raw.reduceMotion ?? false),
     reduceBlur: Boolean(raw.reduceBlur ?? false),
     disableBlend: Boolean(raw.disableBlend ?? false),
+    autoHideBars:
+      raw.autoHideBars !== undefined ? Boolean(raw.autoHideBars) : true,
+    ambientMode:
+      raw.ambientMode !== undefined ? Boolean(raw.ambientMode) : true,
+    dimAmbientOnScroll:
+      raw.dimAmbientOnScroll !== undefined ? Boolean(raw.dimAmbientOnScroll) : true,
+    autoSkipFillerNotice:
+      raw.autoSkipFillerNotice !== undefined ? Boolean(raw.autoSkipFillerNotice) : true,
     contentFilter:
       raw.contentFilter && ['safe', 'balanced', 'mature'].includes(raw.contentFilter)
         ? raw.contentFilter
