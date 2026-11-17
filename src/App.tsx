@@ -69,6 +69,12 @@ const SyncConflictModal = lazy(() =>
 const CommandPaletteModal = lazy(() =>
   import('./components/CommandPaletteModal').then((m) => ({ default: m.CommandPaletteModal }))
 );
+const WrappedModal = lazy(() =>
+  import('./components/WrappedModal').then((m) => ({ default: m.WrappedModal }))
+);
+const ThemeQuizModal = lazy(() =>
+  import('./components/ThemeQuizModal').then((m) => ({ default: m.ThemeQuizModal }))
+);
 import { MiniPlayer } from './components/MiniPlayer';
 
 const TABS: AppTab[] = ['home', 'explore', 'list', 'schedule', 'news', 'feed', 'you'];
@@ -239,6 +245,8 @@ export const App: React.FC = () => {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [syncDiffOpen, setSyncDiffOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [wrappedOpen, setWrappedOpen] = useState(false);
+  const [quizOpen, setQuizOpen] = useState(false);
   const [quickTarget, setQuickTarget] = useState<Anime | null>(null);
   const [explorePresetGenre, setExplorePresetGenre] = useState<string | null>(null);
 
@@ -898,6 +906,7 @@ export const App: React.FC = () => {
                     onNavigate={navigate}
                     onOpenTrackers={() => setTrackersOpen(true)}
                     onQuickAdd={quickAdd}
+                    onOpenQuiz={() => setQuizOpen(true)}
                   />
                 )}
                 {tab === 'explore' && (
@@ -956,6 +965,7 @@ export const App: React.FC = () => {
                     onOpenFeed={() => navigate('feed')}
                     onOpenAnime={openDetail}
                     onOpenSyncDiff={() => setSyncDiffOpen(true)}
+                    onOpenWrapped={() => setWrappedOpen(true)}
                   />
                 )}
               </>
@@ -995,6 +1005,22 @@ export const App: React.FC = () => {
             onNavigate={navigate}
             onOpenAnime={openAnime}
             onOpenConflicts={() => setSyncDiffOpen(true)}
+            onOpenWrapped={() => setWrappedOpen(true)}
+            onOpenQuiz={() => setQuizOpen(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+        )}
+        {wrappedOpen && (
+          <WrappedModal
+            isOpen={wrappedOpen}
+            onClose={() => setWrappedOpen(false)}
+            libraryState={libraryState}
+          />
+        )}
+        {quizOpen && (
+          <ThemeQuizModal
+            isOpen={quizOpen}
+            onClose={() => setQuizOpen(false)}
           />
         )}
         {settingsOpen && (

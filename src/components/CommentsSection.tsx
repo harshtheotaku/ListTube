@@ -75,6 +75,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
   const [pollBusy, setPollBusy] = useState(false);
   const [dynamicFillerMap, setDynamicFillerMap] = useState<Record<number, EpisodeCanonTag>>({});
   const [sectionTab, setSectionTab] = useState<'discussions' | 'reviews'>('discussions');
+  const [commentsRevealed, setCommentsRevealed] = useState(false);
 
   // Episode discussion filter & replies
   const isManga = anime.mediaType === 'MANGA';
@@ -580,7 +581,25 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
       ) : null}
 
       {/* TAB 1: EPISODE DISCUSSIONS & THREADED COMMENTS */}
-      {sectionTab === 'discussions' && (
+      {sectionTab === 'discussions' && !settings.autoLoadComments && !commentsRevealed ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#161616] p-4">
+          <div>
+            <p className="text-[13px] font-bold text-white">
+              Comments Hidden to Prevent Spoilers
+            </p>
+            <p className="text-[11.5px] text-[#AAAAAA]">
+              Auto-load comments is turned off in Settings. Tap below to reveal {allComments.length} threads.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCommentsRevealed(true)}
+            className="rounded-full bg-[#3EA6FF] px-4 py-1.5 text-[12px] font-bold text-black hover:bg-[#65B8FF]"
+          >
+            Load Discussions ({allComments.length})
+          </button>
+        </div>
+      ) : sectionTab === 'discussions' && (
         <div className="space-y-4">
           {!isManga && (() => {
             const pacing = summarizeFillerPacing(anime, dynamicFillerMap);

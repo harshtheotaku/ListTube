@@ -1,9 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Check,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Cloud,
   Download,
-  ExternalLink,
   FileUp,
+  GitCompare,
   Loader2,
   LogOut,
   ShieldCheck,
@@ -26,6 +30,7 @@ import {
 import { animeStore } from '../services/animeStore';
 import { library } from '../services/library';
 import { cloudSync, useCloudSync } from '../services/cloudSync';
+import { useProfile } from '../services/profile';
 import {
   fetchOAuthServerStatus,
   getOAuthRedirectUri,
@@ -42,21 +47,7 @@ interface TrackersModalProps {
 }
 
 type Provider = 'anilist' | 'mal';
-
-const PROVIDERS: { id: Provider; name: string; hint: string; accent: string }[] = [
-  {
-    id: 'anilist',
-    name: 'AniList',
-    hint: 'AniList username (e.g. Nekomata)',
-    accent: 'from-[#02A9FF]/20 to-transparent border-[#02A9FF]/40',
-  },
-  {
-    id: 'mal',
-    name: 'MyAnimeList',
-    hint: 'MyAnimeList username (e.g. Josh)',
-    accent: 'from-[#2E51A2]/25 to-transparent border-[#2E51A2]/50',
-  },
-];
+type ModalTab = 'accounts' | 'import';
 
 const CUSTOM_OAUTH_KEY = 'listtube.customOAuth.v1';
 
@@ -68,6 +59,8 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
   onOpenSyncDiff,
 }) => {
   const cloud = useCloudSync();
+  const profile = useProfile();
+  const [modalTab, setModalTab] = useState<ModalTab>('accounts');
   const [provider, setProvider] = useState<Provider>('anilist');
   const [username, setUsername] = useState('');
   const [showAdvancedOAuth, setShowAdvancedOAuth] = useState(false);
@@ -152,26 +145,35 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
       if (customAnilistClientId.trim()) {
         localStorage.setItem(
           CUSTOM_OAUTH_KEY,
-          JSON.stringify({ anilistClientId: customAnilistClientId.trim(), malClientId: customMalClientId.trim() })
+          JSON.stringify({
+            anilistClientId: customAnilistClientId.trim(),
+            malClientId: customMalClientId.trim(),
+          })
         );
       }
       setGoogleBusy('anilist');
       const useImplicit = !oauthStatus.anilistCodeFlowReady;
-      const url = buildAniListAuthorizeUrl({
+      window.location.href = buildAniListAuthorizeUrl({
         clientId,
         redirectUri,
         useImplicit,
         state: `anilist:${crypto.randomUUID?.() ?? Date.now()}`,
       });
-      window.location.href = url;
       return;
     }
 
-    const malClientId = (customMalClientId || oauthStatus.malClientId || 'f74fba547b6b04cdb063b1ef1bfc76a3').trim();
+    const malClientId = (
+      customMalClientId ||
+      oauthStatus.malClientId ||
+      'f74fba547b6b04cdb063b1ef1bfc76a3'
+    ).trim();
     if (customMalClientId.trim()) {
       localStorage.setItem(
         CUSTOM_OAUTH_KEY,
-        JSON.stringify({ anilistClientId: customAnilistClientId.trim(), malClientId: customMalClientId.trim() })
+        JSON.stringify({
+          anilistClientId: customAnilistClientId.trim(),
+          malClientId: customMalClientId.trim(),
+        })
       );
     }
     setGoogleBusy('mal');
@@ -270,10 +272,15 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
     : {};
 
   const activeConnected = trackers.find((t) => t.provider === provider);
+  const cloudLabel = cloud.userEmail?.includes('anilist.')
+    ? 'AniList Cloud Account'
+    : cloud.userEmail?.includes('mal.')
+      ? 'MyAnimeList Cloud Account'
+      : cloud.userEmail || 'Synced Cloud Account';
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/85 p-0 backdrop-blur-md sm:items-center sm:p-4"
+      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="tracker-title"
@@ -281,28 +288,67 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
         if (event.target === event.currentTarget && !busy) onClose();
       }}
     >
-      <div className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-white/[0.1] bg-[#1F1F1F] text-white shadow-2xl sm:rounded-3xl">
-        <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4">
-          <div>
-            <h2 id="tracker-title" className="flex items-center gap-1.5 text-[16px] font-bold text-white">
-              <Sparkles className="h-4 w-4 text-[#FF0000]" />
-              Account &amp; Trackers
-            </h2>
-            <p className="text-[11.5px] text-[#AAAAAA]">
-              1-tap sign in with AniList / MAL or import by username
-            </p>
+      <div className="liquid-glass flex max-h-[92vh] w-full max-w-[440px] flex-col overflow-hidden rounded-t-[28px] border border-white/[0.16] text-white sm:rounded-[28px]">
+        {/* Apple Sheet Drag Handle + Header */}
+        <div className="border-b border-white/[0.08] px-6 pb-4 pt-3.5">
+          <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-white/25 sm:hidden" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <img
+                src={profile.avatarUrl}
+                alt={profile.name}
+                className="h-10 w-10 rounded-full border border-white/20 object-cover shadow"
+              />
+              <div>
+                <h2 id="tracker-title" className="text-[16px] font-bold tracking-tight text-white">
+                  Account &amp; Sync
+                </h2>
+                <p className="text-[11.5px] text-[#AAAAAA]">
+                  {cloud.isLinked ? cloudLabel : 'Sign in or link your anime trackers'}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.1] text-[#CCCCCC] transition hover:bg-white/[0.2] hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded-full p-1.5 text-[#AAAAAA] transition hover:bg-white/10 hover:text-white"
-          >
-            <X className="h-4 w-4" />
-          </button>
+
+          {/* Apple Segmented Control */}
+          {!result && (
+            <div className="mt-4 grid grid-cols-2 rounded-2xl bg-black/35 p-1 ring-1 ring-white/[0.08]">
+              {(
+                [
+                  { id: 'accounts', label: 'Sign In & OAuth' },
+                  { id: 'import', label: 'Username & Files' },
+                ] as { id: ModalTab; label: string }[]
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setModalTab(tab.id);
+                    setError(null);
+                  }}
+                  className={`rounded-xl py-1.5 text-[12px] font-semibold transition ${
+                    modalTab === tab.id
+                      ? 'bg-white/[0.16] text-white shadow-sm'
+                      : 'text-[#AAAAAA] hover:text-white'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="space-y-4 overflow-y-auto px-5 py-5">
+        <div className="space-y-4 overflow-y-auto px-6 py-5">
           {result ? (
             <div className="space-y-4">
               <div className="flex flex-col items-center gap-2 py-3 text-center">
@@ -310,10 +356,10 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                   <Check className="h-6 w-6 stroke-[3]" />
                 </span>
                 <p className="text-[16px] font-bold text-white">
-                  {result.entries.length} titles imported!
+                  {result.entries.length} titles imported
                 </p>
                 <p className="text-[12px] text-[#AAAAAA]">
-                  Your For You recommendations, stats &amp; lists are updated.
+                  Recommendations, library stats &amp; feeds are now updated.
                 </p>
               </div>
 
@@ -323,7 +369,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                   .map((status) => (
                     <div
                       key={status}
-                      className="rounded-xl border border-white/[0.08] bg-[#272727] p-2.5 text-center"
+                      className="rounded-2xl border border-white/[0.08] bg-white/[0.05] p-2.5 text-center"
                     >
                       <p className="text-[16px] font-black text-white">{breakdown[status]}</p>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-[#AAAAAA]">
@@ -339,167 +385,25 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                   onImported(result.entries.length);
                   onClose();
                 }}
-                className="w-full rounded-xl bg-[#FF0000] py-3 text-[13px] font-extrabold text-white transition hover:bg-[#CC0000]"
+                className="w-full rounded-2xl bg-white py-3 text-[13px] font-bold text-black transition hover:bg-neutral-200"
               >
-                See My Recommendations
+                Continue to Home
               </button>
             </div>
-          ) : (
-            <>
-              {/* 1. Username Tracker Connect */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-1.5 text-[11.5px] font-bold uppercase tracking-wider text-[#CCCCCC]">
-                  <User className="h-3.5 w-3.5 text-[#FF0000]" />
-                  <span>Username / Profile Import</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  {PROVIDERS.map((option) => {
-                    const active = provider === option.id;
-                    const conn = trackers.find((t) => t.provider === option.id);
-                    const twoWay =
-                      option.id === 'anilist'
-                        ? Boolean(cloud.anilistWritebackToken)
-                        : cloud.malConnected;
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => {
-                          setProvider(option.id);
-                          setError(null);
-                        }}
-                        className={`rounded-2xl border bg-gradient-to-b p-3 text-left transition ${
-                          option.accent
-                        } ${active ? 'ring-2 ring-white/35' : 'opacity-70 hover:opacity-100'}`}
-                      >
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="text-[13px] font-bold text-white">{option.name}</span>
-                          {(conn || twoWay) && (
-                            <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold text-emerald-400">
-                              {twoWay ? '2-WAY' : 'LINKED'}
-                            </span>
-                          )}
-                        </div>
-                        <span className="mt-0.5 block text-[10.5px] text-neutral-300">
-                          {twoWay ? 'Full OAuth Write-Back' : 'Username + 2-Way OAuth'}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <form onSubmit={submitUsername} className="space-y-2">
-                  <div className="flex gap-2">
-                    <input
-                      id="tracker-username"
-                      value={username}
-                      onChange={(event) => setUsername(event.target.value)}
-                      placeholder={PROVIDERS.find((p) => p.id === provider)?.hint}
-                      autoComplete="username"
-                      className="h-11 flex-1 rounded-xl border border-white/[0.14] bg-[#121212] px-3.5 text-[16px] text-white placeholder:text-[13px] placeholder:text-[#777777] outline-none transition focus:border-[#FF0000] lg:text-[13px]"
-                    />
-                    <button
-                      type="submit"
-                      disabled={busy || !username.trim()}
-                      className="flex items-center gap-1.5 rounded-xl bg-[#FF0000] px-4 text-[13px] font-bold text-white transition hover:bg-[#CC0000] disabled:opacity-40"
-                    >
-                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                      {busy ? 'Loading' : 'Connect'}
-                    </button>
-                  </div>
-
-                  {/* Direct 1-Tap Sign In & 2-Way OAuth Launchers */}
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <button
-                      type="button"
-                      disabled={Boolean(googleBusy)}
-                      onClick={() => handleOAuthLogin('anilist')}
-                      className="flex items-center justify-center gap-1.5 rounded-xl border border-[#02A9FF]/40 bg-[#02A9FF]/15 py-2.5 text-[11.5px] font-bold text-[#7DD3FC] transition hover:bg-[#02A9FF]/25 disabled:opacity-50"
-                    >
-                      {googleBusy === 'anilist' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      )}
-                      <span>AniList OAuth</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={Boolean(googleBusy)}
-                      onClick={() => handleOAuthLogin('mal')}
-                      className="flex items-center justify-center gap-1.5 rounded-xl border border-[#2E51A2]/60 bg-[#2E51A2]/25 py-2.5 text-[11.5px] font-bold text-[#93C5FD] transition hover:bg-[#2E51A2]/40 disabled:opacity-50"
-                    >
-                      {googleBusy === 'mal' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      )}
-                      <span>MAL OAuth (PKCE)</span>
-                    </button>
-                  </div>
-
-                  {onOpenSyncDiff && (trackers.length > 0 || cloud.anilistWritebackToken || cloud.malConnected) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        onOpenSyncDiff();
-                      }}
-                      className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/[0.12] bg-[#222222] py-2 text-[11.5px] font-bold text-white transition hover:bg-[#2E2E2E]"
-                    >
-                      <Sparkles className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                      <span>Compare &amp; Resolve 3-Way Diff (ListTube · AniList · MAL)</span>
-                    </button>
-                  )}
-
-                  {activeConnected && (
-                    <div className="flex items-center justify-between rounded-xl bg-[#272727] px-3 py-2 text-[11.5px]">
-                      <span className="text-neutral-300">
-                        Connected as <strong className="text-white">{activeConnected.username}</strong>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleDisconnect(activeConnected.provider)}
-                        className="flex items-center gap-1 font-bold text-rose-400 hover:underline"
-                      >
-                        <LogOut className="h-3 w-3" />
-                        Disconnect
-                      </button>
-                    </div>
-                  )}
-                </form>
-
-                {error && <p className="rounded-xl bg-rose-500/15 px-3 py-2 text-[11.5px] font-medium text-rose-300">{error}</p>}
-              </div>
-
-              {/* Divider */}
-              <div className="relative flex items-center py-1">
-                <div className="flex-grow border-t border-white/[0.1]" />
-                <span className="mx-3 text-[10.5px] font-bold uppercase tracking-wider text-[#AAAAAA]">
-                  Passwordless Cloud Account
-                </span>
-                <div className="flex-grow border-t border-white/[0.1]" />
-              </div>
-
-              {/* 2. Passwordless Cloud Account via AniList / MAL OAuth Bridge */}
+          ) : modalTab === 'accounts' ? (
+            <div className="space-y-4">
+              {/* Cloud Status Row */}
               {cloud.userId ? (
-                <div className="flex items-center justify-between rounded-2xl border border-emerald-500/30 bg-[#272727] p-3.5">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400">
-                      <ShieldCheck className="h-4 w-4" />
+                <div className="flex items-center justify-between rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300">
+                      <ShieldCheck className="h-4.5 w-4.5" />
                     </span>
                     <div className="min-w-0">
-                      <p className="text-[10.5px] font-bold uppercase tracking-wider text-emerald-400">
+                      <p className="text-[10.5px] font-bold uppercase tracking-wider text-emerald-300">
                         Cloud Sync Active
                       </p>
-                      <p className="truncate text-[13px] font-bold text-white">
-                        {cloud.userEmail?.includes('anilist.')
-                          ? 'Signed in with AniList'
-                          : cloud.userEmail?.includes('mal.')
-                            ? 'Signed in with MyAnimeList'
-                            : cloud.userEmail || 'Synced Account'}
-                      </p>
+                      <p className="truncate text-[13px] font-semibold text-white">{cloudLabel}</p>
                     </div>
                   </div>
                   <button
@@ -508,110 +412,307 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                       void cloudSync.signOut();
                       toast('Signed out of cloud sync');
                     }}
-                    className="shrink-0 text-[11.5px] font-bold text-rose-400 hover:underline"
+                    className="shrink-0 rounded-full bg-white/[0.08] px-3 py-1 text-[11.5px] font-semibold text-rose-300 transition hover:bg-rose-500/20"
                   >
                     Sign out
                   </button>
                 </div>
               ) : (
-                <div className="space-y-2 rounded-2xl border border-white/[0.08] bg-[#181818] p-3.5">
-                  <p className="text-[11.5px] leading-relaxed text-[#AAAAAA]">
-                    Sign in with <strong className="text-white">Google</strong>, <strong className="text-white">AniList</strong>, or <strong className="text-white">MAL</strong> to unlock Community reviews/polls and sync lists across devices.
-                  </p>
+                <button
+                  type="button"
+                  disabled={Boolean(googleBusy)}
+                  onClick={() => void handleGoogleLogin()}
+                  className="flex w-full items-center justify-center gap-2.5 rounded-2xl bg-white py-3 text-[13.5px] font-semibold text-[#111111] shadow-lg transition hover:bg-neutral-100 active:scale-[0.99] disabled:opacity-50"
+                >
+                  {googleBusy === 'google' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        fill="#4285F4"
+                        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"
+                      />
+                    </svg>
+                  )}
+                  <span>Continue with Google</span>
+                </button>
+              )}
+
+              {/* Grouped Apple Settings-Style OAuth Trackers */}
+              <div className="divide-y divide-white/[0.08] overflow-hidden rounded-2xl border border-white/[0.1] bg-white/[0.04]">
+                {/* AniList Row */}
+                <button
+                  type="button"
+                  disabled={Boolean(googleBusy)}
+                  onClick={() => handleOAuthLogin('anilist')}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition hover:bg-white/[0.06] disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#02A9FF]/20 text-[12px] font-black text-[#38BDF8]">
+                      AL
+                    </span>
+                    <div>
+                      <p className="text-[13.5px] font-semibold text-white">
+                        Sign in · AniList
+                      </p>
+                      <p className="text-[11px] text-[#AAAAAA]">
+                        {cloud.anilistWritebackToken
+                          ? '2-way OAuth write-back connected'
+                          : 'Sync watchlists, scores & custom shelves'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {cloud.anilistWritebackToken && (
+                      <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                        Active
+                      </span>
+                    )}
+                    {googleBusy === 'anilist' ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-[#AAAAAA]" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-[#777777]" />
+                    )}
+                  </div>
+                </button>
+
+                {/* MyAnimeList Row */}
+                <button
+                  type="button"
+                  disabled={Boolean(googleBusy)}
+                  onClick={() => handleOAuthLogin('mal')}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition hover:bg-white/[0.06] disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#2E51A2]/35 text-[11px] font-black text-[#93C5FD]">
+                      MAL
+                    </span>
+                    <div>
+                      <p className="text-[13.5px] font-semibold text-white">
+                        Sign in · MAL
+                      </p>
+                      <p className="text-[11px] text-[#AAAAAA]">
+                        {cloud.malConnected
+                          ? '2-way PKCE OAuth connected'
+                          : 'Import & auto-sync episodes and ratings'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {cloud.malConnected && (
+                      <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                        Active
+                      </span>
+                    )}
+                    {googleBusy === 'mal' ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-[#AAAAAA]" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-[#777777]" />
+                    )}
+                  </div>
+                </button>
+
+                {/* 3-Way Sync Diff Row */}
+                {onOpenSyncDiff && (
                   <button
                     type="button"
-                    disabled={Boolean(googleBusy)}
-                    onClick={() => void handleGoogleLogin()}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-[12.5px] font-bold text-[#111111] shadow transition hover:bg-neutral-200 disabled:opacity-50"
+                    onClick={() => {
+                      onClose();
+                      onOpenSyncDiff();
+                    }}
+                    className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-white/[0.06]"
                   >
-                    {googleBusy === 'google' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          fill="#4285F4"
-                          d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
-                        />
-                        <path
-                          fill="#34A853"
-                          d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"
-                        />
-                        <path
-                          fill="#FBBC05"
-                          d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"
-                        />
-                        <path
-                          fill="#EA4335"
-                          d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"
-                        />
-                      </svg>
-                    )}
-                    <span>Continue with Google</span>
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/15 text-amber-300">
+                        <GitCompare className="h-4 w-4" />
+                      </span>
+                      <div>
+                        <p className="text-[13px] font-semibold text-white">
+                          3-Way Sync Diff &amp; Resolver
+                        </p>
+                        <p className="text-[11px] text-[#AAAAAA]">
+                          Compare ListTube, AniList &amp; MAL side-by-side
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-[#777777]" />
                   </button>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      disabled={Boolean(googleBusy)}
-                      onClick={() => handleOAuthLogin('anilist')}
-                      className="flex items-center justify-center gap-1.5 rounded-xl bg-[#02A9FF] py-2.5 text-[12.5px] font-extrabold text-[#041421] transition hover:brightness-110 disabled:opacity-50"
-                    >
-                      {googleBusy === 'anilist' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                      <span>Sign in · AniList</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={Boolean(googleBusy)}
-                      onClick={() => handleOAuthLogin('mal')}
-                      className="flex items-center justify-center gap-1.5 rounded-xl bg-[#2E51A2] py-2.5 text-[12.5px] font-extrabold text-white transition hover:brightness-110 disabled:opacity-50"
-                    >
-                      {googleBusy === 'mal' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                      <span>Sign in · MAL</span>
-                    </button>
-                  </div>
+                )}
+              </div>
+
+              {cloud.pendingOutboxCount > 0 && (
+                <div className="flex items-center justify-between rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-2.5 text-[11.5px]">
+                  <span className="inline-flex items-center gap-1.5 font-semibold text-amber-200">
+                    <Cloud className="h-3.5 w-3.5" />
+                    {cloud.pendingOutboxCount} update(s) queued offline
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void cloudSync.flushOutbox(true)}
+                    className="rounded-full bg-amber-400 px-3 py-1 text-[10.5px] font-bold text-black hover:bg-amber-300"
+                  >
+                    Sync Now
+                  </button>
                 </div>
               )}
 
-              {/* Optional Token / XML / Custom App ID Drawer */}
-              <div>
+              {error && (
+                <p className="rounded-2xl bg-rose-500/15 px-3.5 py-2.5 text-[11.5px] font-medium text-rose-300">
+                  {error}
+                </p>
+              )}
+            </div>
+          ) : (
+            /* TAB 2: Username & Export File Import */
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2">
+                {(['anilist', 'mal'] as Provider[]).map((id) => {
+                  const active = provider === id;
+                  const conn = trackers.find((t) => t.provider === id);
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => {
+                        setProvider(id);
+                        setError(null);
+                      }}
+                      className={`rounded-2xl border p-3 text-left transition ${
+                        active
+                          ? 'border-white/35 bg-white/[0.12]'
+                          : 'border-white/[0.08] bg-white/[0.04] opacity-75 hover:opacity-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[13px] font-bold text-white">
+                          {id === 'anilist' ? 'AniList' : 'MyAnimeList'}
+                        </span>
+                        {conn && (
+                          <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[9.5px] font-bold text-emerald-300">
+                            Linked
+                          </span>
+                        )}
+                      </div>
+                      <span className="mt-0.5 block text-[10.5px] text-[#AAAAAA]">
+                        Public profile import
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <form onSubmit={submitUsername} className="flex gap-2">
+                <div className="relative flex flex-1 items-center">
+                  <User className="pointer-events-none absolute left-3 h-4 w-4 text-[#888888]" />
+                  <input
+                    id="tracker-username"
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                    placeholder={
+                      provider === 'anilist'
+                        ? 'AniList username…'
+                        : 'MyAnimeList username…'
+                    }
+                    autoComplete="username"
+                    className="h-11 w-full rounded-2xl border border-white/[0.12] bg-white/[0.06] pl-9 pr-3 text-[14px] text-white placeholder:text-[#777777] outline-none focus:border-[#3EA6FF]"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={busy || !username.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-2xl bg-white px-4 text-[12.5px] font-bold text-black transition hover:bg-neutral-200 disabled:opacity-40"
+                >
+                  {busy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  Import
+                </button>
+              </form>
+
+              {activeConnected && (
+                <div className="flex items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.05] px-4 py-2.5 text-[12px]">
+                  <span className="text-neutral-300">
+                    Connected as <strong className="text-white">{activeConnected.username}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleDisconnect(activeConnected.provider)}
+                    className="inline-flex items-center gap-1 font-semibold text-rose-400 hover:underline"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    Unlink
+                  </button>
+                </div>
+              )}
+
+              {error && (
+                <p className="rounded-2xl bg-rose-500/15 px-3.5 py-2.5 text-[11.5px] font-medium text-rose-300">
+                  {error}
+                </p>
+              )}
+
+              {/* Apple Disclosure: Advanced Token, XML File, Custom Client ID */}
+              <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.04]">
                 <button
                   type="button"
                   onClick={() => setShowAdvancedOAuth(!showAdvancedOAuth)}
-                  className="text-[11px] font-medium text-[#AAAAAA] hover:text-white"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left text-[12px] font-semibold text-neutral-200 hover:bg-white/[0.04]"
                 >
-                  {showAdvancedOAuth
-                    ? 'Hide OAuth setup, Token & XML import'
-                    : 'Token / XML file / OAuth Client ID setup'}
+                  <span className="inline-flex items-center gap-2">
+                    <Sparkles className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                    XML / JSON Import, Token &amp; OAuth Client ID
+                  </span>
+                  {showAdvancedOAuth ? (
+                    <ChevronUp className="h-4 w-4 text-[#AAAAAA]" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-[#AAAAAA]" />
+                  )}
                 </button>
 
                 {showAdvancedOAuth && (
-                  <div className="mt-2.5 space-y-2.5 rounded-xl border border-white/[0.08] bg-[#161616] p-3">
+                  <div className="space-y-2.5 border-t border-white/[0.08] p-4">
                     <p className="text-[10.5px] text-[#AAAAAA]">
-                      Redirect URI: <code className="select-all text-white">{getOAuthRedirectUri()}</code>
+                      Redirect URI:{' '}
+                      <code className="select-all text-white">{getOAuthRedirectUri()}</code>
                     </p>
                     <input
                       value={customAnilistClientId}
                       onChange={(e) => setCustomAnilistClientId(e.target.value)}
                       placeholder="AniList OAuth Client ID (default: 57274)"
-                      className="h-9 w-full rounded-lg border border-white/15 bg-[#121212] px-3 text-[12px] text-white outline-none"
+                      className="h-9 w-full rounded-xl border border-white/15 bg-black/40 px-3 text-[12px] text-white outline-none"
                     />
                     <input
                       value={customMalClientId}
                       onChange={(e) => setCustomMalClientId(e.target.value)}
-                      placeholder="MyAnimeList Client ID (optional override)"
-                      className="h-9 w-full rounded-lg border border-white/15 bg-[#121212] px-3 text-[12px] text-white outline-none"
+                      placeholder="MyAnimeList Client ID (optional)"
+                      className="h-9 w-full rounded-xl border border-white/15 bg-black/40 px-3 text-[12px] text-white outline-none"
                     />
                     <form onSubmit={submitToken} className="flex gap-2">
                       <input
                         type="password"
                         value={anilistTokenInput}
                         onChange={(e) => setAnilistTokenInput(e.target.value)}
-                        placeholder="Or paste AniList Bearer Token…"
-                        className="h-9 flex-1 rounded-lg border border-white/15 bg-[#121212] px-3 text-[16px] text-white placeholder:text-[12px] outline-none lg:text-[12px]"
+                        placeholder="Paste AniList Bearer Token…"
+                        className="h-9 flex-1 rounded-xl border border-white/15 bg-black/40 px-3 text-[12px] text-white outline-none"
                       />
                       <button
                         type="submit"
                         disabled={busy || !anilistTokenInput.trim()}
-                        className="rounded-lg bg-[#02A9FF] px-3 text-[11.5px] font-bold text-black disabled:opacity-40"
+                        className="rounded-xl bg-[#3EA6FF] px-3 text-[11.5px] font-bold text-black disabled:opacity-40"
                       >
                         Connect
                       </button>
@@ -626,7 +727,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#272727] py-2 text-[11.5px] font-semibold text-white hover:bg-[#383838]"
+                      className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-white/[0.1] py-2 text-[12px] font-semibold text-white hover:bg-white/[0.16]"
                     >
                       <FileUp className="h-3.5 w-3.5 text-[#3EA6FF]" />
                       Import MAL .xml or ListTube .json
@@ -634,15 +735,8 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                   </div>
                 )}
               </div>
-            </>
+            </div>
           )}
-        </div>
-
-        <div className="flex items-center justify-between border-t border-white/[0.08] px-5 py-3 text-[11px] text-[#AAAAAA]">
-          <button type="button" onClick={onClose} className="font-medium hover:text-white">
-            Continue browsing
-          </button>
-          <span>Google · AniList · MyAnimeList</span>
         </div>
       </div>
     </div>

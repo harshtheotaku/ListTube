@@ -47,6 +47,7 @@ interface YouViewProps {
   onOpenFeed?: () => void;
   onOpenAnime?: (animeId: string) => void;
   onOpenSyncDiff?: () => void;
+  onOpenWrapped?: () => void;
 }
 
 type ChannelTab = 'overview' | 'stats' | 'favorites' | 'about';
@@ -159,6 +160,7 @@ export const YouView: React.FC<YouViewProps> = ({
   onOpenFeed,
   onOpenAnime,
   onOpenSyncDiff,
+  onOpenWrapped,
 }) => {
   const settings = useSettings();
   const [channelTab, setChannelTab] = useState<ChannelTab>('overview');
@@ -362,6 +364,16 @@ export const YouView: React.FC<YouViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {onOpenWrapped && (
+              <button
+                type="button"
+                onClick={onOpenWrapped}
+                className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#FF0000] to-rose-600 px-3.5 py-2 text-[12px] font-bold text-white shadow transition hover:brightness-110"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Wrapped Card
+              </button>
+            )}
             <button
               type="button"
               onClick={onOpenSettings}

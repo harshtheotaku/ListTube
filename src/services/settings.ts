@@ -1,34 +1,133 @@
 import { useSyncExternalStore } from 'react';
-import { AppSettings, ScoreFormat } from '../types';
+import {
+  AppSettings,
+  ContentFilterLevel,
+  ListStatus,
+  ProfileVisibilitySettings,
+  ScoreFormat,
+  ThemeColors,
+  ThemePreset,
+} from '../types';
 
-const SETTINGS_KEY = 'anitube.settings.v1';
+const SETTINGS_KEY = 'anitube.settings.v2';
+const LEGACY_SETTINGS_KEY = 'anitube.settings.v1';
 
-const DEFAULT_SETTINGS: AppSettings = {
+export const PRESET_THEME_COLORS: Record<Exclude<ThemePreset, 'custom'>, ThemeColors> = {
+  main: { bg: '#0F0F0F', text: '#F1F1F1', accent: '#FF0000' },
+  dark: { bg: '#000000', text: '#FFFFFF', accent: '#3EA6FF' },
+  light: { bg: '#F4F4F7', text: '#111115', accent: '#FF0000' },
+};
+
+export const DEFAULT_SETTINGS: AppSettings = {
   autoplayTrailer: false,
   scoreFormat: 'POINT_10_DECIMAL',
   showCommunityLinks: true,
+  liquidGlass: true,
+  themePreset: 'main',
+  themeColors: { ...PRESET_THEME_COLORS.main },
+  contentFilter: 'balanced',
+  blockedGenres: [],
+  showHomeForYou: true,
+  showHomeSubscriptions: true,
+  showHomeDiscoveryShelves: true,
+  homeStatusFolders: ['watching'],
+  autoLoadComments: true,
+  notifyFolders: ['watching', 'planned'],
+  notifyCommentLikes: true,
+  profileVisibility: {
+    hideActivity: false,
+    hideStats: false,
+    hideLists: false,
+    hideFavorites: false,
+  },
 };
 
+function mergeSettings(raw: Partial<AppSettings>): AppSettings {
+  const preset: ThemePreset =
+    raw.themePreset && ['main', 'dark', 'light', 'custom'].includes(raw.themePreset)
+      ? raw.themePreset
+      : 'main';
+  const baseColors =
+    preset === 'custom'
+      ? raw.themeColors ?? PRESET_THEME_COLORS.main
+      : PRESET_THEME_COLORS[preset];
+
+  return {
+    autoplayTrailer: Boolean(raw.autoplayTrailer ?? DEFAULT_SETTINGS.autoplayTrailer),
+    scoreFormat: raw.scoreFormat ?? DEFAULT_SETTINGS.scoreFormat,
+    showCommunityLinks:
+      raw.showCommunityLinks !== undefined
+        ? Boolean(raw.showCommunityLinks)
+        : DEFAULT_SETTINGS.showCommunityLinks,
+    liquidGlass:
+      raw.liquidGlass !== undefined ? Boolean(raw.liquidGlass) : DEFAULT_SETTINGS.liquidGlass,
+    themePreset: preset,
+    themeColors: {
+      bg: baseColors.bg || PRESET_THEME_COLORS.main.bg,
+      text: baseColors.text || PRESET_THEME_COLORS.main.text,
+      accent: baseColors.accent || PRESET_THEME_COLORS.main.accent,
+    },
+    contentFilter:
+      raw.contentFilter && ['safe', 'balanced', 'mature'].includes(raw.contentFilter)
+        ? raw.contentFilter
+        : 'balanced',
+    blockedGenres: Array.isArray(raw.blockedGenres)
+      ? raw.blockedGenres.filter((x): x is string => typeof x === 'string')
+      : [],
+    showHomeForYou:
+      raw.showHomeForYou !== undefined ? Boolean(raw.showHomeForYou) : true,
+    showHomeSubscriptions:
+      raw.showHomeSubscriptions !== undefined ? Boolean(raw.showHomeSubscriptions) : true,
+    showHomeDiscoveryShelves:
+      raw.showHomeDiscoveryShelves !== undefined ? Boolean(raw.showHomeDiscoveryShelves) : true,
+    homeStatusFolders:
+      Array.isArray(raw.homeStatusFolders) && raw.homeStatusFolders.length > 0
+        ? raw.homeStatusFolders
+        : ['watching'],
+    autoLoadComments:
+      raw.autoLoadComments !== undefined ? Boolean(raw.autoLoadComments) : true,
+    notifyFolders:
+      Array.isArray(raw.notifyFolders) ? raw.notifyFolders : ['watching', 'planned'],
+    notifyCommentLikes:
+      raw.notifyCommentLikes !== undefined ? Boolean(raw.notifyCommentLikes) : true,
+    profileVisibility: {
+      hideActivity: Boolean(raw.profileVisibility?.hideActivity),
+      hideStats: Boolean(raw.profileVisibility?.hideStats),
+      hideLists: Boolean(raw.profileVisibility?.hideLists),
+      hideFavorites: Boolean(raw.profileVisibility?.hideFavorites),
+    },
+  };
+}
+
 function loadSettings(): AppSettings {
+  if (typeof localStorage === 'undefined') return DEFAULT_SETTINGS;
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
+    const raw =
+      localStorage.getItem(SETTINGS_KEY) ?? localStorage.getItem(LEGACY_SETTINGS_KEY);
     if (!raw) return DEFAULT_SETTINGS;
-    const parsed = JSON.parse(raw) as Partial<AppSettings>;
-    return {
-      autoplayTrailer: parsed.autoplayTrailer ?? false,
-      scoreFormat: parsed.scoreFormat ?? 'POINT_10_DECIMAL',
-      showCommunityLinks: parsed.showCommunityLinks ?? true,
-    };
+    return mergeSettings(JSON.parse(raw) as Partial<AppSettings>);
   } catch {
     return DEFAULT_SETTINGS;
   }
 }
 
+export function applyThemeToDocument(s: AppSettings): void {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  root.style.setProperty('--lt-bg', s.themeColors.bg);
+  root.style.setProperty('--lt-text', s.themeColors.text);
+  root.style.setProperty('--lt-accent', s.themeColors.accent);
+  root.dataset.theme = s.themePreset === 'light' ? 'light' : 'dark';
+  root.dataset.liquidGlass = s.liquidGlass ? '1' : '0';
+}
+
 let currentSettings = loadSettings();
+applyThemeToDocument(currentSettings);
 const listeners = new Set<() => void>();
 
 function persist(next: AppSettings) {
   currentSettings = next;
+  applyThemeToDocument(next);
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
   } catch {
@@ -45,6 +144,9 @@ export const settingsStore = {
   getSnapshot(): AppSettings {
     return currentSettings;
   },
+  update(patch: Partial<AppSettings>) {
+    persist(mergeSettings({ ...currentSettings, ...patch }));
+  },
   setAutoplayTrailer(enabled: boolean) {
     persist({ ...currentSettings, autoplayTrailer: enabled });
   },
@@ -54,18 +156,72 @@ export const settingsStore = {
   setShowCommunityLinks(showCommunityLinks: boolean) {
     persist({ ...currentSettings, showCommunityLinks });
   },
-  replaceFromCloud(next: Partial<AppSettings>) {
+  setLiquidGlass(liquidGlass: boolean) {
+    persist({ ...currentSettings, liquidGlass });
+  },
+  setThemePreset(themePreset: ThemePreset) {
+    const nextColors =
+      themePreset === 'custom'
+        ? currentSettings.themeColors
+        : { ...PRESET_THEME_COLORS[themePreset] };
+    persist({ ...currentSettings, themePreset, themeColors: nextColors });
+  },
+  setThemeColors(colors: Partial<ThemeColors>) {
     persist({
-      autoplayTrailer: Boolean(next.autoplayTrailer ?? currentSettings.autoplayTrailer),
-      scoreFormat: next.scoreFormat ?? currentSettings.scoreFormat,
-      showCommunityLinks:
-        next.showCommunityLinks !== undefined
-          ? Boolean(next.showCommunityLinks)
-          : currentSettings.showCommunityLinks,
+      ...currentSettings,
+      themePreset: 'custom',
+      themeColors: { ...currentSettings.themeColors, ...colors },
     });
+  },
+  resetTheme() {
+    persist({
+      ...currentSettings,
+      themePreset: 'main',
+      themeColors: { ...PRESET_THEME_COLORS.main },
+    });
+  },
+  setContentFilter(contentFilter: ContentFilterLevel) {
+    persist({ ...currentSettings, contentFilter });
+  },
+  toggleBlockedGenre(genre: string) {
+    const exists = currentSettings.blockedGenres.includes(genre);
+    const blockedGenres = exists
+      ? currentSettings.blockedGenres.filter((g) => g !== genre)
+      : [...currentSettings.blockedGenres, genre];
+    persist({ ...currentSettings, blockedGenres });
+  },
+  toggleHomeStatusFolder(status: ListStatus) {
+    const exists = currentSettings.homeStatusFolders.includes(status);
+    const next = exists
+      ? currentSettings.homeStatusFolders.filter((s) => s !== status)
+      : [...currentSettings.homeStatusFolders, status];
+    persist({ ...currentSettings, homeStatusFolders: next.length ? next : ['watching'] });
+  },
+  toggleNotifyFolder(status: ListStatus) {
+    const exists = currentSettings.notifyFolders.includes(status);
+    const next = exists
+      ? currentSettings.notifyFolders.filter((s) => s !== status)
+      : [...currentSettings.notifyFolders, status];
+    persist({ ...currentSettings, notifyFolders: next });
+  },
+  updateProfileVisibility(patch: Partial<ProfileVisibilitySettings>) {
+    persist({
+      ...currentSettings,
+      profileVisibility: { ...currentSettings.profileVisibility, ...patch },
+    });
+  },
+  resetAllDefaults() {
+    persist({ ...DEFAULT_SETTINGS, themeColors: { ...PRESET_THEME_COLORS.main } });
+  },
+  replaceFromCloud(next: Partial<AppSettings>) {
+    persist(mergeSettings({ ...currentSettings, ...next }));
   },
 };
 
 export function useSettings(): AppSettings {
-  return useSyncExternalStore(settingsStore.subscribe, settingsStore.getSnapshot);
+  return useSyncExternalStore(
+    settingsStore.subscribe,
+    settingsStore.getSnapshot,
+    settingsStore.getSnapshot
+  );
 }

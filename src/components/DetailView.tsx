@@ -52,6 +52,7 @@ import { animeStore } from '../services/animeStore';
 import { predictTasteAndDropRisk } from '../services/dropPredictor';
 import { library } from '../services/library';
 import { miniPlayer } from '../services/miniPlayer';
+import { computePacingPlan, getSavedDailyPace, saveDailyPace } from '../services/pacingGoal';
 import { getSimilar } from '../services/recommender';
 import { franchiseNameOf } from '../services/franchise';
 import { buildWatchOrderGuide } from '../services/watchOrder';
@@ -195,6 +196,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
   });
   const [externalLinks, setExternalLinks] = useState<ResolvedReaderLink[]>([]);
   const [essentialOrderOnly, setEssentialOrderOnly] = useState(false);
+  const [dailyPace, setDailyPace] = useState<number>(() => getSavedDailyPace(animeId, 3));
   const [customShelfDraft, setCustomShelfDraft] = useState('');
   const profile = useProfile();
 
@@ -211,6 +213,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
     setExpandedStaffKey(null);
     setExpandedThemeKey(null);
     setRevealSpoilerBio(false);
+    setDailyPace(getSavedDailyPace(animeId, animeId.includes('manga') ? 5 : 2));
   }, [animeId, settings.autoplayTrailer]);
 
   useEffect(() => {
@@ -896,6 +899,45 @@ export const DetailView: React.FC<DetailViewProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Catch-Up Pacing & Volume Release Goal Calculator */}
+                {(() => {
+                  const plan = computePacingPlan({
+                    progress,
+                    total,
+                    dailyPace,
+                    mediaType: isManga ? 'MANGA' : 'ANIME',
+                    durationMins: anime.duration,
+                    knownVolumes: volTotal,
+                    completedVolumes: volProgress,
+                  });
+                  if (!plan || plan.remainingUnits <= 0) return null;
+                  return (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-black/30 px-3 py-2 text-[11.5px]">
+                      <div className="flex items-center gap-2 text-[#CCCCCC]">
+                        <span className="font-bold text-white">Pace Goal:</span>
+                        <input
+                          type="number"
+                          aria-label="Daily pace goal"
+                          min={1}
+                          max={50}
+                          value={dailyPace}
+                          onChange={(e) => {
+                            const next = Math.max(1, Number(e.target.value) || 1);
+                            setDailyPace(next);
+                            saveDailyPace(anime.id, next);
+                          }}
+                          className="h-6 w-12 rounded border border-white/15 bg-[#121212] px-1.5 text-center text-[11.5px] font-bold text-[#3EA6FF] outline-none"
+                        />
+                        <span>{isManga ? 'ch/day' : 'ep/day'}</span>
+                      </div>
+                      <span className="font-semibold text-emerald-300">
+                        Finish {plan.daysToFinish}d ({plan.estimatedDateLabel}) · ~{plan.minutesPerDay}m/day
+                        {plan.estimatedRemainingVolumes ? ` · ~${plan.estimatedRemainingVolumes} vols left` : ''}
+                      </span>
+                    </div>
+                  );
+                })()}
 
                 {/* Decimal / Multi-Scale Score Picker */}
                 <div className="flex flex-wrap items-center justify-between gap-2">

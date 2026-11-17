@@ -249,10 +249,39 @@ export interface ScoredAnime {
   reason: string;
 }
 
+export type ThemePreset = 'main' | 'dark' | 'light' | 'custom';
+export type ContentFilterLevel = 'safe' | 'balanced' | 'mature';
+
+export interface ThemeColors {
+  bg: string;
+  text: string;
+  accent: string;
+}
+
+export interface ProfileVisibilitySettings {
+  hideActivity: boolean;
+  hideStats: boolean;
+  hideLists: boolean;
+  hideFavorites: boolean;
+}
+
 export interface AppSettings {
   autoplayTrailer: boolean;
   scoreFormat: ScoreFormat;
   showCommunityLinks: boolean;
+  liquidGlass: boolean;
+  themePreset: ThemePreset;
+  themeColors: ThemeColors;
+  contentFilter: ContentFilterLevel;
+  blockedGenres: string[];
+  showHomeForYou: boolean;
+  showHomeSubscriptions: boolean;
+  showHomeDiscoveryShelves: boolean;
+  homeStatusFolders: ListStatus[];
+  autoLoadComments: boolean;
+  notifyFolders: ListStatus[];
+  notifyCommentLikes: boolean;
+  profileVisibility: ProfileVisibilitySettings;
 }
 
 export interface ScheduleItem {

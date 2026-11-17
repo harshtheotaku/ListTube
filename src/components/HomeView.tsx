@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, BookOpen, Dice5, Film, Loader2, RefreshCw, Sparkles, Upload, X } from 'lucide-react';
+import { ArrowRight, BookOpen, Dice5, Film, Loader2, Music, RefreshCw, Sparkles, Upload, X } from 'lucide-react';
 import { Anime, LibraryState, MediaType, ScoredAnime } from '../types';
 import {
   getRecommendationPage,
@@ -7,8 +7,11 @@ import {
   RecommendationBundle,
 } from '../services/recommender';
 import { ANIME_GENRES, MANGA_GENRES } from '../services/anilist';
+import { animeStore } from '../services/animeStore';
+import { passesContentSettings } from '../services/contentFilter';
 import { searchSmart } from '../services/search';
 import { library as libraryStore } from '../services/library';
+import { useSettings } from '../services/settings';
 import { AnimeCard } from './AnimeCard';
 import { Shelf, ShelfItem } from './Shelf';
 import { GridSkeleton } from './Skeleton';
@@ -24,6 +27,7 @@ interface HomeViewProps {
   onNavigate: (tab: AppTab) => void;
   onOpenTrackers: () => void;
   onQuickAdd: (anime: Anime) => void;
+  onOpenQuiz?: () => void;
 }
 
 const ONBOARD_KEY = 'anitube.onboard.dismissed';
@@ -119,7 +123,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onNavigate,
   onOpenTrackers,
   onQuickAdd,
+  onOpenQuiz,
 }) => {
+  const settings = useSettings();
   const initialRotation = useMemo(() => readRotation(mediaType), [mediaType]);
   const [bundle, setBundle] = useState<RecommendationBundle | null>(null);
   const [extraFeed, setExtraFeed] = useState<ScoredAnime[]>([]);
@@ -395,22 +401,41 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const filterList = useCallback(
     (list: ScoredAnime[]) => {
-      if (selectedChip === 'All') return list;
+      const safe = list.filter((item) => passesContentSettings(item.anime, settings));
+      if (selectedChip === 'All') return safe;
       if (selectedChip === '🔥 Trending') {
-        return [...list].sort((a, b) => (b.anime.popularity ?? 0) - (a.anime.popularity ?? 0));
+        return [...safe].sort((a, b) => (b.anime.popularity ?? 0) - (a.anime.popularity ?? 0));
       }
       if (selectedChip === '⭐ Top Rated') {
-        return [...list].sort((a, b) => (b.anime.score ?? 0) - (a.anime.score ?? 0));
+        return [...safe].sort((a, b) => (b.anime.score ?? 0) - (a.anime.score ?? 0));
       }
       if (selectedChip === '🌸 This Season') {
         const year = new Date().getFullYear();
-        return list.filter((item) => item.anime.year === year || item.anime.status === 'Airing');
+        return safe.filter((item) => item.anime.year === year || item.anime.status === 'Airing');
       }
       const cleanGenre = selectedChip.trim();
-      return list.filter((item) => item.anime.genres.includes(cleanGenre));
+      return safe.filter((item) => item.anime.genres.includes(cleanGenre));
     },
-    [selectedChip]
+    [selectedChip, settings]
   );
+
+  const visibleSubscriptions = useMemo(() => {
+    const allowed = new Set(settings.homeStatusFolders);
+    const matches: Anime[] = [];
+    const seen = new Set<string>();
+    const sortedEntries = Object.values(library.entries)
+      .filter((e) => allowed.has(e.status))
+      .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+    for (const e of sortedEntries) {
+      const a = animeStore.get(e.animeId);
+      if (!a || (a.mediaType ?? 'ANIME') !== mediaType || seen.has(a.id)) continue;
+      if (!passesContentSettings(a, settings)) continue;
+      seen.add(a.id);
+      matches.push(a);
+      if (matches.length >= 16) break;
+    }
+    return matches;
+  }, [library.entries, mediaType, settings]);
 
   const visibleInitial = useMemo(() => filterList(initialCombined), [filterList, initialCombined]);
   const visibleExtra = useMemo(() => filterList(extraFeed), [filterList, extraFeed]);
@@ -482,6 +507,17 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {onOpenQuiz && (
+            <button
+              type="button"
+              onClick={onOpenQuiz}
+              className="flex items-center gap-1.5 rounded-full border border-white/[0.12] bg-[#181818] px-3.5 py-2 text-[12px] font-bold text-[#3EA6FF] transition hover:bg-[#272727]"
+              title="Play Opening & Ending Theme Song Trivia"
+            >
+              <Music className="h-3.5 w-3.5" />
+              <span>OP/ED Quiz</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -632,51 +668,53 @@ export const HomeView: React.FC<HomeViewProps> = ({
       )}
 
       {/* Top Personalized Feed */}
-      <section className="px-4 sm:px-6 lg:px-8">
-        {loading ? (
-          <GridSkeleton count={8} mediaType={mediaType} />
-        ) : error ? (
-          <div className="rounded-2xl border border-white/10 bg-[#1F1F1F] p-8 text-center">
-            <p className="text-[14px] text-[#AAAAAA]">{error}</p>
-            <button
-              type="button"
-              onClick={() => setRefreshToken((v) => v + 1)}
-              className="mt-3 rounded-full bg-[#FF0000] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#CC0000]"
-            >
-              Try Again
-            </button>
-          </div>
-        ) : visibleInitial.length === 0 ? (
-          <div className="py-12 text-center text-[#AAAAAA]">
-            <p className="text-[14px] font-semibold">No recommendations found in this filter yet.</p>
-            <button
-              type="button"
-              onClick={() => setSelectedChip('All')}
-              className="mt-3 rounded-full bg-white/10 px-4 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
-            >
-              Show All
-            </button>
-          </div>
-        ) : (
-          <div className={gridClass}>
-            {visibleInitial.map((item, index) => (
-              <AnimeCard
-                key={item.anime.id}
-                anime={item.anime}
-                onOpen={onOpen}
-                onOpenChannel={onOpenChannel}
-                reason={item.reason}
-                status={library.entries[item.anime.id]?.status}
-                onQuickAdd={onQuickAdd}
-                priority={index < 8}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      {settings.showHomeForYou && (
+        <section className="px-4 sm:px-6 lg:px-8">
+          {loading ? (
+            <GridSkeleton count={8} mediaType={mediaType} />
+          ) : error ? (
+            <div className="rounded-2xl border border-white/10 bg-[#1F1F1F] p-8 text-center">
+              <p className="text-[14px] text-[#AAAAAA]">{error}</p>
+              <button
+                type="button"
+                onClick={() => setRefreshToken((v) => v + 1)}
+                className="mt-3 rounded-full bg-[#FF0000] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#CC0000]"
+              >
+                Try Again
+              </button>
+            </div>
+          ) : visibleInitial.length === 0 ? (
+            <div className="py-12 text-center text-[#AAAAAA]">
+              <p className="text-[14px] font-semibold">No recommendations found in this filter yet.</p>
+              <button
+                type="button"
+                onClick={() => setSelectedChip('All')}
+                className="mt-3 rounded-full bg-white/10 px-4 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
+              >
+                Show All
+              </button>
+            </div>
+          ) : (
+            <div className={gridClass}>
+              {visibleInitial.map((item, index) => (
+                <AnimeCard
+                  key={item.anime.id}
+                  anime={item.anime}
+                  onOpen={onOpen}
+                  onOpenChannel={onOpenChannel}
+                  reason={item.reason}
+                  status={library.entries[item.anime.id]?.status}
+                  onQuickAdd={onQuickAdd}
+                  priority={index < 8}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Continue Watching / Subscribed Row */}
-      {bundle && bundle.continueWatching.length > 0 && selectedChip === 'All' && (
+      {settings.showHomeSubscriptions && visibleSubscriptions.length > 0 && selectedChip === 'All' && (
         <Shelf
           title={isManga ? 'Continue Reading' : 'Your Subscriptions'}
           subtitle="Resume where you left off"
@@ -691,7 +729,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </button>
           }
         >
-          {bundle.continueWatching.map((anime) => {
+          {visibleSubscriptions.map((anime) => {
             const entry = library.entries[anime.id];
             const totalCount = isManga ? anime.chapters : anime.episodes;
             return (
@@ -711,23 +749,28 @@ export const HomeView: React.FC<HomeViewProps> = ({
       )}
 
       {/* Curated Discovery & "Because You Subscribed" Shelves */}
-      {bundle &&
+      {settings.showHomeDiscoveryShelves &&
+        bundle &&
         selectedChip === 'All' &&
-        bundle.shelves.map((shelf) => (
-          <Shelf key={shelf.id} title={shelf.title} subtitle={shelf.subtitle}>
-            {shelf.items.map((anime) => (
-              <ShelfItem key={anime.id} width={shelfWidth}>
-                <AnimeCard
-                  anime={anime}
-                  onOpen={onOpen}
-                  onOpenChannel={onOpenChannel}
-                  status={library.entries[anime.id]?.status}
-                  onQuickAdd={onQuickAdd}
-                />
-              </ShelfItem>
-            ))}
-          </Shelf>
-        ))}
+        bundle.shelves.map((shelf) => {
+          const safeItems = shelf.items.filter((a) => passesContentSettings(a, settings));
+          if (safeItems.length === 0) return null;
+          return (
+            <Shelf key={shelf.id} title={shelf.title} subtitle={shelf.subtitle}>
+              {safeItems.map((anime) => (
+                <ShelfItem key={anime.id} width={shelfWidth}>
+                  <AnimeCard
+                    anime={anime}
+                    onOpen={onOpen}
+                    onOpenChannel={onOpenChannel}
+                    status={library.entries[anime.id]?.status}
+                    onQuickAdd={onQuickAdd}
+                  />
+                </ShelfItem>
+              ))}
+            </Shelf>
+          );
+        })}
 
       {/* Infinite YouTube Feed Below Shelves (Zero Repeats!) */}
       {visibleExtra.length > 0 && (

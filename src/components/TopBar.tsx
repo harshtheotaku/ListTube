@@ -13,6 +13,7 @@ import { searchAniListCharacters, searchAniListStaff } from '../services/anilist
 import { fetchPublicUsers } from '../services/community';
 import { useProfile } from '../services/profile';
 import { useCloudSync } from '../services/cloudSync';
+import { useSettings } from '../services/settings';
 import { EntityRouteTarget } from './EntityView';
 import { ListTubeLogo } from './ListTubeLogo';
 
@@ -57,6 +58,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   const searchTicket = useRef(0);
   const profile = useProfile();
   const cloud = useCloudSync();
+  const settings = useSettings();
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -125,7 +127,13 @@ export const TopBar: React.FC<TopBarProps> = ({
   const connected = trackers[0];
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#0F0F0F]/95 backdrop-blur-xl">
+    <header
+      className={`sticky top-0 z-40 transition-colors ${
+        settings.liquidGlass
+          ? 'liquid-glass border-b border-white/[0.15]'
+          : 'border-b border-white/[0.08] bg-[#0F0F0F]/95 backdrop-blur-xl'
+      }`}
+    >
       <div className="flex h-14 items-center justify-between gap-2 px-3 sm:gap-3 sm:px-5">
         {/* Left: Three-Line Menu Button + ListTube Logo */}
         <div className="flex shrink-0 items-center gap-2">
@@ -174,7 +182,11 @@ export const TopBar: React.FC<TopBarProps> = ({
                     ? 'Search manga (e.g. "vagab", "berserk")…'
                     : 'Search anime (e.g. "shang", "frieren", "aot")…'
                 }
-                className="h-9 w-full rounded-l-full border border-white/[0.15] bg-[#121212] pl-4 pr-8 text-[16px] text-white placeholder:text-[13px] placeholder:text-[#888888] outline-none transition focus:border-[#3EA6FF] lg:text-[13px]"
+                className={`h-9 w-full rounded-l-full border pl-4 pr-8 text-[16px] text-white placeholder:text-[13px] placeholder:text-[#888888] outline-none transition focus:border-[#3EA6FF] lg:text-[13px] ${
+                  settings.liquidGlass
+                    ? 'border-white/[0.18] bg-white/[0.07]'
+                    : 'border-white/[0.15] bg-[#121212]'
+                }`}
                 aria-label="Search"
               />
               {query && (
@@ -194,7 +206,11 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               type="submit"
               aria-label="Search"
-              className="flex h-9 items-center justify-center rounded-r-full border border-l-0 border-white/[0.15] bg-[#222222] px-4 text-white transition hover:bg-[#2F2F2F]"
+              className={`flex h-9 items-center justify-center rounded-r-full border border-l-0 px-4 text-white transition ${
+                settings.liquidGlass
+                  ? 'border-white/[0.18] bg-white/[0.12] hover:bg-white/[0.2]'
+                  : 'border-white/[0.15] bg-[#222222] hover:bg-[#2F2F2F]'
+              }`}
             >
               <Search className="h-4 w-4" />
             </button>

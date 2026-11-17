@@ -197,28 +197,30 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {affinity.affinity !== null ? (
-              <div
-                className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] font-bold ${
-                  affinity.affinity >= 50
-                    ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                    : affinity.affinity >= 0
-                    ? 'border-[#3EA6FF]/40 bg-[#3EA6FF]/15 text-[#7DD3FC]'
-                    : 'border-rose-500/40 bg-rose-500/15 text-rose-300'
-                }`}
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                <span>
-                  {affinity.affinity > 0 ? `+${affinity.affinity}%` : `${affinity.affinity}%`} Taste Affinity
+            {!(cloud.userId === user.id && settings.profileVisibility.hideStats) && (
+              affinity.affinity !== null ? (
+                <div
+                  className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] font-bold ${
+                    affinity.affinity >= 50
+                      ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+                      : affinity.affinity >= 0
+                      ? 'border-[#3EA6FF]/40 bg-[#3EA6FF]/15 text-[#7DD3FC]'
+                      : 'border-rose-500/40 bg-rose-500/15 text-rose-300'
+                  }`}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>
+                    {affinity.affinity > 0 ? `+${affinity.affinity}%` : `${affinity.affinity}%`} Taste Affinity
+                  </span>
+                  <span className="text-[10.5px] font-normal text-[#CCCCCC]">
+                    ({affinity.sharedRated} rated shared)
+                  </span>
+                </div>
+              ) : (
+                <span className="rounded-full bg-white/[0.06] px-3 py-1.5 text-[11px] font-medium text-[#AAAAAA]">
+                  {affinity.sharedTotal} shared titles
                 </span>
-                <span className="text-[10.5px] font-normal text-[#CCCCCC]">
-                  ({affinity.sharedRated} rated shared)
-                </span>
-              </div>
-            ) : (
-              <span className="rounded-full bg-white/[0.06] px-3 py-1.5 text-[11px] font-medium text-[#AAAAAA]">
-                {affinity.sharedTotal} shared titles
-              </span>
+              )
             )}
 
             {cloud.userId !== user.id && (
@@ -246,7 +248,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
       </div>
 
       {/* Favorites Strip */}
-      {(favMedia.length > 0 || user.favoriteCharactersData.length > 0) && (
+      {!(cloud.userId === user.id && settings.profileVisibility.hideFavorites) && (favMedia.length > 0 || user.favoriteCharactersData.length > 0) && (
         <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
           <h2 className="mb-3 flex items-center gap-1.5 text-[12.5px] font-bold uppercase tracking-wider text-white">
             <Heart className="h-4 w-4 fill-rose-400 text-rose-400" />
@@ -275,6 +277,11 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
       )}
 
       {/* Public List */}
+      {cloud.userId === user.id && settings.profileVisibility.hideLists ? (
+        <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-6 text-center text-[13px] text-[#AAAAAA]">
+          Public Library hidden on your profile preview via Privacy Settings.
+        </div>
+      ) : (
       <div className="space-y-3 rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-[14px] font-bold text-white">
@@ -335,6 +342,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 };

@@ -1,8 +1,21 @@
-import React from 'react';
-import { Globe, Play, RefreshCw, Settings, Star, X } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  Bell,
+  Check,
+  Eye,
+  Layout,
+  Palette,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  Shield,
+  Sparkles,
+  X,
+} from 'lucide-react';
+import { ContentFilterLevel, ListStatus, statusLabel, ThemePreset } from '../types';
+import { animeStore } from '../services/animeStore';
 import { SCORE_FORMATS } from '../services/scoring';
 import { settingsStore, useSettings } from '../services/settings';
-import { animeStore } from '../services/animeStore';
 import { toast } from './Toast';
 
 interface SettingsModalProps {
@@ -10,14 +23,69 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
+type SettingsSection = 'appearance' | 'home' | 'content' | 'privacy' | 'playback';
+
+const ACCENT_SWATCHES: { bg: string; text: string; accent: string; name: string }[] = [
+  { bg: '#0F0F0F', text: '#F1F1F1', accent: '#FF0000', name: 'Crimson Obsidian' },
+  { bg: '#000000', text: '#FFFFFF', accent: '#FF9F43', name: 'AMOLED Amber' },
+  { bg: '#0A0D14', text: '#F2F5FA', accent: '#3EA6FF', name: 'Apple Cobalt' },
+  { bg: '#091112', text: '#ECFAF8', accent: '#10B981', name: 'Jade Glass' },
+  { bg: '#100C18', text: '#F6F2FF', accent: '#A855F7', name: 'Amethyst' },
+  { bg: '#120C0F', text: '#FFF2F6', accent: '#FB7185', name: 'Sakura Rose' },
+  { bg: '#0B1218', text: '#F0F8FF', accent: '#38BDF8', name: 'Glacier Sky' },
+  { bg: '#14110B', text: '#FAF6ED', accent: '#F59E0B', name: 'Solar Gold' },
+  { bg: '#0F1310', text: '#F2FAF4', accent: '#22C55E', name: 'Emerald' },
+  { bg: '#F4F4F7', text: '#111115', accent: '#FF0000', name: 'Daylight Crimson' },
+  { bg: '#F4F4F7', text: '#111115', accent: '#007AFF', name: 'Daylight Blue' },
+  { bg: '#111113', text: '#F5F5F7', accent: '#FFFFFF', name: 'Monochrome' },
+];
+
+const ALL_STATUSES: ListStatus[] = ['watching', 'completed', 'on_hold', 'planned', 'dropped'];
+const BLOCKABLE_GENRES = [
+  'Ecchi',
+  'Harem',
+  'Horror',
+  'Mecha',
+  'Sports',
+  'Mahou Shoujo',
+  'Slice of Life',
+  'Music',
+  'Psychological',
+  'Romance',
+];
+
+const AppleSwitch: React.FC<{
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+}> = ({ checked, onChange, label }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-label={label}
+    aria-checked={checked}
+    onClick={() => onChange(!checked)}
+    className={`relative h-[26px] w-[46px] shrink-0 rounded-full transition-colors ${
+      checked ? 'bg-emerald-500' : 'bg-white/20'
+    }`}
+  >
+    <span
+      className={`block h-[22px] w-[22px] translate-y-[2px] rounded-full bg-white shadow transition-transform ${
+        checked ? 'translate-x-[22px]' : 'translate-x-[2px]'
+      }`}
+    />
+  </button>
+);
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const settings = useSettings();
+  const [section, setSection] = useState<SettingsSection>('appearance');
 
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/85 p-0 backdrop-blur-md sm:items-center sm:p-4"
+      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="settings-title"
@@ -25,143 +93,565 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/[0.1] bg-[#1F1F1F] text-white shadow-2xl sm:rounded-3xl">
-        <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4">
-          <h2 id="settings-title" className="flex items-center gap-2 text-[16px] font-bold text-white">
-            <Settings className="h-4 w-4 text-[#FF0000]" />
-            ListTube Settings
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close settings"
-            className="rounded-full p-1.5 text-[#AAAAAA] transition hover:bg-white/10 hover:text-white"
-          >
-            <X className="h-4 w-4" />
-          </button>
+      <div className="liquid-glass flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-t-[28px] border border-white/[0.16] text-white sm:rounded-[28px]">
+        {/* Header + Category Bar */}
+        <div className="border-b border-white/[0.08] px-5 pb-3 pt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 id="settings-title" className="text-[17px] font-bold tracking-tight text-white">
+                Settings
+              </h2>
+              <p className="text-[11px] text-[#AAAAAA]">
+                Saved automatically on device · Synced when signed in
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close settings"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.1] text-[#CCCCCC] hover:bg-white/[0.2] hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mt-3.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+            {(
+              [
+                { id: 'appearance', label: 'Themes & Glass', icon: Palette },
+                { id: 'home', label: 'Home & Feeds', icon: Layout },
+                { id: 'content', label: 'Content Filter', icon: Shield },
+                { id: 'privacy', label: 'Privacy & Alerts', icon: Eye },
+                { id: 'playback', label: 'Playback & Data', icon: Play },
+              ] as { id: SettingsSection; label: string; icon: React.ElementType }[]
+            ).map((item) => {
+              const Icon = item.icon;
+              const active = section === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSection(item.id)}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition ${
+                    active
+                      ? 'bg-white text-black shadow'
+                      : 'bg-white/[0.07] text-[#CCCCCC] hover:bg-white/[0.14] hover:text-white'
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="space-y-4 p-5">
-          {/* Score Scale Preference (MAL / AniList Parity) */}
-          <div className="space-y-2.5 rounded-2xl border border-white/[0.08] bg-[#272727] p-4">
-            <div className="flex items-start gap-3">
-              <Star className="mt-0.5 h-5 w-5 shrink-0 fill-amber-300 text-amber-300" />
-              <div>
-                <p className="text-[13.5px] font-bold text-white">Scoring System</p>
-                <p className="mt-0.5 text-[11.5px] text-[#AAAAAA]">
-                  Choose how your ratings display and enter across lists and reviews (AniList 100-pt / 0.5 decimal synced seamlessly).
-                </p>
+        {/* Section Body */}
+        <div className="flex-1 space-y-4 overflow-y-auto p-5">
+          {section === 'appearance' && (
+            <>
+              {/* Liquid Glass Navigation Toggle */}
+              <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/[0.1] bg-white/[0.05] p-4">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-[#3EA6FF]" />
+                  <div>
+                    <p className="text-[13.5px] font-bold text-white">Liquid Glass Navigation</p>
+                    <p className="mt-0.5 text-[11.5px] text-[#AAAAAA]">
+                      Frosted floating Apple-style translucent TopBar &amp; mobile pill dock.
+                    </p>
+                  </div>
+                </div>
+                <AppleSwitch
+                  label="Toggle Liquid Glass Navigation"
+                  checked={settings.liquidGlass}
+                  onChange={(v) => {
+                    settingsStore.setLiquidGlass(v);
+                    toast(v ? 'Liquid Glass Navigation enabled' : 'Classic Navigation enabled');
+                  }}
+                />
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              {SCORE_FORMATS.map((fmt) => {
-                const active = settings.scoreFormat === fmt.id;
-                return (
+
+              {/* Theme Preset + Swatches + Custom Color Pickers */}
+              <div className="space-y-4 rounded-2xl border border-white/[0.1] bg-white/[0.05] p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-[12px] font-bold uppercase tracking-wider text-[#CCCCCC]">
+                    Theme
+                  </p>
                   <button
-                    key={fmt.id}
                     type="button"
                     onClick={() => {
-                      settingsStore.setScoreFormat(fmt.id);
-                      toast(`Scoring scale set to ${fmt.label}`);
+                      settingsStore.resetTheme();
+                      toast('Theme colors reset');
                     }}
-                    className={`rounded-xl border px-3 py-2 text-left text-[11.5px] font-semibold transition ${
-                      active
-                        ? 'border-[#FF0000] bg-[#FF0000]/15 text-white'
-                        : 'border-white/[0.08] bg-[#181818] text-[#CCCCCC] hover:border-white/25'
-                    }`}
+                    className="text-[11px] font-semibold text-[#3EA6FF] hover:underline"
                   >
-                    {fmt.label}
+                    Reset colors
                   </button>
-                );
-              })}
-            </div>
-          </div>
+                </div>
 
-          {/* Auto-play Trailer Toggle */}
-          <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-[#272727] p-4">
-            <div className="flex items-start gap-3">
-              <Play className="mt-0.5 h-5 w-5 shrink-0 text-[#FF0000]" />
-              <div>
-                <p className="text-[13.5px] font-bold text-white">Auto-Play Trailers</p>
-                <p className="mt-0.5 text-[11.5px] text-[#AAAAAA]">
-                  Automatically start official trailers when opening an anime instead of waiting to click Play Trailer.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={settings.autoplayTrailer}
-              onClick={() => settingsStore.setAutoplayTrailer(!settings.autoplayTrailer)}
-              className={`relative h-6 w-11 shrink-0 rounded-full transition ${
-                settings.autoplayTrailer ? 'bg-[#FF0000]' : 'bg-white/20'
-              }`}
-            >
-              <span
-                className={`block h-5 w-5 translate-y-0.5 rounded-full bg-white shadow transition-transform ${
-                  settings.autoplayTrailer ? 'translate-x-5.5' : 'translate-x-0.5'
-                }`}
-              />
-            </button>
-          </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {(
+                    [
+                      { id: 'main', label: 'Obsidian' },
+                      { id: 'dark', label: 'AMOLED' },
+                      { id: 'light', label: 'Daylight' },
+                      { id: 'custom', label: 'Custom' },
+                    ] as { id: ThemePreset; label: string }[]
+                  ).map((p) => {
+                    const active = settings.themePreset === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => settingsStore.setThemePreset(p.id)}
+                        className={`rounded-xl border py-2 text-[12px] font-bold transition ${
+                          active
+                            ? 'border-white bg-white/[0.18] text-white'
+                            : 'border-white/[0.08] bg-black/25 text-[#AAAAAA] hover:text-white'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
 
-          {/* External Community Links Toggle */}
-          <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-[#272727] p-4">
-            <div className="flex items-start gap-3">
-              <Globe className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
-              <div>
-                <p className="text-[13.5px] font-bold text-white">Community Watch &amp; Reader Links</p>
-                <p className="mt-0.5 text-[11.5px] text-[#AAAAAA]">
-                  Show external community shortcuts (Comix.to, Kagane, KotoPlay, Re Anime) alongside Official platforms.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={settings.showCommunityLinks}
-              onClick={() => settingsStore.setShowCommunityLinks(!settings.showCommunityLinks)}
-              className={`relative h-6 w-11 shrink-0 rounded-full transition ${
-                settings.showCommunityLinks ? 'bg-emerald-500' : 'bg-white/20'
-              }`}
-            >
-              <span
-                className={`block h-5 w-5 translate-y-0.5 rounded-full bg-white shadow transition-transform ${
-                  settings.showCommunityLinks ? 'translate-x-5.5' : 'translate-x-0.5'
-                }`}
-              />
-            </button>
-          </div>
+                {/* Curated Color Swatch Circles */}
+                <div className="flex flex-wrap gap-2.5 pt-1">
+                  {ACCENT_SWATCHES.map((sw) => {
+                    const selected =
+                      settings.themeColors.bg.toLowerCase() === sw.bg.toLowerCase() &&
+                      settings.themeColors.accent.toLowerCase() === sw.accent.toLowerCase();
+                    return (
+                      <button
+                        key={sw.name}
+                        type="button"
+                        title={sw.name}
+                        aria-label={`Apply theme ${sw.name}`}
+                        onClick={() => {
+                          if (sw.bg === '#F4F4F7') {
+                            settingsStore.update({
+                              themePreset: 'light',
+                              themeColors: { bg: sw.bg, text: sw.text, accent: sw.accent },
+                            });
+                          } else {
+                            settingsStore.setThemeColors({
+                              bg: sw.bg,
+                              text: sw.text,
+                              accent: sw.accent,
+                            });
+                          }
+                          toast(`Applied ${sw.name}`);
+                        }}
+                        className={`relative h-8 w-8 overflow-hidden rounded-full border-2 transition ${
+                          selected ? 'scale-110 border-white ring-2 ring-white/40' : 'border-white/25 hover:scale-105'
+                        }`}
+                        style={{
+                          background: `linear-gradient(135deg, ${sw.bg} 50%, ${sw.accent} 50%)`,
+                        }}
+                      >
+                        {selected && (
+                          <Check className="mx-auto h-3.5 w-3.5 text-white drop-shadow" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
 
-          {/* Clear Thumbnail / Artwork Cache */}
-          <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-[#272727] p-4">
-            <div className="flex items-start gap-3">
-              <RefreshCw className="mt-0.5 h-5 w-5 shrink-0 text-[#3EA6FF]" />
-              <div>
-                <p className="text-[13.5px] font-bold text-white">Refresh IndexedDB Cache</p>
-                <p className="mt-0.5 text-[11.5px] text-[#AAAAAA]">
-                  Re-fetch high-resolution banners, characters &amp; posters while keeping your watchlist pinned.
-                </p>
+                {/* Custom Background / Text / Accent Hex Pickers */}
+                <div className="space-y-2 border-t border-white/[0.08] pt-3">
+                  {(
+                    [
+                      { key: 'bg', label: 'Background' },
+                      { key: 'text', label: 'Text' },
+                      { key: 'accent', label: 'Accent' },
+                    ] as const
+                  ).map((row) => (
+                    <div key={row.key} className="flex items-center justify-between gap-3">
+                      <span className="text-[12.5px] font-semibold text-neutral-200">
+                        {row.label}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          aria-label={`${row.label} color picker`}
+                          value={settings.themeColors[row.key]}
+                          onChange={(e) =>
+                            settingsStore.setThemeColors({ [row.key]: e.target.value })
+                          }
+                          className="h-7 w-9 cursor-pointer rounded border border-white/20 bg-transparent"
+                        />
+                        <code className="w-20 rounded-lg bg-black/40 px-2 py-1 text-center text-[11px] font-mono text-[#CCCCCC]">
+                          {settings.themeColors[row.key].toUpperCase()}
+                        </code>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                animeStore.clearUnpinned();
-                toast('IndexedDB cache refreshed — reload to fetch latest metadata');
-              }}
-              className="shrink-0 rounded-xl bg-white/10 px-3 py-1.5 text-[11.5px] font-bold text-white hover:bg-white/20"
-            >
-              Refresh
-            </button>
-          </div>
+            </>
+          )}
+
+          {section === 'home' && (
+            <>
+              <div className="divide-y divide-white/[0.08] overflow-hidden rounded-2xl border border-white/[0.1] bg-white/[0.04]">
+                <div className="flex items-center justify-between gap-4 p-4">
+                  <div>
+                    <p className="text-[13px] font-bold text-white">Show For You Grid</p>
+                    <p className="text-[11px] text-[#AAAAAA]">
+                      Personalized anime &amp; manga recommendations at top of Home.
+                    </p>
+                  </div>
+                  <AppleSwitch
+                    label="Show For You Grid"
+                    checked={settings.showHomeForYou}
+                    onChange={(v) => settingsStore.update({ showHomeForYou: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4 p-4">
+                  <div>
+                    <p className="text-[13px] font-bold text-white">
+                      Show Subscriptions / Continue Watching Rail
+                    </p>
+                    <p className="text-[11px] text-[#AAAAAA]">
+                      Quick resume cards filtered by the folder checkboxes below.
+                    </p>
+                  </div>
+                  <AppleSwitch
+                    label="Show Subscriptions Rail"
+                    checked={settings.showHomeSubscriptions}
+                    onChange={(v) => settingsStore.update({ showHomeSubscriptions: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4 p-4">
+                  <div>
+                    <p className="text-[13px] font-bold text-white">Show Discovery Shelves</p>
+                    <p className="text-[11px] text-[#AAAAAA]">
+                      Seasonal spotlight, “Because You Watched”, and hidden-gem rows.
+                    </p>
+                  </div>
+                  <AppleSwitch
+                    label="Show Discovery Shelves"
+                    checked={settings.showHomeDiscoveryShelves}
+                    onChange={(v) => settingsStore.update({ showHomeDiscoveryShelves: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4 p-4">
+                  <div>
+                    <p className="text-[13px] font-bold text-white">Auto-load Comments</p>
+                    <p className="text-[11px] text-[#AAAAAA]">
+                      When off, threads stay collapsed until tapped (helps avoid spoilers).
+                    </p>
+                  </div>
+                  <AppleSwitch
+                    label="Auto-load Comments"
+                    checked={settings.autoLoadComments}
+                    onChange={(v) => settingsStore.update({ autoLoadComments: v })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded-2xl border border-white/[0.1] bg-white/[0.04] p-4">
+                <p className="text-[12px] font-bold uppercase tracking-wider text-[#CCCCCC]">
+                  Followed Titles Folders on Home
+                </p>
+                <div className="divide-y divide-white/[0.06]">
+                  {ALL_STATUSES.map((st) => {
+                    const checked = settings.homeStatusFolders.includes(st);
+                    return (
+                      <label
+                        key={st}
+                        className="flex cursor-pointer items-center justify-between py-2.5 text-[12.5px] font-semibold text-white"
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => settingsStore.toggleHomeStatusFolder(st)}
+                            className="h-4 w-4 accent-[#3EA6FF]"
+                          />
+                          {statusLabel(st, 'ANIME')}
+                        </span>
+                        <span className="rounded-md bg-white/[0.07] px-2 py-0.5 text-[10px] text-[#AAAAAA]">
+                          built-in
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {section === 'content' && (
+            <>
+              <div className="space-y-2 rounded-2xl border border-white/[0.1] bg-white/[0.04] p-4">
+                <p className="text-[12px] font-bold uppercase tracking-wider text-[#CCCCCC]">
+                  Content Filter Level
+                </p>
+                {(
+                  [
+                    {
+                      id: 'safe',
+                      title: 'Safe',
+                      desc: 'Family-friendly series only. Filters Ecchi, fanservice, and extreme gore.',
+                    },
+                    {
+                      id: 'balanced',
+                      title: 'Balanced',
+                      badge: 'Recommended',
+                      desc: 'Includes standard shonen/seinen action & romance while blocking explicit titles.',
+                    },
+                    {
+                      id: 'mature',
+                      title: 'Unfiltered Catalog',
+                      desc: 'Includes all AniList non-adult anime & manga genres including Horror and Ecchi.',
+                    },
+                  ] as { id: ContentFilterLevel; title: string; badge?: string; desc: string }[]
+                ).map((opt) => {
+                  const active = settings.contentFilter === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        settingsStore.setContentFilter(opt.id);
+                        toast(`Content filter set to ${opt.title}`);
+                      }}
+                      className={`w-full rounded-2xl border p-3.5 text-left transition ${
+                        active
+                          ? 'border-[#3EA6FF] bg-[#3EA6FF]/15'
+                          : 'border-white/[0.08] bg-black/20 hover:border-white/20'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-bold text-white">{opt.title}</span>
+                        {opt.badge && (
+                          <span className="rounded bg-amber-400/20 px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase text-amber-300">
+                            {opt.badge}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-[11.5px] text-[#AAAAAA]">{opt.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-2.5 rounded-2xl border border-white/[0.1] bg-white/[0.04] p-4">
+                <p className="text-[12px] font-bold uppercase tracking-wider text-[#CCCCCC]">
+                  Hidden / Blocked Genres
+                </p>
+                <p className="text-[11px] text-[#AAAAAA]">
+                  Tap any genre to exclude it from Home &amp; Explore discovery feeds.
+                </p>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {BLOCKABLE_GENRES.map((g) => {
+                    const blocked = settings.blockedGenres.includes(g);
+                    return (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => settingsStore.toggleBlockedGenre(g)}
+                        className={`rounded-full px-3 py-1 text-[11.5px] font-semibold transition ${
+                          blocked
+                            ? 'bg-rose-500/25 text-rose-200 ring-1 ring-rose-400/50'
+                            : 'bg-white/[0.07] text-[#CCCCCC] hover:bg-white/[0.14]'
+                        }`}
+                      >
+                        {blocked ? `Hidden: ${g}` : g}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {section === 'privacy' && (
+            <>
+              <div className="divide-y divide-white/[0.08] overflow-hidden rounded-2xl border border-white/[0.1] bg-white/[0.04]">
+                <div className="px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-[#AAAAAA]">
+                  Public Profile Visibility
+                </div>
+                {(
+                  [
+                    {
+                      key: 'hideActivity',
+                      title: 'Hide recent watch history',
+                      desc: 'Visitors cannot see your latest watched episodes on your public profile.',
+                    },
+                    {
+                      key: 'hideStats',
+                      title: 'Hide stats & taste affinity',
+                      desc: 'Hide score comparison & genre breakdown from public profile viewers.',
+                    },
+                    {
+                      key: 'hideLists',
+                      title: 'Hide public watchlist tab',
+                      desc: 'Hide your anime & manga list entries on public profile pages.',
+                    },
+                    {
+                      key: 'hideFavorites',
+                      title: 'Hide pinned favorites',
+                      desc: 'Hide your pinned favorite shows and characters from visitors.',
+                    },
+                  ] as const
+                ).map((item) => (
+                  <div key={item.key} className="flex items-center justify-between gap-4 p-4">
+                    <div>
+                      <p className="text-[13px] font-bold text-white">{item.title}</p>
+                      <p className="text-[11px] text-[#AAAAAA]">{item.desc}</p>
+                    </div>
+                    <AppleSwitch
+                      label={item.title}
+                      checked={settings.profileVisibility[item.key]}
+                      onChange={(v) => settingsStore.updateProfileVisibility({ [item.key]: v })}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-2 rounded-2xl border border-white/[0.1] bg-white/[0.04] p-4">
+                <p className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-wider text-[#CCCCCC]">
+                  <Bell className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                  Airing Alert Folders
+                </p>
+                {ALL_STATUSES.map((st) => {
+                  const checked = settings.notifyFolders.includes(st);
+                  return (
+                    <label
+                      key={`nf-${st}`}
+                      className="flex cursor-pointer items-center justify-between py-1.5 text-[12.5px] font-semibold text-white"
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => settingsStore.toggleNotifyFolder(st)}
+                          className="h-4 w-4 accent-[#3EA6FF]"
+                        />
+                        {statusLabel(st, 'ANIME')}
+                      </span>
+                    </label>
+                  );
+                })}
+                <div className="flex items-center justify-between gap-4 border-t border-white/[0.08] pt-3">
+                  <div>
+                    <p className="text-[12.5px] font-bold text-white">
+                      Notify on comment likes &amp; replies
+                    </p>
+                  </div>
+                  <AppleSwitch
+                    label="Comment likes alerts"
+                    checked={settings.notifyCommentLikes}
+                    onChange={(v) => settingsStore.update({ notifyCommentLikes: v })}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {section === 'playback' && (
+            <>
+              <div className="space-y-2.5 rounded-2xl border border-white/[0.1] bg-white/[0.04] p-4">
+                <p className="text-[12px] font-bold uppercase tracking-wider text-[#CCCCCC]">
+                  Scoring System
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {SCORE_FORMATS.map((fmt) => {
+                    const active = settings.scoreFormat === fmt.id;
+                    return (
+                      <button
+                        key={fmt.id}
+                        type="button"
+                        onClick={() => {
+                          settingsStore.setScoreFormat(fmt.id);
+                          toast(`Scoring scale set to ${fmt.label}`);
+                        }}
+                        className={`rounded-xl border px-3 py-2 text-left text-[11.5px] font-semibold transition ${
+                          active
+                            ? 'border-[#3EA6FF] bg-[#3EA6FF]/15 text-white'
+                            : 'border-white/[0.08] bg-black/25 text-[#CCCCCC] hover:border-white/25'
+                        }`}
+                      >
+                        {fmt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="divide-y divide-white/[0.08] overflow-hidden rounded-2xl border border-white/[0.1] bg-white/[0.04]">
+                <div className="flex items-center justify-between gap-4 p-4">
+                  <div>
+                    <p className="text-[13px] font-bold text-white">Auto-Play Trailers</p>
+                    <p className="text-[11px] text-[#AAAAAA]">
+                      Start trailers automatically when opening an anime watch page.
+                    </p>
+                  </div>
+                  <AppleSwitch
+                    label="Auto-Play Trailers"
+                    checked={settings.autoplayTrailer}
+                    onChange={(v) => settingsStore.setAutoplayTrailer(v)}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4 p-4">
+                  <div>
+                    <p className="text-[13px] font-bold text-white">
+                      Community Watch &amp; Reader Links
+                    </p>
+                    <p className="text-[11px] text-[#AAAAAA]">
+                      Show external shortcuts (KotoPlay, Comix.to, Kagane) beside Official links.
+                    </p>
+                  </div>
+                  <AppleSwitch
+                    label="Community Links"
+                    checked={settings.showCommunityLinks}
+                    onChange={(v) => settingsStore.setShowCommunityLinks(v)}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4 p-4">
+                  <div>
+                    <p className="text-[13px] font-bold text-white">Refresh Artwork Cache</p>
+                    <p className="text-[11px] text-[#AAAAAA]">
+                      Clear unpinned IndexedDB posters while keeping your list intact.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      animeStore.clearUnpinned();
+                      toast('IndexedDB cache refreshed');
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.1] px-3 py-1.5 text-[11.5px] font-bold text-white hover:bg-white/[0.18]"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                    Refresh
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
-        <div className="border-t border-white/[0.08] px-5 py-3 text-right">
+        {/* Footer */}
+        <div className="flex items-center justify-between border-t border-white/[0.08] px-5 py-3.5">
+          <button
+            type="button"
+            onClick={() => {
+              settingsStore.resetAllDefaults();
+              toast('Settings restored to defaults');
+            }}
+            className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#AAAAAA] hover:text-white"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Reset to defaults
+          </button>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full bg-white px-5 py-2 text-[12px] font-bold text-black hover:bg-neutral-200"
+            className="rounded-full bg-white px-5 py-2 text-[12.5px] font-bold text-black transition hover:bg-neutral-200"
           >
             Done
           </button>

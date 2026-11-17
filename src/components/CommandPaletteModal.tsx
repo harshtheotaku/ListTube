@@ -6,6 +6,7 @@ import {
   ListChecks,
   Newspaper,
   Search,
+  Settings,
   Sparkles,
   User,
   Users,
@@ -25,6 +26,9 @@ interface CommandPaletteModalProps {
   onNavigate: (tab: AppTab) => void;
   onOpenAnime: (anime: Anime) => void;
   onOpenConflicts: () => void;
+  onOpenWrapped?: () => void;
+  onOpenQuiz?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
@@ -35,6 +39,9 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   onNavigate,
   onOpenAnime,
   onOpenConflicts,
+  onOpenWrapped,
+  onOpenQuiz,
+  onOpenSettings,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
@@ -100,7 +107,10 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
 
   const quickActions: { label: string; icon: React.ReactNode; run: () => void }[] = [
     { label: 'Spin Discovery Roulette (Pick Next Show)', icon: <Dice5 className="h-4 w-4 text-amber-300" />, run: spinRoulette },
+    ...(onOpenWrapped ? [{ label: 'Open ListTube Wrapped Card', icon: <Sparkles className="h-4 w-4 text-rose-400" />, run: () => { onClose(); onOpenWrapped(); } }] : []),
+    ...(onOpenQuiz ? [{ label: 'Play Anime OP/ED Music Quiz', icon: <Sparkles className="h-4 w-4 text-amber-300" />, run: () => { onClose(); onOpenQuiz(); } }] : []),
     { label: 'Open 3-Way Sync Conflict Resolver', icon: <Sparkles className="h-4 w-4 text-[#3EA6FF]" />, run: () => { onClose(); onOpenConflicts(); } },
+    ...(onOpenSettings ? [{ label: 'Open Themes, Liquid Glass & Settings', icon: <Settings className="h-4 w-4 text-neutral-300" />, run: () => { onClose(); onOpenSettings(); } }] : []),
     { label: 'Go to Explore Catalog', icon: <Compass className="h-4 w-4 text-emerald-400" />, run: () => { onClose(); onNavigate('explore'); } },
     { label: 'Go to Weekly Airing Schedule', icon: <Calendar className="h-4 w-4 text-sky-400" />, run: () => { onClose(); onNavigate('schedule'); } },
     { label: 'Go to My List & Custom Shelves', icon: <ListChecks className="h-4 w-4 text-rose-400" />, run: () => { onClose(); onNavigate('list'); } },

@@ -5,6 +5,7 @@ import { fetchAiringSchedule, fetchSeasonal } from './anilist';
 import { fetchSocialNotifications } from './community';
 import { library } from './library';
 import { fetchOfficialNewsFeed } from './news';
+import { settingsStore } from './settings';
 import { supabase } from './supabase';
 
 export type MalNotificationKind = 'episodes' | 'sequels' | 'news' | 'milestones' | 'social';
@@ -96,6 +97,7 @@ function getSnapshot(): NotificationsSnapshot {
 
 function buildLocalNotifications(): Omit<MalNotificationItem, 'read'>[] {
   const lib = library.getSnapshot();
+  const notifyFolders = settingsStore.getSnapshot().notifyFolders;
   const out: Omit<MalNotificationItem, 'read'>[] = [];
   const seenIds = new Set<string>();
   const nowSec = Math.floor(Date.now() / 1000);
@@ -106,14 +108,14 @@ function buildLocalNotifications(): Omit<MalNotificationItem, 'read'>[] {
     out.push(item);
   };
 
-  // 1. Tracked episodes nearing broadcast (from local cache + nextEpisode)
+  // 1. Tracked episodes nearing broadcast (respecting user notification folder preferences)
   for (const entry of Object.values(lib.entries)) {
     const media = animeStore.get(entry.animeId);
     if (!media) continue;
 
     if (
       media.nextEpisode &&
-      (entry.status === 'watching' || entry.status === 'planned') &&
+      notifyFolders.includes(entry.status) &&
       media.nextEpisode.airingAt >= nowSec - 86400 &&
       media.nextEpisode.airingAt <= nowSec + 5 * 86400
     ) {

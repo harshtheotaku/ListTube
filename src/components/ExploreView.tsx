@@ -30,6 +30,8 @@ import {
   searchAniListStudios,
 } from '../services/anilist';
 import { searchSmart } from '../services/search';
+import { passesContentSettings } from '../services/contentFilter';
+import { useSettings } from '../services/settings';
 import { AnimeCard } from './AnimeCard';
 import { Shelf } from './Shelf';
 import { GridSkeleton } from './Skeleton';
@@ -96,6 +98,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   onOpenChannel,
   onQuickAdd,
 }) => {
+  const settings = useSettings();
   const defaultSeason = useMemo(() => currentSeason(), []);
   const [chart, setChart] = useState<CatalogChartKey>('mal_home');
   const [dirGroup, setDirGroup] = useState<DirectoryGroup>('genres');
@@ -539,9 +542,11 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
         if (id !== requestId.current) return;
 
-        const filtered = hideMyList
-          ? result.filter((item) => !library.entries[item.id])
-          : result;
+        const filtered = result.filter(
+          (item) =>
+            passesContentSettings(item, settings) &&
+            (!hideMyList || !library.entries[item.id])
+        );
 
         setItems((previous) => {
           if (!append) return filtered;
@@ -581,6 +586,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       mediaType,
       isManga,
       library.entries,
+      settings,
     ]
   );
 
