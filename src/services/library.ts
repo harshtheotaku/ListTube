@@ -239,6 +239,7 @@ export const library = {
         | 'notes'
         | 'isPrivate'
         | 'customLists'
+        | 'priority'
         | 'score'
         | 'progress'
         | 'status'
@@ -258,8 +259,72 @@ export const library = {
     if (typeof patch.progress === 'number') {
       cleanPatch.progress = Math.max(0, Math.floor(patch.progress));
     }
+    if (typeof patch.priority === 'number') {
+      const p = Math.max(0, Math.min(2, Math.floor(patch.priority)));
+      cleanPatch.priority = p as 0 | 1 | 2;
+    }
+    if (Array.isArray(patch.customLists)) {
+      cleanPatch.customLists = Array.from(
+        new Set(patch.customLists.map((c) => c.trim()).filter(Boolean))
+      );
+    }
     const next = commitEntry(state, animeId, cleanPatch);
     commit(next);
+  },
+
+  bulkUpdate(
+    animeIds: string[],
+    patch: {
+      status?: ListStatus;
+      addCustomList?: string;
+      removeCustomList?: string;
+      priority?: 0 | 1 | 2;
+    }
+  ): void {
+    if (!animeIds.length) return;
+    const entries = { ...state.entries };
+    const now = Date.now();
+    let changed = false;
+
+    for (const id of animeIds) {
+      const prev = entries[id];
+      if (!prev) continue;
+      let nextCustom = prev.customLists ? [...prev.customLists] : [];
+      if (patch.addCustomList) {
+        const clean = patch.addCustomList.trim();
+        if (clean && !nextCustom.includes(clean)) nextCustom.push(clean);
+      }
+      if (patch.removeCustomList) {
+        nextCustom = nextCustom.filter((c) => c !== patch.removeCustomList);
+      }
+      entries[id] = {
+        ...prev,
+        ...(patch.status ? { status: patch.status } : {}),
+        ...(typeof patch.priority === 'number' ? { priority: patch.priority } : {}),
+        customLists: nextCustom,
+        updatedAt: now,
+      };
+      changed = true;
+    }
+
+    if (changed) {
+      commit({ ...state, entries });
+    }
+  },
+
+  bulkRemove(animeIds: string[]): void {
+    if (!animeIds.length) return;
+    const entries = { ...state.entries };
+    let next: LibraryState = { ...state, entries };
+    let removedAny = false;
+    for (const id of animeIds) {
+      if (entries[id]) {
+        delete entries[id];
+        next = withEvent(next, event('drop', id));
+        removedAny = true;
+      }
+    }
+    if (removedAny) commit({ ...next, entries });
   },
 
   toggleLike(anime: Anime): boolean {
@@ -304,6 +369,8 @@ export const library = {
       startedAt?: string;
       completedAt?: string;
       notes?: string;
+      customLists?: string[];
+      priority?: 0 | 1 | 2;
     }[],
     tracker: TrackerAccount
   ): void {
@@ -324,6 +391,8 @@ export const library = {
         startedAt: item.startedAt ?? prev?.startedAt,
         completedAt: item.completedAt ?? prev?.completedAt,
         notes: item.notes ?? prev?.notes,
+        customLists: item.customLists ?? prev?.customLists,
+        priority: item.priority ?? prev?.priority,
         addedAt: prev?.addedAt ?? now,
         updatedAt: now,
       };

@@ -28,6 +28,7 @@ export interface UserProfile {
   favoriteMangaIds?: string[];
   favoriteCharacters?: string[];
   favoriteCharactersData?: FavoriteCharacterItem[];
+  customListNames?: string[];
 }
 
 export const BUILT_IN_BANNERS: ProfileBanner[] = [
@@ -182,6 +183,7 @@ const DEFAULT_PROFILE: UserProfile = {
   favoriteMangaIds: [],
   favoriteCharacters: [],
   favoriteCharactersData: [],
+  customListNames: ['Favorites', 'Weekend Binge'],
 };
 
 export function sanitizeHandle(raw: string): string {
@@ -217,6 +219,9 @@ function loadProfile(): UserProfile {
       favoriteCharactersData: Array.isArray(parsed.favoriteCharactersData)
         ? parsed.favoriteCharactersData
         : [],
+      customListNames: Array.isArray(parsed.customListNames)
+        ? parsed.customListNames.filter((x) => typeof x === 'string' && x.trim())
+        : DEFAULT_PROFILE.customListNames,
     };
   } catch {
     return DEFAULT_PROFILE;
@@ -268,6 +273,27 @@ export const profileStore = {
       favoriteCharacters: patch.favoriteCharacters ?? currentProfile.favoriteCharacters ?? [],
       favoriteCharactersData:
         patch.favoriteCharactersData ?? currentProfile.favoriteCharactersData ?? [],
+      customListNames:
+        patch.customListNames !== undefined
+          ? Array.from(new Set(patch.customListNames.map((n) => n.trim()).filter(Boolean)))
+          : currentProfile.customListNames ?? DEFAULT_PROFILE.customListNames,
+    });
+  },
+  addCustomListName(name: string): string | null {
+    const clean = name.trim().slice(0, 32);
+    if (!clean) return null;
+    const prev = currentProfile.customListNames ?? [];
+    if (prev.some((n) => n.toLowerCase() === clean.toLowerCase())) return clean;
+    save({
+      ...currentProfile,
+      customListNames: [...prev, clean].slice(0, 20),
+    });
+    return clean;
+  },
+  removeCustomListName(name: string) {
+    save({
+      ...currentProfile,
+      customListNames: (currentProfile.customListNames ?? []).filter((n) => n !== name),
     });
   },
   selectCharacterAvatar(character: CharacterAvatar) {
@@ -363,6 +389,9 @@ export const profileStore = {
       favoriteCharactersData: Array.isArray(next.favoriteCharactersData)
         ? next.favoriteCharactersData
         : currentProfile.favoriteCharactersData ?? [],
+      customListNames: Array.isArray(next.customListNames)
+        ? next.customListNames
+        : currentProfile.customListNames ?? DEFAULT_PROFILE.customListNames,
     });
   },
 };

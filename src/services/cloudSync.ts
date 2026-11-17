@@ -9,17 +9,25 @@ import { profileStore, sanitizeHandle, UserProfile } from './profile';
 import { settingsStore } from './settings';
 import {
   checkGoogleProviderEnabled,
+  createAniListBridgeSessionEdge,
   exchangeAniListOAuthEdge,
   exchangeMalOAuthEdge,
   fetchMalOAuthListEdge,
+  fetchOAuthServerStatus,
   getAppBaseUrl,
+  getOAuthRedirectUri,
+  OAuthBridgePayload,
   supabase,
   writeBackAniListEdge,
   writeBackMalEdge,
 } from './supabase';
 import {
+  buildAniListAuthorizeUrl,
+  buildMalAuthorizeUrl,
+  generatePkceVerifier,
   importAniListWithToken,
   readAndClearMalPkceSession,
+  storeMalPkceSession,
 } from './trackers';
 
 const CLOUD_META_KEY = 'listtube.cloud.v2';
@@ -51,6 +59,7 @@ interface CloudMeta {
   malTokenExpiresAt: number;
   profileUpdatedAt: number;
   deletedEntryIds: string[];
+  signedOutManually?: boolean;
 }
 
 function loadMeta(): CloudMeta {
@@ -65,6 +74,7 @@ function loadMeta(): CloudMeta {
         malTokenExpiresAt: 0,
         profileUpdatedAt: 0,
         deletedEntryIds: [],
+        signedOutManually: false,
       };
     }
     const parsed = JSON.parse(raw) as Partial<CloudMeta>;
@@ -76,6 +86,7 @@ function loadMeta(): CloudMeta {
       malTokenExpiresAt: Number(parsed.malTokenExpiresAt ?? 0),
       profileUpdatedAt: Number(parsed.profileUpdatedAt ?? 0),
       deletedEntryIds: Array.isArray(parsed.deletedEntryIds) ? parsed.deletedEntryIds : [],
+      signedOutManually: Boolean(parsed.signedOutManually),
     };
   } catch {
     return {
@@ -86,6 +97,7 @@ function loadMeta(): CloudMeta {
       malTokenExpiresAt: 0,
       profileUpdatedAt: 0,
       deletedEntryIds: [],
+      signedOutManually: false,
     };
   }
 }
@@ -300,6 +312,7 @@ async function pushAuthAccount(uid: string): Promise<void> {
       favorite_manga_ids: profile.favoriteMangaIds ?? [],
       favorite_characters: profile.favoriteCharacters ?? [],
       favorite_characters_data: profile.favoriteCharactersData ?? [],
+      custom_list_names: profile.customListNames ?? [],
       autoplay_trailer: settings.autoplayTrailer,
       score_format: settings.scoreFormat,
       show_community_links: settings.showCommunityLinks,
@@ -370,6 +383,7 @@ async function pushAuthAccount(uid: string): Promise<void> {
       notes: entry.notes || null,
       is_private: Boolean(entry.isPrivate),
       custom_lists: entry.customLists ?? [],
+      priority: typeof entry.priority === 'number' ? entry.priority : 0,
       media_snapshot: snap ? compactSnapshot(snap) : {},
       added_at: entry.addedAt || entry.updatedAt || Date.now(),
       updated_at: entry.updatedAt || Date.now(),
@@ -399,7 +413,7 @@ async function pullAuthAccount(uid: string): Promise<void> {
     supabase
       .from('profiles')
       .select(
-        'display_name, handle, avatar_url, avatar_id, banner_url, bio, location, favorite_anime_ids, favorite_manga_ids, favorite_characters, favorite_characters_data, autoplay_trailer, score_format, show_community_links, interests, manga_interests, updated_at'
+        'display_name, handle, avatar_url, avatar_id, banner_url, bio, location, favorite_anime_ids, favorite_manga_ids, favorite_characters, favorite_characters_data, custom_list_names, autoplay_trailer, score_format, show_community_links, interests, manga_interests, updated_at'
       )
       .eq('id', uid)
       .maybeSingle(),
@@ -413,7 +427,7 @@ async function pullAuthAccount(uid: string): Promise<void> {
     supabase
       .from('library_entries')
       .select(
-        'anime_id, media_type, status, score, score_decimal, progress, progress_volumes, rewatch_count, started_at, completed_at, notes, is_private, custom_lists, media_snapshot, added_at, updated_at'
+        'anime_id, media_type, status, score, score_decimal, progress, progress_volumes, rewatch_count, started_at, completed_at, notes, is_private, custom_lists, priority, media_snapshot, added_at, updated_at'
       )
       .eq('user_id', uid),
     supabase.from('media_likes').select('anime_id').eq('user_id', uid),
@@ -447,6 +461,10 @@ async function pullAuthAccount(uid: string): Promise<void> {
       notes: row.notes ?? undefined,
       isPrivate: Boolean(row.is_private),
       customLists: Array.isArray(row.custom_lists) ? row.custom_lists : undefined,
+      priority:
+        typeof row.priority === 'number' && row.priority >= 0 && row.priority <= 2
+          ? (row.priority as 0 | 1 | 2)
+          : undefined,
       addedAt: Number(row.added_at),
       updatedAt: Number(row.updated_at),
     };
@@ -510,6 +528,9 @@ async function pullAuthAccount(uid: string): Promise<void> {
             favoriteCharactersData: Array.isArray(profRow.favorite_characters_data)
               ? profRow.favorite_characters_data
               : [],
+            customListNames: Array.isArray(profRow.custom_list_names)
+              ? profRow.custom_list_names
+              : undefined,
           }
         : undefined,
       profileUpdatedAt: profUpdatedAt,
@@ -643,6 +664,20 @@ export async function importFromMalOAuth(token: string): Promise<{ username: str
 
 let prevEntriesSnapshot: Record<string, ListEntry> = { ...library.getSnapshot().entries };
 
+async function completeOAuthBridge(bridge?: OAuthBridgePayload | null): Promise<void> {
+  if (!bridge?.bridgeTokenHash) return;
+  try {
+    meta.signedOutManually = false;
+    saveMeta();
+    await supabase.auth.verifyOtp({
+      token_hash: bridge.bridgeTokenHash,
+      type: 'email',
+    });
+  } catch {
+    /* keep tracker import even if OTP bridge fails offline */
+  }
+}
+
 async function processOAuthReturnUrl(): Promise<void> {
   if (typeof window === 'undefined') return;
   const search = new URLSearchParams(window.location.search);
@@ -655,10 +690,14 @@ async function processOAuthReturnUrl(): Promise<void> {
     window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
     if (token) {
       try {
-        const imported = await importAniListWithToken(token);
+        const [imported, bridgeRes] = await Promise.all([
+          importAniListWithToken(token),
+          createAniListBridgeSessionEdge(token).catch(() => ({ bridge: null })),
+        ]);
         animeStore.rememberImported(imported.entries.map((e) => e.anime));
         library.importEntries(imported.entries, imported.account);
         cloudSync.setAniListWritebackToken(token);
+        await completeOAuthBridge(bridgeRes?.bridge);
         oauthHandlers.forEach((cb) =>
           cb({ provider: 'anilist', count: imported.entries.length })
         );
@@ -679,6 +718,7 @@ async function processOAuthReturnUrl(): Promise<void> {
   const code = search.get('code');
   const state = search.get('state') ?? '';
   if (!code) return;
+  const redirectUri = getOAuthRedirectUri();
 
   if (state.startsWith('mal:')) {
     const pkce = readAndClearMalPkceSession();
@@ -692,7 +732,7 @@ async function processOAuthReturnUrl(): Promise<void> {
         grantType: 'authorization_code',
         code,
         codeVerifier: pkce.verifier,
-        redirectUri: getAppBaseUrl(),
+        redirectUri,
         clientId: pkce.clientId,
       });
       cloudSync.setMalOAuthTokens({
@@ -700,7 +740,10 @@ async function processOAuthReturnUrl(): Promise<void> {
         refreshToken: tokens.refresh_token,
         expiresIn: tokens.expires_in,
       });
-      const res = await importFromMalOAuth(tokens.access_token);
+      const [res] = await Promise.all([
+        importFromMalOAuth(tokens.access_token),
+        completeOAuthBridge(tokens.bridge),
+      ]);
       oauthHandlers.forEach((cb) => cb({ provider: 'mal', count: res.count }));
     } catch (err) {
       oauthHandlers.forEach((cb) =>
@@ -719,12 +762,13 @@ async function processOAuthReturnUrl(): Promise<void> {
     try {
       const tokens = await exchangeAniListOAuthEdge({
         code,
-        redirectUri: getAppBaseUrl(),
+        redirectUri,
       });
       const imported = await importAniListWithToken(tokens.access_token);
       animeStore.rememberImported(imported.entries.map((e) => e.anime));
       library.importEntries(imported.entries, imported.account);
       cloudSync.setAniListWritebackToken(tokens.access_token);
+      await completeOAuthBridge(tokens.bridge);
       oauthHandlers.forEach((cb) => cb({ provider: 'anilist', count: imported.entries.length }));
     } catch (err) {
       oauthHandlers.forEach((cb) =>
@@ -795,7 +839,9 @@ function handleLibraryChange() {
       prev.startedAt !== nextEntry.startedAt ||
       prev.completedAt !== nextEntry.completedAt ||
       prev.notes !== nextEntry.notes ||
-      prev.isPrivate !== nextEntry.isPrivate;
+      prev.isPrivate !== nextEntry.isPrivate ||
+      prev.priority !== nextEntry.priority ||
+      (prev.customLists ?? []).join('|') !== (nextEntry.customLists ?? []).join('|');
 
     if (!changed) continue;
     meta.deletedEntryIds = meta.deletedEntryIds.filter((d) => d !== id);
@@ -821,6 +867,8 @@ function handleLibraryChange() {
         completedAt: nextEntry.completedAt,
         notes: nextEntry.notes,
         isPrivate: nextEntry.isPrivate,
+        customLists: nextEntry.customLists,
+        priority: nextEntry.priority,
       });
     }
 
@@ -1005,9 +1053,42 @@ export const cloudSync = {
       emit();
     } catch (err) {
       syncState = 'error';
-      lastError = err instanceof Error ? err.message : 'Google account sync failed';
+      lastError = err instanceof Error ? err.message : 'Cloud sync failed';
       emit();
     }
+  },
+
+  async signInWithAniList(customClientId?: string): Promise<void> {
+    const status = await fetchOAuthServerStatus();
+    const clientId = customClientId?.trim() || status.anilistClientId || '57274';
+    const useImplicit = !status.anilistCodeFlowReady;
+    const url = buildAniListAuthorizeUrl({
+      clientId,
+      redirectUri: getOAuthRedirectUri(),
+      useImplicit,
+      state: `anilist:${crypto.randomUUID().slice(0, 12)}`,
+    });
+    window.location.href = url;
+  },
+
+  async signInWithMal(customClientId?: string): Promise<void> {
+    const status = await fetchOAuthServerStatus();
+    const clientId = customClientId?.trim() || status.malClientId || 'f74fba547b6b04cdb063b1ef1bfc76a3';
+    const verifier = generatePkceVerifier(64);
+    const state = `mal:${crypto.randomUUID().slice(0, 12)}`;
+    storeMalPkceSession(verifier, state, clientId);
+    const url = buildMalAuthorizeUrl({
+      clientId,
+      redirectUri: getOAuthRedirectUri(),
+      codeChallenge: verifier,
+      state,
+    });
+    window.location.href = url;
+  },
+
+  async bridgeAniListToken(token: string): Promise<void> {
+    const res = await createAniListBridgeSessionEdge(token);
+    await completeOAuthBridge(res?.bridge);
   },
 
   async signInWithGoogle(): Promise<void> {
@@ -1020,11 +1101,13 @@ export const cloudSync = {
     if (!enabled) {
       syncState = 'error';
       lastError =
-        'Google Sign-In provider is disabled in Supabase Auth Dashboard. Enable Authentication → Providers → Google with your Google OAuth Client ID & Secret.';
+        'Google Sign-In is disabled in Supabase Auth Dashboard → Authentication → Providers → Google.';
       emit();
       throw new Error(lastError);
     }
 
+    meta.signedOutManually = false;
+    saveMeta();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -1044,6 +1127,8 @@ export const cloudSync = {
   },
 
   async signOut(): Promise<void> {
+    meta.signedOutManually = true;
+    saveMeta();
     await supabase.auth.signOut();
     userId = null;
     userEmail = null;
@@ -1054,7 +1139,7 @@ export const cloudSync = {
 
   async uploadAvatar(file: File): Promise<string> {
     if (!userId) {
-      throw new Error('Sign in with Google first to store custom avatars');
+      throw new Error('Sign in with AniList or MyAnimeList first to store custom avatars');
     }
     const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
     const path = `${userId}/avatar-${Date.now()}.${ext}`;

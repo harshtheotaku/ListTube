@@ -83,4 +83,33 @@ describe('library tracking parity', () => {
     expect(library.toggleLike(item)).toBe(false);
     expect(library.isLiked(item.id)).toBe(false);
   });
+
+  it('supports priority, customLists, bulkUpdate, and bulkRemove', () => {
+    const first = makeMedia({ id: 'anilist:10', mediaType: 'ANIME', title: 'First Show' });
+    const second = makeMedia({ id: 'anilist:20', mediaType: 'ANIME', title: 'Second Show' });
+    library.add(first, 'planned');
+    library.add(second, 'planned');
+
+    library.updateEntryDetails(first.id, {
+      priority: 2,
+      customLists: ['Favorites', 'Cozy'],
+    });
+    expect(library.getSnapshot().entries[first.id].priority).toBe(2);
+    expect(library.getSnapshot().entries[first.id].customLists).toEqual(['Favorites', 'Cozy']);
+
+    library.bulkUpdate([first.id, second.id], {
+      status: 'watching',
+      addCustomList: 'Weekend',
+      priority: 1,
+    });
+    const afterBulk = library.getSnapshot().entries;
+    expect(afterBulk[first.id].status).toBe('watching');
+    expect(afterBulk[second.id].status).toBe('watching');
+    expect(afterBulk[first.id].priority).toBe(1);
+    expect(afterBulk[second.id].customLists).toEqual(['Weekend']);
+
+    library.bulkRemove([first.id, second.id]);
+    expect(library.getSnapshot().entries[first.id]).toBeUndefined();
+    expect(library.getSnapshot().entries[second.id]).toBeUndefined();
+  });
 });

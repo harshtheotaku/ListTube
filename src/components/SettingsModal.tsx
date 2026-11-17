@@ -112,7 +112,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               <div>
                 <p className="text-[13.5px] font-bold text-white">Community Watch &amp; Reader Links</p>
                 <p className="mt-0.5 text-[11.5px] text-[#AAAAAA]">
-                  Show external community shortcuts (Comix.to, Kagane, Re Anime, KotoPlay, AnimePahe) alongside Official platforms.
+                  Show external community shortcuts (Comix.to, Kagane, KotoPlay, Re Anime) alongside Official platforms.
                 </p>
               </div>
             </div>

@@ -40,7 +40,84 @@
           "value": "(?i).*(bot|crawler|spider|slurp|archiver|discord|twitter|facebook|slack|telegram|whatsapp|preview|embed).*"
         }
       ],
-      "destination": "/api/og?id=:id&bot=1"
+      "destination": "/api/og?route=anime&id=:id&bot=1"
+    },
+    {
+      "source": "/channel/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(bot|crawler|spider|slurp|archiver|discord|twitter|facebook|slack|telegram|whatsapp|preview|embed).*"
+        }
+      ],
+      "destination": "/api/og?route=channel&id=:id&bot=1"
+    },
+    {
+      "source": "/person/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(bot|crawler|spider|slurp|archiver|discord|twitter|facebook|slack|telegram|whatsapp|preview|embed).*"
+        }
+      ],
+      "destination": "/api/og?route=person&id=:id&bot=1"
+    },
+    {
+      "source": "/character/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(bot|crawler|spider|slurp|archiver|discord|twitter|facebook|slack|telegram|whatsapp|preview|embed).*"
+        }
+      ],
+      "destination": "/api/og?route=character&id=:id&bot=1"
+    },
+    {
+      "source": "/explore",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(bot|crawler|spider|slurp|archiver|discord|twitter|facebook|slack|telegram|whatsapp|preview|embed).*"
+        }
+      ],
+      "destination": "/api/og?route=explore&bot=1"
+    },
+    {
+      "source": "/feed",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(bot|crawler|spider|slurp|archiver|discord|twitter|facebook|slack|telegram|whatsapp|preview|embed).*"
+        }
+      ],
+      "destination": "/api/og?route=feed&bot=1"
+    },
+    {
+      "source": "/schedule",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(bot|crawler|spider|slurp|archiver|discord|twitter|facebook|slack|telegram|whatsapp|preview|embed).*"
+        }
+      ],
+      "destination": "/api/og?route=schedule&bot=1"
+    },
+    {
+      "source": "/news",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(bot|crawler|spider|slurp|archiver|discord|twitter|facebook|slack|telegram|whatsapp|preview|embed).*"
+        }
+      ],
+      "destination": "/api/og?route=news&bot=1"
     },
     {
       "source": "/((?!api/|assets/|proxy/|robots\\.txt|sitemap\\.xml|favicon\\.svg|site\\.webmanifest|404\\.html|mobile\\.html).*)",

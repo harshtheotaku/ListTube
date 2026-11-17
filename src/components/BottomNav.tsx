@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Compass, Home, Tv, User } from 'lucide-react';
+import { Compass, Home, MessageSquareHeart, Tv, User } from 'lucide-react';
 import { AppTab } from './Sidebar';
 
 interface BottomNavProps {
@@ -10,7 +10,7 @@ interface BottomNavProps {
 const ITEMS: { id: AppTab; label: string; icon: React.ElementType }[] = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'explore', label: 'Explore', icon: Compass },
-  { id: 'schedule', label: 'Schedule', icon: Calendar },
+  { id: 'feed', label: 'Feed', icon: MessageSquareHeart },
   { id: 'list', label: 'Subs', icon: Tv },
   { id: 'you', label: 'You', icon: User },
 ];

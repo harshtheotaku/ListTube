@@ -24,6 +24,8 @@ const LIST_QUERY = `
           startedAt { year month day }
           completedAt { year month day }
           notes
+          priority
+          customLists
           media {
             id
             idMal
@@ -78,6 +80,8 @@ interface AniListEntry {
   startedAt?: { year?: number | null; month?: number | null; day?: number | null } | null;
   completedAt?: { year?: number | null; month?: number | null; day?: number | null } | null;
   notes?: string | null;
+  priority?: number | null;
+  customLists?: Record<string, boolean> | null;
   media?: Parameters<typeof mapMedia>[0];
 }
 
@@ -147,6 +151,18 @@ export async function importAniList(rawUsername: string, token?: string): Promis
           if (!row.media) continue;
           const anime: Anime = mapMedia(row.media, type);
           if (!anime.cover) continue;
+          const customLists =
+            row.customLists && typeof row.customLists === 'object'
+              ? Object.entries(row.customLists)
+                  .filter(([, enabled]) => Boolean(enabled))
+                  .map(([name]) => name)
+              : undefined;
+          const mappedPriority: 0 | 1 | 2 | undefined =
+            typeof row.priority === 'number' && row.priority > 0
+              ? row.priority >= 75
+                ? 2
+                : 1
+              : undefined;
           out.push({
             anime,
             status: ANILIST_STATUS[row.status ?? ''] ?? 'planned',
@@ -160,6 +176,8 @@ export async function importAniList(rawUsername: string, token?: string): Promis
             startedAt: fromFuzzyDate(row.startedAt),
             completedAt: fromFuzzyDate(row.completedAt),
             notes: row.notes || undefined,
+            customLists: customLists?.length ? customLists : undefined,
+            priority: mappedPriority,
           });
         }
       }

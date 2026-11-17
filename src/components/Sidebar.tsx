@@ -1,10 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Bell,
+  BookOpen,
   Calendar,
   ChevronDown,
   ChevronRight,
   Compass,
+  Film,
   Home,
+  Menu,
   Newspaper,
   Settings,
   Sparkles,
@@ -15,19 +19,25 @@ import {
 import { Anime, LibraryState, MediaType, TrackerAccount } from '../types';
 import { animeStore } from '../services/animeStore';
 import { franchiseNameOf } from '../services/franchise';
+import { useNotifications } from '../services/notifications';
+import { ListTubeLogo } from './ListTubeLogo';
 
 export type AppTab = 'home' | 'explore' | 'list' | 'schedule' | 'news' | 'feed' | 'you';
 
 interface SidebarProps {
   active: AppTab;
   collapsed: boolean;
+  overlay?: boolean;
+  onClose?: () => void;
   mediaType: MediaType;
+  onMediaTypeChange?: (type: MediaType) => void;
   libraryState: LibraryState;
   onNavigate: (tab: AppTab) => void;
   onOpenAnime: (anime: Anime) => void;
   onOpenChannel: (anime: Anime) => void;
   onOpenTrackers: () => void;
   onOpenSettings: () => void;
+  onOpenNotifications?: () => void;
   trackers: TrackerAccount[];
   stats: { tracked: number; watching: number };
 }
@@ -35,16 +45,21 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   active,
   collapsed,
+  overlay = false,
+  onClose,
   mediaType,
+  onMediaTypeChange,
   libraryState,
   onNavigate,
   onOpenChannel,
   onOpenTrackers,
   onOpenSettings,
+  onOpenNotifications,
   trackers,
   stats,
 }) => {
   const [showAllSubs, setShowAllSubs] = useState(false);
+  const { unreadCount } = useNotifications();
 
   const subscribedItems = useMemo(() => {
     const seen = new Set<string>();
@@ -66,7 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const displayedSubs = showAllSubs ? subscribedItems : subscribedItems.slice(0, 6);
 
-  if (collapsed) {
+  if (!overlay && collapsed) {
     const miniNav: { id: AppTab; label: string; icon: React.ElementType }[] = [
       { id: 'home', label: 'Home', icon: Home },
       { id: 'explore', label: 'Explore', icon: Compass },
@@ -100,27 +115,78 @@ export const Sidebar: React.FC<SidebarProps> = ({
     );
   }
 
-  return (
-    <aside className="fixed bottom-0 left-0 top-14 z-30 hidden w-[236px] flex-col overflow-y-auto border-r border-white/[0.06] bg-[#0F0F0F] px-3 py-3 lg:flex">
+  const handleNav = (t: AppTab) => {
+    onNavigate(t);
+    onClose?.();
+  };
+
+  const navBody = (
+    <>
+      {overlay && (
+        <div className="mb-3 flex h-11 items-center gap-2 px-1">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close sidebar"
+            className="rounded-full p-2 text-white transition hover:bg-[#272727]"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleNav('home')}
+            className="flex items-center focus:outline-none"
+          >
+            <ListTubeLogo />
+          </button>
+        </div>
+      )}
+
+      {/* Compact Mode Toggle moved into Sidebar */}
+      {onMediaTypeChange && (
+        <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl border border-white/[0.08] bg-[#181818] p-1">
+          <button
+            type="button"
+            onClick={() => onMediaTypeChange('ANIME')}
+            className={`flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11.5px] font-bold transition ${
+              mediaType === 'ANIME' ? 'bg-[#FF0000] text-white' : 'text-[#AAAAAA] hover:text-white'
+            }`}
+          >
+            <Film className="h-3.5 w-3.5" />
+            <span>Anime</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onMediaTypeChange('MANGA')}
+            className={`flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11.5px] font-bold transition ${
+              mediaType === 'MANGA' ? 'bg-[#FF0000] text-white' : 'text-[#AAAAAA] hover:text-white'
+            }`}
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+            <span>Manga</span>
+          </button>
+        </div>
+      )}
+
       {/* Primary YouTube Feed Links */}
       <nav className="space-y-0.5">
         <SidebarItem
           icon={Home}
           label="Home"
           active={active === 'home'}
-          onClick={() => onNavigate('home')}
+          onClick={() => handleNav('home')}
         />
         <SidebarItem
           icon={Compass}
           label="Explore"
           active={active === 'explore'}
-          onClick={() => onNavigate('explore')}
+          onClick={() => handleNav('explore')}
         />
       </nav>
 
       <div className="my-3 border-t border-white/[0.08]" />
 
-      {/* Live Hub: Feed, Schedule & News */}
+      {/* Live Hub: Feed, Schedule, News & Notifications */}
       <div className="space-y-0.5">
         <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-[#AAAAAA]">
           Community &amp; Live Hub
@@ -129,20 +195,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
           icon={Users}
           label="Activity & People"
           active={active === 'feed'}
-          onClick={() => onNavigate('feed')}
+          onClick={() => handleNav('feed')}
         />
         <SidebarItem
           icon={Calendar}
           label="Airing Schedule"
           active={active === 'schedule'}
-          onClick={() => onNavigate('schedule')}
+          onClick={() => handleNav('schedule')}
         />
         <SidebarItem
           icon={Newspaper}
           label="Anime & Manga News"
           active={active === 'news'}
-          onClick={() => onNavigate('news')}
+          onClick={() => handleNav('news')}
         />
+        {onOpenNotifications && (
+          <SidebarItem
+            icon={Bell}
+            label="Notifications"
+            badge={unreadCount > 0 ? unreadCount : undefined}
+            active={false}
+            onClick={() => {
+              onClose?.();
+              onOpenNotifications();
+            }}
+          />
+        )}
       </div>
 
       <div className="my-3 border-t border-white/[0.08]" />
@@ -151,7 +229,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div>
         <button
           type="button"
-          onClick={() => onNavigate('list')}
+          onClick={() => handleNav('list')}
           className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-[14px] font-bold text-white transition hover:bg-white/[0.06]"
         >
           <span>Subscriptions</span>
@@ -168,7 +246,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 key={anime.id}
                 type="button"
-                onClick={() => onOpenChannel(anime)}
+                onClick={() => {
+                  onOpenChannel(anime);
+                  onClose?.();
+                }}
                 title={`Open ${channelName} channel`}
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[13px] font-medium text-[#F1F1F1] transition hover:bg-white/[0.06]"
               >
@@ -206,7 +287,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div>
         <button
           type="button"
-          onClick={() => onNavigate('you')}
+          onClick={() => handleNav('you')}
           className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-[14px] font-bold text-white transition hover:bg-white/[0.06]"
         >
           <span>You</span>
@@ -219,33 +300,60 @@ export const Sidebar: React.FC<SidebarProps> = ({
             label={mediaType === 'MANGA' ? 'Reading Lists' : 'All Watchlists'}
             badge={stats.tracked > 0 ? stats.tracked : undefined}
             active={active === 'list'}
-            onClick={() => onNavigate('list')}
+            onClick={() => handleNav('list')}
           />
           <SidebarItem
             icon={User}
             label="Taste DNA & Stats"
             active={active === 'you'}
-            onClick={() => onNavigate('you')}
+            onClick={() => handleNav('you')}
           />
           <SidebarItem
             icon={Sparkles}
             label={trackers.length ? 'Sync AniList / MAL' : 'Connect Trackers'}
             active={false}
-            onClick={onOpenTrackers}
+            onClick={() => {
+              onClose?.();
+              onOpenTrackers();
+            }}
           />
           <SidebarItem
             icon={Settings}
             label="Settings"
             active={false}
-            onClick={onOpenSettings}
+            onClick={() => {
+              onClose?.();
+              onOpenSettings();
+            }}
           />
         </div>
       </div>
 
       <div className="mt-auto px-3 pt-6 text-[10.5px] leading-relaxed text-[#717171]">
         <p>Powered by AniList &amp; MyAnimeList</p>
-        <p>Offline-first • Zero forced login</p>
+        <p>Offline-first • Sync anywhere</p>
       </div>
+    </>
+  );
+
+  if (overlay) {
+    return (
+      <div
+        className="fixed inset-0 z-[80] flex bg-black/65 backdrop-blur-xs"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose?.();
+        }}
+      >
+        <aside className="flex h-full w-[248px] flex-col overflow-y-auto border-r border-white/[0.1] bg-[#0F0F0F] px-3 py-2 shadow-2xl">
+          {navBody}
+        </aside>
+      </div>
+    );
+  }
+
+  return (
+    <aside className="fixed bottom-0 left-0 top-14 z-30 hidden w-[236px] flex-col overflow-y-auto border-r border-white/[0.06] bg-[#0F0F0F] px-3 py-3 lg:flex">
+      {navBody}
     </aside>
   );
 };
@@ -258,28 +366,21 @@ interface SidebarItemProps {
   onClick: () => void;
 }
 
-const SidebarItem: React.FC<SidebarItemProps> = ({
-  icon: Icon,
-  label,
-  active,
-  badge,
-  onClick,
-}) => (
+const SidebarItem: React.FC<SidebarItemProps> = ({ icon: Icon, label, active, badge, onClick }) => (
   <button
     type="button"
     onClick={onClick}
-    aria-current={active ? 'page' : undefined}
-    className={`flex w-full items-center gap-4 rounded-xl px-3 py-2.5 text-[13.5px] transition ${
+    className={`flex w-full items-center gap-4 rounded-xl px-3 py-2 text-[13.5px] font-medium transition ${
       active
         ? 'bg-[#272727] font-semibold text-white'
-        : 'font-medium text-[#F1F1F1] hover:bg-white/[0.06]'
+        : 'text-[#F1F1F1] hover:bg-white/[0.06]'
     }`}
   >
-    <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-[#FF0000]' : 'text-white'}`} />
-    <span className="truncate">{label}</span>
-    {badge !== undefined && (
-      <span className="ml-auto rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-[#AAAAAA]">
-        {badge}
+    <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-[#FF0000]' : ''}`} />
+    <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+    {badge !== undefined && badge > 0 && (
+      <span className="rounded-full bg-[#FF0000] px-2 py-0.5 text-[10px] font-bold text-white">
+        {badge > 99 ? '99+' : badge}
       </span>
     )}
   </button>

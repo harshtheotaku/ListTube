@@ -315,6 +315,8 @@ export interface ImportedEntry {
   startedAt?: string;
   completedAt?: string;
   notes?: string;
+  customLists?: string[];
+  priority?: 0 | 1 | 2;
 }
 
 function parseThemeString(raw: string, fallbackIndex: number): ThemeSong {

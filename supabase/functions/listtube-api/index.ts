@@ -64,6 +64,115 @@ function toFuzzyDate(dateStr?: string | null): { year: number; month: number; da
   return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
 }
 
+const DEFAULT_ANILIST_CLIENT_ID = "57274";
+const DEFAULT_MAL_CLIENT_ID = "f74fba547b6b04cdb063b1ef1bfc76a3";
+
+async function mintOAuthBridgeSession(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  params: {
+    provider: "anilist" | "mal";
+    externalId: string;
+    username: string;
+    avatar?: string;
+    banner?: string;
+  }
+): Promise<{ bridgeEmail: string; bridgeTokenHash: string; userId: string } | null> {
+  const safeExtId = params.externalId.replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!safeExtId) return null;
+  const email = `${params.provider}.${safeExtId}@oauth.listtube.app`;
+  const cleanHandle =
+    params.username
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, "")
+      .slice(0, 20) || `${params.provider}_${safeExtId.slice(0, 8)}`;
+
+  const { data: linked } = await supabase
+    .from("oauth_accounts")
+    .select("user_id")
+    .eq("provider", params.provider)
+    .eq("external_id", safeExtId)
+    .maybeSingle();
+
+  let userId = linked?.user_id as string | undefined;
+
+  if (!userId) {
+    const created = await supabase.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      user_metadata: {
+        full_name: params.username,
+        avatar_url: params.avatar,
+        oauth_provider: params.provider,
+      },
+    });
+    if (created.data?.user?.id) {
+      userId = created.data.user.id;
+    }
+  }
+
+  const linkRes = await supabase.auth.admin.generateLink({
+    type: "magiclink",
+    email,
+  });
+  const hashedToken = linkRes.data?.properties?.hashed_token;
+  if (!userId && linkRes.data?.user?.id) {
+    userId = linkRes.data.user.id;
+  }
+  if (!userId || !hashedToken) return null;
+
+  await supabase.from("oauth_accounts").upsert(
+    {
+      provider: params.provider,
+      external_id: safeExtId,
+      user_id: userId,
+      username: params.username,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "provider,external_id" }
+  );
+
+  // Seed initial profile only if absent so custom user edits are never overwritten
+  const { data: existingProfile } = await supabase
+    .from("profiles")
+    .select("id, handle, avatar_url, banner_url")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!existingProfile) {
+    await supabase.from("profiles").upsert(
+      {
+        id: userId,
+        display_name: params.username,
+        handle: `@${cleanHandle}_${safeExtId.slice(-3)}`,
+        avatar_id: params.provider,
+        avatar_url: params.avatar || "",
+        banner_url: params.banner || "",
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    );
+  }
+
+  return { bridgeEmail: email, bridgeTokenHash: hashedToken, userId };
+}
+
+async function fetchAniListViewer(accessToken: string) {
+  const res = await fetch("https://graphql.anilist.co", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      query: `query { Viewer { id name avatar { large medium } bannerImage } }`,
+    }),
+  });
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json?.data?.Viewer ?? null;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -117,6 +226,23 @@ Deno.serve(async (req: Request) => {
             },
             { onConflict: "cache_key" }
           );
+          if (payload.data.Media?.id && payload.data.Media?.title) {
+            const m = payload.data.Media;
+            const mt = String(m.type ?? "ANIME").toUpperCase() === "MANGA" ? "MANGA" : "ANIME";
+            const cid = `${mt === "MANGA" ? "anilist-manga" : "anilist"}:${m.id}`;
+            await supabase.from("media_catalog").upsert(
+              {
+                id: cid,
+                media_type: mt,
+                anilist_id: Number(m.id),
+                mal_id: m.idMal ? Number(m.idMal) : null,
+                title: String(m.title?.english || m.title?.romaji || "Untitled"),
+                payload: m,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "id" }
+            );
+          }
           return jsonResponse(payload, 200, { "X-ListTube-Cache": "MISS" });
         }
         return jsonResponse(payload, 400);
@@ -289,7 +415,28 @@ Deno.serve(async (req: Request) => {
           },
           { onConflict: "cache_key" }
         );
+        await supabase.from("media_themes").upsert(
+          {
+            mal_id: id,
+            openings,
+            endings,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "mal_id" }
+        );
         return jsonResponse(payload, 200, { "X-ListTube-Cache": "MISS" });
+      }
+      const { data: normThemeRow } = await supabase
+        .from("media_themes")
+        .select("openings, endings")
+        .eq("mal_id", id)
+        .maybeSingle();
+      if (normThemeRow) {
+        return jsonResponse(
+          { openings: normThemeRow.openings, endings: normThemeRow.endings },
+          200,
+          { "X-ListTube-Cache": "DB-FALLBACK" }
+        );
       }
       if (cachedRow) {
         return jsonResponse(cachedRow.payload, 200, { "X-ListTube-Cache": "STALE" });
@@ -435,22 +582,17 @@ Deno.serve(async (req: Request) => {
 
         const watchers = [
           {
-            site: "Re Anime",
-            key: "reanime",
-            url: bestBySite.get("reanime")?.url ?? `https://reanime.cc/?s=${q}`,
-            isDirect: Boolean(bestBySite.get("reanime")),
-          },
-          {
             site: "KotoPlay",
             key: "kotoplay",
             url: bestBySite.get("kotoplay")?.url ?? `https://kotoplay.to/search?keyword=${q}`,
             isDirect: Boolean(bestBySite.get("kotoplay")),
+            recommended: true,
           },
           {
-            site: "AnimePahe",
-            key: "animepahe",
-            url: "https://animepahe.pw/",
-            isDirect: false,
+            site: "Re Anime",
+            key: "reanime",
+            url: bestBySite.get("reanime")?.url ?? `https://reanime.cc/?s=${q}`,
+            isDirect: Boolean(bestBySite.get("reanime")),
           },
         ];
 
@@ -463,6 +605,7 @@ Deno.serve(async (req: Request) => {
           key: "comix",
           url: bestBySite.get("comix")?.url ?? `https://comix.to/browse?keyword=${q}`,
           isDirect: Boolean(bestBySite.get("comix")),
+          recommended: true,
         },
         {
           site: "Kagane",
@@ -515,26 +658,29 @@ Deno.serve(async (req: Request) => {
 
     // 7. OAuth Configuration Status (safe public client IDs only, never secrets)
     if (path === "/oauth/status" && req.method === "GET") {
-      const anilistClientId = Deno.env.get("ANILIST_CLIENT_ID") ?? "";
-      const malClientId = Deno.env.get("MAL_CLIENT_ID") ?? "";
+      const anilistClientId = Deno.env.get("ANILIST_CLIENT_ID") || DEFAULT_ANILIST_CLIENT_ID;
+      const malClientId = Deno.env.get("MAL_CLIENT_ID") || DEFAULT_MAL_CLIENT_ID;
+      const hasAniListSecret = Boolean(Deno.env.get("ANILIST_CLIENT_SECRET"));
+      const hasMalSecret = Boolean(Deno.env.get("MAL_CLIENT_SECRET"));
       return jsonResponse({
         anilistConfigured: Boolean(anilistClientId),
-        anilistClientId: anilistClientId || undefined,
-        malConfigured: Boolean(malClientId),
-        malClientId: malClientId || undefined,
+        anilistCodeFlowReady: Boolean(anilistClientId && hasAniListSecret),
+        anilistClientId,
+        malConfigured: Boolean(malClientId && hasMalSecret),
+        malClientId,
       });
     }
 
-    // 8. AniList OAuth Authorization Code Exchange
+    // 8. AniList OAuth Authorization Code Exchange + Supabase Auth Session Mint
     if (path === "/oauth/anilist/exchange" && req.method === "POST") {
       const body = await req.json();
       const code = String(body.code ?? "").trim();
       const redirectUri = String(body.redirectUri ?? "").trim();
-      const clientId = String(body.clientId ?? Deno.env.get("ANILIST_CLIENT_ID") ?? "").trim();
+      const clientId = String(body.clientId ?? (Deno.env.get("ANILIST_CLIENT_ID") || DEFAULT_ANILIST_CLIENT_ID)).trim();
       const clientSecret = String(body.clientSecret ?? Deno.env.get("ANILIST_CLIENT_SECRET") ?? "").trim();
       if (!code || !redirectUri || !clientId || !clientSecret) {
         return jsonResponse(
-          { error: "AniList OAuth requires ANILIST_CLIENT_ID & ANILIST_CLIENT_SECRET on server (or use Implicit/Token fallback)." },
+          { error: "AniList Authorization Code exchange requires ANILIST_CLIENT_SECRET configured in Supabase Edge Secrets." },
           400
         );
       }
@@ -554,17 +700,44 @@ Deno.serve(async (req: Request) => {
       if (!res.ok || !data?.access_token) {
         return jsonResponse({ error: data?.message || data?.error_description || "AniList token exchange failed" }, 400);
       }
-      return jsonResponse(data);
+      const viewer = await fetchAniListViewer(String(data.access_token));
+      const bridge = viewer?.id
+        ? await mintOAuthBridgeSession(supabase, {
+            provider: "anilist",
+            externalId: String(viewer.id),
+            username: String(viewer.name || "AniListUser"),
+            avatar: viewer.avatar?.large || viewer.avatar?.medium,
+            banner: viewer.bannerImage,
+          })
+        : null;
+      return jsonResponse({ ...data, viewer, bridge });
     }
 
-    // 9. MyAnimeList OAuth 2.0 PKCE Token Exchange & Refresh
+    // 8b. AniList Token -> Supabase Auth Session Bridge (Supports existing/implicit tokens seamlessly)
+    if (path === "/oauth/anilist/session" && req.method === "POST") {
+      const body = await req.json();
+      const accessToken = String(body.accessToken ?? "").trim();
+      if (!accessToken) return jsonResponse({ error: "Missing AniList access token" }, 400);
+      const viewer = await fetchAniListViewer(accessToken);
+      if (!viewer?.id) return jsonResponse({ error: "Invalid AniList token" }, 401);
+      const bridge = await mintOAuthBridgeSession(supabase, {
+        provider: "anilist",
+        externalId: String(viewer.id),
+        username: String(viewer.name || "AniListUser"),
+        avatar: viewer.avatar?.large || viewer.avatar?.medium,
+        banner: viewer.bannerImage,
+      });
+      return jsonResponse({ viewer, bridge });
+    }
+
+    // 9. MyAnimeList OAuth 2.0 PKCE Token Exchange & Refresh + Supabase Auth Session Mint
     if (path === "/oauth/mal/token" && req.method === "POST") {
       const body = await req.json();
       const grantType = body.grantType === "refresh_token" ? "refresh_token" : "authorization_code";
-      const clientId = String(body.clientId ?? Deno.env.get("MAL_CLIENT_ID") ?? "").trim();
+      const clientId = String(body.clientId ?? (Deno.env.get("MAL_CLIENT_ID") || DEFAULT_MAL_CLIENT_ID)).trim();
       const clientSecret = String(body.clientSecret ?? Deno.env.get("MAL_CLIENT_SECRET") ?? "").trim();
       if (!clientId) {
-        return jsonResponse({ error: "MAL OAuth Client ID is not configured yet (set MAL_CLIENT_ID in Supabase Edge Secrets)." }, 400);
+        return jsonResponse({ error: "MAL OAuth Client ID is not configured." }, 400);
       }
 
       const form = new URLSearchParams({
@@ -589,7 +762,19 @@ Deno.serve(async (req: Request) => {
       if (!res.ok || !data?.access_token) {
         return jsonResponse({ error: data?.message || data?.error || "MAL OAuth token exchange failed" }, 400);
       }
-      return jsonResponse(data);
+      const meRes = await fetch("https://api.myanimelist.net/v2/users/@me?fields=id,name,picture", {
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+      const malUser = meRes.ok ? await meRes.json() : null;
+      const bridge = malUser?.id
+        ? await mintOAuthBridgeSession(supabase, {
+            provider: "mal",
+            externalId: String(malUser.id),
+            username: String(malUser.name || "MALUser"),
+            avatar: malUser.picture,
+          })
+        : null;
+      return jsonResponse({ ...data, malUser, bridge });
     }
 
     // 10. Authenticated MyAnimeList List Import (supports Private MAL lists via OAuth Bearer)
@@ -696,6 +881,8 @@ Deno.serve(async (req: Request) => {
           $completedAt: FuzzyDateInput
           $notes: String
           $private: Boolean
+          $customLists: [String]
+          $priority: Int
         ) {
           SaveMediaListEntry(
             mediaId: $mediaId
@@ -708,6 +895,8 @@ Deno.serve(async (req: Request) => {
             completedAt: $completedAt
             notes: $notes
             private: $private
+            customLists: $customLists
+            priority: $priority
           ) {
             id
             status
@@ -715,6 +904,8 @@ Deno.serve(async (req: Request) => {
             progress
             progressVolumes
             repeat
+            customLists
+            priority
           }
         }
       `;
@@ -738,6 +929,8 @@ Deno.serve(async (req: Request) => {
             completedAt: toFuzzyDate(body.completedAt),
             notes: typeof body.notes === "string" ? body.notes.slice(0, 2000) : undefined,
             private: typeof body.isPrivate === "boolean" ? body.isPrivate : undefined,
+            customLists: Array.isArray(body.customLists) ? body.customLists : undefined,
+            priority: typeof body.priority === "number" ? body.priority * 50 : undefined,
           },
         }),
       });
@@ -832,13 +1025,14 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ ok: true, entry: json });
     }
 
-    // 13. SSR OpenGraph Link Preview & SEO Bot Endpoint (?id=anilist:16498 or ?id=anilist-manga:30002)
+    // 13. SSR OpenGraph Link Preview & Multi-Route SEO Bot Endpoint
     if (path === "/share" && req.method === "GET") {
       const rawId = (url.searchParams.get("id") ?? "").trim();
+      const routeType = (url.searchParams.get("route") ?? "anime").toLowerCase();
       const targetOrigin = (url.searchParams.get("origin") ?? "https://listtube.vercel.app").replace(/\/$/, "");
       const isBot = url.searchParams.get("bot") === "1";
-      const redirectUrl = rawId ? `${targetOrigin}/anime/${encodeURIComponent(rawId)}` : targetOrigin;
 
+      let redirectUrl = rawId ? `${targetOrigin}/anime/${encodeURIComponent(rawId)}` : targetOrigin;
       let title = "ListTube — Anime & Manga Recommendations";
       let desc = "Track anime & manga, read reviews, explore MAL catalogs, and get personalized recommendations.";
       let image = "https://s4.anilist.co/file/anilistcdn/media/anime/banner/16498-8jpFCOcDmneX.jpg";
@@ -846,57 +1040,127 @@ Deno.serve(async (req: Request) => {
       let schemaType = "CreativeWork";
       let ratingValue: string | null = null;
 
-      const idMatch = rawId.match(/^(anilist|anilist-manga|mal|mal-manga):(\d+)$/i);
-      if (idMatch) {
-        const prefix = idMatch[1].toLowerCase();
-        const numericId = Number(idMatch[2]);
-        const mediaType = prefix.includes("manga") ? "MANGA" : "ANIME";
-        schemaType = mediaType === "MANGA" ? "Book" : "TVSeries";
-        const isMal = prefix.startsWith("mal");
-        const cacheKey = `og:${prefix}:${numericId}`;
-
-        const { data: cachedOg } = await supabase
-          .from("api_cache")
-          .select("payload, expires_at")
-          .eq("cache_key", cacheKey)
-          .maybeSingle();
-
-        let media: any = cachedOg?.payload;
-        if (!media || new Date(cachedOg.expires_at).getTime() <= Date.now()) {
-          const gql = isMal
-            ? `query($idMal: Int, $type: MediaType) { Media(idMal: $idMal, type: $type) { title { english romaji } description(asHtml: false) bannerImage coverImage { extraLarge } averageScore episodes chapters format startDate { year } } }`
-            : `query($id: Int, $type: MediaType) { Media(id: $id, type: $type) { title { english romaji } description(asHtml: false) bannerImage coverImage { extraLarge } averageScore episodes chapters format startDate { year } } }`;
-          const vars = isMal ? { idMal: numericId, type: mediaType } : { id: numericId, type: mediaType };
-          const up = await fetch("https://graphql.anilist.co", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Accept: "application/json" },
-            body: JSON.stringify({ query: gql, variables: vars }),
-          });
-          if (up.ok) {
-            const j = await up.json();
-            media = j?.data?.Media ?? null;
-            if (media) {
-              await supabase.from("api_cache").upsert(
-                {
-                  cache_key: cacheKey,
-                  payload: media,
-                  expires_at: new Date(Date.now() + 86400 * 1000).toISOString(),
-                  updated_at: new Date().toISOString(),
-                },
-                { onConflict: "cache_key" }
-              );
-            }
+      if (routeType === "explore") {
+        redirectUrl = `${targetOrigin}/explore`;
+        title = "Explore Anime & Manga Catalog — ListTube";
+        desc = "Browse top airing anime, seasonal charts, manga/manhwa/manhua, genres, themes, and multi-axis filters on ListTube.";
+        schemaType = "CollectionPage";
+      } else if (routeType === "feed") {
+        redirectUrl = `${targetOrigin}/feed`;
+        title = "Community Activity, Reviews & Forums — ListTube";
+        desc = "Live anime & manga watch activity, community reviews, affinity matching, and links to MyAnimeList & AniList forums.";
+        schemaType = "CollectionPage";
+      } else if (routeType === "schedule") {
+        redirectUrl = `${targetOrigin}/schedule`;
+        title = "Weekly Anime Airing Schedule — ListTube";
+        desc = "Live countdowns and weekly broadcast schedule for airing anime episodes.";
+        schemaType = "CollectionPage";
+      } else if (routeType === "news") {
+        redirectUrl = `${targetOrigin}/news`;
+        title = "Anime & Manga News — ListTube";
+        desc = "Latest anime, manga, and studio news from MyAnimeList and Anime News Network.";
+        schemaType = "CollectionPage";
+      } else if (routeType === "person" && Number(rawId) > 0) {
+        redirectUrl = `${targetOrigin}/person/${encodeURIComponent(rawId)}`;
+        schemaType = "Person";
+        const up = await fetch("https://graphql.anilist.co", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            query: `query($id: Int) { Staff(id: $id) { name { full native } description(asHtml: false) primaryOccupations image { large } } }`,
+            variables: { id: Number(rawId) },
+          }),
+        });
+        if (up.ok) {
+          const j = await up.json();
+          const st = j?.data?.Staff;
+          if (st?.name?.full) {
+            mediaTitle = st.name.full;
+            title = `${st.name.full} — Voice Actor & Staff Filmography — ListTube`;
+            desc = String(st.description || `${st.name.full} (${(st.primaryOccupations || []).join(", ")}) credits on ListTube`).replace(/\s+/g, " ").slice(0, 220);
+            image = st.image?.large || image;
           }
         }
+      } else if (routeType === "character" && Number(rawId) > 0) {
+        redirectUrl = `${targetOrigin}/character/${encodeURIComponent(rawId)}`;
+        schemaType = "Person";
+        const up = await fetch("https://graphql.anilist.co", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            query: `query($id: Int) { Character(id: $id) { name { full native } description(asHtml: false) image { large } } }`,
+            variables: { id: Number(rawId) },
+          }),
+        });
+        if (up.ok) {
+          const j = await up.json();
+          const ch = j?.data?.Character;
+          if (ch?.name?.full) {
+            mediaTitle = ch.name.full;
+            title = `${ch.name.full} — Character Profile & Voice Actors — ListTube`;
+            desc = String(ch.description || `${ch.name.full} character details, appearances, and voice actors on ListTube`).replace(/\s+/g, " ").slice(0, 220);
+            image = ch.image?.large || image;
+          }
+        }
+      } else {
+        if (routeType === "channel" && rawId) {
+          redirectUrl = `${targetOrigin}/channel/${encodeURIComponent(rawId)}`;
+        }
+        const idMatch = rawId.match(/^(anilist|anilist-manga|mal|mal-manga):(\d+)$/i);
+        if (idMatch) {
+          const prefix = idMatch[1].toLowerCase();
+          const numericId = Number(idMatch[2]);
+          const mediaType = prefix.includes("manga") ? "MANGA" : "ANIME";
+          schemaType = mediaType === "MANGA" ? "Book" : "TVSeries";
+          const isMal = prefix.startsWith("mal");
+          const cacheKey = `og:${prefix}:${numericId}`;
 
-        if (media) {
-          mediaTitle = media.title?.english || media.title?.romaji || "Untitled";
-          ratingValue = media.averageScore ? (media.averageScore / 10).toFixed(1) : null;
-          const scoreLabel = ratingValue ? ` • ★ ${ratingValue}` : "";
-          const yearLabel = media.startDate?.year ? ` (${media.startDate.year})` : "";
-          title = `${mediaTitle}${yearLabel}${scoreLabel} — ListTube`;
-          desc = String(media.description ?? desc).replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim().slice(0, 220);
-          image = media.bannerImage || media.coverImage?.extraLarge || image;
+          const { data: cachedOg } = await supabase
+            .from("api_cache")
+            .select("payload, expires_at")
+            .eq("cache_key", cacheKey)
+            .maybeSingle();
+
+          let media: any = cachedOg?.payload;
+          if (!media || new Date(cachedOg.expires_at).getTime() <= Date.now()) {
+            const gql = isMal
+              ? `query($idMal: Int, $type: MediaType) { Media(idMal: $idMal, type: $type) { title { english romaji } description(asHtml: false) bannerImage coverImage { extraLarge } averageScore episodes chapters format startDate { year } } }`
+              : `query($id: Int, $type: MediaType) { Media(id: $id, type: $type) { title { english romaji } description(asHtml: false) bannerImage coverImage { extraLarge } averageScore episodes chapters format startDate { year } } }`;
+            const vars = isMal ? { idMal: numericId, type: mediaType } : { id: numericId, type: mediaType };
+            const up = await fetch("https://graphql.anilist.co", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify({ query: gql, variables: vars }),
+            });
+            if (up.ok) {
+              const j = await up.json();
+              media = j?.data?.Media ?? null;
+              if (media) {
+                await supabase.from("api_cache").upsert(
+                  {
+                    cache_key: cacheKey,
+                    payload: media,
+                    expires_at: new Date(Date.now() + 86400 * 1000).toISOString(),
+                    updated_at: new Date().toISOString(),
+                  },
+                  { onConflict: "cache_key" }
+                );
+              }
+            }
+          }
+
+          if (media) {
+            mediaTitle = media.title?.english || media.title?.romaji || "Untitled";
+            ratingValue = media.averageScore ? (media.averageScore / 10).toFixed(1) : null;
+            const scoreLabel = ratingValue ? ` • ★ ${ratingValue}` : "";
+            const yearLabel = media.startDate?.year ? ` (${media.startDate.year})` : "";
+            title =
+              routeType === "channel"
+                ? `${mediaTitle} Franchise Seasons & Studio — ListTube`
+                : `${mediaTitle}${yearLabel}${scoreLabel} — ListTube`;
+            desc = String(media.description ?? desc).replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim().slice(0, 220);
+            image = media.bannerImage || media.coverImage?.extraLarge || image;
+          }
         }
       }
 

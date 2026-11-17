@@ -190,7 +190,7 @@ export const YouView: React.FC<YouViewProps> = ({
   const settings = useSettings();
   const [channelTab, setChannelTab] = useState<ChannelTab>('overview');
   const [confirmClear, setConfirmClear] = useState(false);
-  const [googleBusy, setGoogleBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState<'google' | 'anilist' | 'mal' | false>(false);
   const [selectedFavCharId, setSelectedFavCharId] = useState<string | null>(null);
   const isManga = mediaType === 'MANGA';
 
@@ -280,12 +280,14 @@ export const YouView: React.FC<YouViewProps> = ({
     toast('Exported list backup to JSON');
   };
 
-  const handleGoogleLogin = async () => {
-    setGoogleBusy(true);
+  const handleOAuthLogin = async (provider: 'google' | 'anilist' | 'mal') => {
+    setGoogleBusy(provider);
     try {
-      await cloudSync.signInWithGoogle();
+      if (provider === 'google') await cloudSync.signInWithGoogle();
+      else if (provider === 'anilist') await cloudSync.signInWithAniList();
+      else await cloudSync.signInWithMal();
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Google sign-in failed');
+      toast(err instanceof Error ? err.message : 'Sign-in failed');
       setGoogleBusy(false);
     }
   };
@@ -564,7 +566,7 @@ export const YouView: React.FC<YouViewProps> = ({
             )}
           </div>
 
-          {/* Google Account & Multi-Device Profile Sync */}
+          {/* AniList & MyAnimeList Passwordless Cloud Sync */}
           <div className={CARD}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -576,7 +578,7 @@ export const YouView: React.FC<YouViewProps> = ({
                   />
                 )}
                 <p className="text-[12px] font-bold uppercase tracking-wider text-white">
-                  Google Account &amp; Cloud Profile
+                  AniList &amp; MAL Cloud Account
                 </p>
               </div>
 
@@ -593,7 +595,7 @@ export const YouView: React.FC<YouViewProps> = ({
                   }`}
                 >
                   {cloud.state === 'synced'
-                    ? 'Synced with Google'
+                    ? 'Cloud Synced'
                     : cloud.state === 'syncing'
                     ? 'Syncing…'
                     : cloud.state === 'error'
@@ -619,20 +621,26 @@ export const YouView: React.FC<YouViewProps> = ({
             </div>
 
             <p className="mt-1 text-[11.5px] text-[#AAAAAA]">
-              Connect with Google to keep your watchlist, decimal ratings, likes, reviews, comments, followers, and channel customization across devices.
+              Sign in with <strong className="text-white">AniList</strong> or <strong className="text-white">MyAnimeList</strong> (1-tap OAuth) to unlock 2-way tracker sync, custom shelves, reviews, episode polls &amp; cloud backup across devices.
             </p>
 
             {cloud.userEmail ? (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/25 bg-[#121212] px-3 py-2.5">
                 <div className="flex items-center gap-2 min-w-0">
                   <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" />
-                  <p className="truncate text-[13px] font-bold text-white">{cloud.userEmail}</p>
+                  <p className="truncate text-[13px] font-bold text-white">
+                    {cloud.userEmail.includes('anilist.')
+                      ? 'Signed in with AniList'
+                      : cloud.userEmail.includes('mal.')
+                        ? 'Signed in with MyAnimeList'
+                        : cloud.userEmail}
+                  </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
                     void cloudSync.signOut();
-                    toast('Signed out of Google');
+                    toast('Signed out of cloud sync');
                   }}
                   className="text-[11.5px] font-bold text-rose-400 hover:underline"
                 >
@@ -640,22 +648,40 @@ export const YouView: React.FC<YouViewProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="mt-3 flex flex-wrap items-center gap-2.5">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  disabled={googleBusy}
-                  onClick={handleGoogleLogin}
+                  disabled={Boolean(googleBusy)}
+                  onClick={() => void handleOAuthLogin('google')}
                   className="flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-[12.5px] font-bold text-[#111111] transition hover:bg-neutral-200 disabled:opacity-50"
                 >
-                  {googleBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  {googleBusy === 'google' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                   <span>Continue with Google</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(googleBusy)}
+                  onClick={() => void handleOAuthLogin('anilist')}
+                  className="flex items-center gap-2 rounded-xl bg-[#02A9FF] px-4 py-2 text-[12.5px] font-extrabold text-[#041421] transition hover:brightness-110 disabled:opacity-50"
+                >
+                  {googleBusy === 'anilist' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  <span>Sign in with AniList</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(googleBusy)}
+                  onClick={() => void handleOAuthLogin('mal')}
+                  className="flex items-center gap-2 rounded-xl bg-[#2E51A2] px-4 py-2 text-[12.5px] font-extrabold text-white transition hover:brightness-110 disabled:opacity-50"
+                >
+                  {googleBusy === 'mal' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  <span>Sign in with MyAnimeList</span>
                 </button>
                 <button
                   type="button"
                   onClick={onOpenTrackers}
                   className="rounded-xl bg-[#272727] px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-[#383838]"
                 >
-                  Connect Username / OAuth
+                  Username / XML Import
                 </button>
               </div>
             )}
@@ -1069,8 +1095,12 @@ export const YouView: React.FC<YouViewProps> = ({
               {profileData.location && <p>Location: {profileData.location}</p>}
               <p>Joined: {joinedLabel}</p>
               <p>
-                Google Account:{' '}
-                {cloud.userEmail || 'Not signed in'}
+                Cloud Account:{' '}
+                {cloud.userEmail?.includes('anilist.')
+                  ? 'AniList OAuth Synced'
+                  : cloud.userEmail?.includes('mal.')
+                    ? 'MyAnimeList OAuth Synced'
+                    : cloud.userEmail || 'Not signed in'}
               </p>
             </div>
           </div>

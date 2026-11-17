@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Ban,
   Cloud,
   CornerDownRight,
   ExternalLink,
   Eye,
+  Flag,
   MessageSquare,
   PenLine,
   Pin,
@@ -11,12 +13,17 @@ import {
   ThumbsUp,
   Trash2,
 } from 'lucide-react';
-import { Anime, ReviewVerdict, UserReview } from '../types';
+import { Anime, EpisodePollSummary, ReviewVerdict, UserReview } from '../types';
 import { useComments } from '../services/comments';
 import {
   deleteMediaReview,
+  fetchBlockedUserIds,
+  fetchEpisodePoll,
   fetchMediaReviews,
   publishActivity,
+  reportContent,
+  submitEpisodePoll,
+  toggleBlockUser,
   toggleReviewVote,
   upsertMediaReview,
 } from '../services/community';
@@ -57,6 +64,9 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
 
   const [cloudComments, setCloudComments] = useState<MergedComment[]>([]);
   const [reviews, setReviews] = useState<UserReview[]>([]);
+  const [blockedIds, setBlockedIds] = useState<string[]>([]);
+  const [episodePoll, setEpisodePoll] = useState<EpisodePollSummary | null>(null);
+  const [pollBusy, setPollBusy] = useState(false);
   const [sectionTab, setSectionTab] = useState<'discussions' | 'reviews'>('discussions');
 
   // Episode discussion filter & replies
@@ -109,26 +119,59 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
       })
       .catch(() => {});
 
-    fetchMediaReviews(anime.id, cloud.userId)
+    fetchMediaReviews(anime.id, cloud.userId, {
+      anilistId: anime.anilistId,
+      mediaType: anime.mediaType,
+    })
       .then((rows) => {
         if (!cancelled) setReviews(rows);
       })
       .catch(() => {});
 
+    if (cloud.userId) {
+      fetchBlockedUserIds(cloud.userId)
+        .then((ids) => {
+          if (!cancelled) setBlockedIds(ids);
+        })
+        .catch(() => {});
+    } else {
+      setBlockedIds([]);
+    }
+
     return () => {
       cancelled = true;
     };
-  }, [anime.id, anime.malId, anime.anilistId, cloud.userId]);
+  }, [anime.id, anime.malId, anime.anilistId, anime.mediaType, cloud.userId]);
+
+  useEffect(() => {
+    if (typeof episodeFilter !== 'number' || isManga) {
+      setEpisodePoll(null);
+      return;
+    }
+    let cancelled = false;
+    fetchEpisodePoll(anime.id, episodeFilter, cloud.userId)
+      .then((summary) => {
+        if (!cancelled) setEpisodePoll(summary);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [anime.id, episodeFilter, isManga, cloud.userId]);
 
   const allComments = useMemo(() => {
+    const blockedSet = new Set(blockedIds);
     const map = new Map<string, MergedComment>();
-    for (const c of cloudComments) map.set(c.id, c);
+    for (const c of cloudComments) {
+      if (!c.ownerUserId || !blockedSet.has(c.ownerUserId)) map.set(c.id, c);
+    }
     for (const c of userComments) {
       const existing = map.get(c.id);
+      if (existing?.ownerUserId && blockedSet.has(existing.ownerUserId)) continue;
       map.set(c.id, { ...c, isCloud: existing?.isCloud, ownerUserId: existing?.ownerUserId });
     }
     return Array.from(map.values()).sort((a, b) => b.createdAt - a.createdAt);
-  }, [cloudComments, userComments]);
+  }, [cloudComments, userComments, blockedIds]);
 
   const episodeOptions = useMemo(() => {
     const eps = new Set<number>();
@@ -188,13 +231,17 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
     if (created) {
       setCloudComments((prev) => [created, ...prev.filter((c) => c.id !== created.id)]);
     }
-    toast(cloud.isLinked ? 'Comment published to community thread' : 'Saved locally (Sign in with Google for public sync)');
+    toast(
+      cloud.isLinked
+        ? 'Comment published to community thread'
+        : 'Saved locally (Sign in with AniList / MAL for public sync)'
+    );
   };
 
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cloud.userId) {
-      toast('Sign in with Google to publish community reviews');
+      toast('Sign in with AniList or MyAnimeList to publish community reviews');
       return;
     }
     if (revBody.trim().length < 20) {
@@ -238,8 +285,12 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
   };
 
   const handleToggleHelpful = async (review: UserReview) => {
+    if (review.source === 'anilist') {
+      if (review.externalUrl) window.open(review.externalUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
     if (!cloud.userId) {
-      toast('Sign in with Google to vote on reviews');
+      toast('Sign in with AniList or MyAnimeList to vote on reviews');
       return;
     }
     const nextVoted = !review.votedByMe;
@@ -357,6 +408,40 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               )}
+              {comment.isCloud && cloud.userId && comment.ownerUserId && comment.ownerUserId !== cloud.userId && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Report comment"
+                    title="Report comment"
+                    onClick={async () => {
+                      await reportContent({
+                        reporterId: cloud.userId!,
+                        targetType: 'comment',
+                        targetId: comment.id,
+                        reason: 'Reported from discussion thread',
+                      });
+                      toast('Comment reported for moderation review');
+                    }}
+                    className="rounded-full p-1 text-[#AAAAAA] transition hover:bg-white/[0.06] hover:text-amber-300"
+                  >
+                    <Flag className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Block user"
+                    title="Block user"
+                    onClick={async () => {
+                      await toggleBlockUser(cloud.userId!, comment.ownerUserId!, false);
+                      setBlockedIds((prev) => [...prev, comment.ownerUserId!]);
+                      toast(`Blocked ${comment.authorHandle}`);
+                    }}
+                    className="rounded-full p-1 text-[#AAAAAA] transition hover:bg-white/[0.06] hover:text-rose-400"
+                  >
+                    <Ban className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -398,7 +483,7 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
 
         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#AAAAAA]">
           {cloud.isLinked && <Cloud className="h-3 w-3 text-emerald-400" />}
-          {cloud.isLinked ? 'Public cloud community enabled' : 'Sign in with Google to post publicly'}
+          {cloud.isLinked ? 'Public cloud community enabled' : 'Sign in with AniList / MAL to post publicly'}
         </span>
       </div>
 
@@ -513,6 +598,76 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
                   Ep {ep}
                 </button>
               ))}
+            </div>
+          )}
+
+          {!isManga && typeof episodeFilter === 'number' && episodePoll && (
+            <div className="rounded-2xl border border-white/[0.08] bg-[#161616] p-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-[12.5px] font-bold text-white">
+                    Episode {episodeFilter} Community Poll
+                  </p>
+                  <p className="text-[11px] text-[#AAAAAA]">
+                    {episodePoll.totalVotes > 0
+                      ? `${episodePoll.average.toFixed(1)}★ average across ${episodePoll.totalVotes} vote${episodePoll.totalVotes === 1 ? '' : 's'}`
+                      : 'Be the first to rate this episode (1–5★)'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  {([1, 2, 3, 4, 5] as const).map((starVal) => {
+                    const active = (episodePoll.myRating ?? 0) >= starVal;
+                    return (
+                      <button
+                        key={starVal}
+                        type="button"
+                        disabled={pollBusy}
+                        aria-label={`Rate Episode ${episodeFilter} ${starVal} stars`}
+                        onClick={async () => {
+                          if (!cloud.userId) {
+                            toast('Sign in with AniList or MyAnimeList to vote in episode polls');
+                            return;
+                          }
+                          setPollBusy(true);
+                          try {
+                            await submitEpisodePoll(anime.id, episodeFilter, cloud.userId, starVal);
+                            const fresh = await fetchEpisodePoll(anime.id, episodeFilter, cloud.userId);
+                            setEpisodePoll(fresh);
+                            toast(`Voted ${starVal}★ for Episode ${episodeFilter}`);
+                          } catch (err) {
+                            toast(err instanceof Error ? err.message : 'Poll vote failed');
+                          } finally {
+                            setPollBusy(false);
+                          }
+                        }}
+                        className={`rounded-lg p-1.5 transition ${
+                          active
+                            ? 'text-amber-400 hover:bg-amber-400/15'
+                            : 'text-[#666666] hover:bg-white/10 hover:text-amber-300'
+                        }`}
+                      >
+                        <Star className={`h-4 w-4 ${active ? 'fill-current' : ''}`} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {episodePoll.totalVotes > 0 && (
+                <div className="mt-2.5 grid grid-cols-5 gap-1.5">
+                  {([5, 4, 3, 2, 1] as const).map((s) => {
+                    const cnt = episodePoll.distribution[s] ?? 0;
+                    const pct = Math.round((cnt / episodePoll.totalVotes) * 100);
+                    return (
+                      <div key={s} className="space-y-1 text-center text-[10px]">
+                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                          <div className="h-full bg-amber-400" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-[#AAAAAA]">{s}★ {pct}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -743,7 +898,11 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <button
                         type="button"
-                        onClick={() => onOpenUser?.(rev.userId)}
+                        onClick={() =>
+                          rev.source === 'anilist' && rev.externalUrl
+                            ? window.open(rev.externalUrl, '_blank', 'noopener,noreferrer')
+                            : onOpenUser?.(rev.userId)
+                        }
                         className="flex items-center gap-2.5 text-left"
                       >
                         <img
@@ -752,9 +911,16 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
                           className="h-9 w-9 rounded-full object-cover bg-[#272727]"
                         />
                         <div>
-                          <p className="text-[13px] font-bold text-white hover:underline">
-                            {rev.authorHandle}
-                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-[13px] font-bold text-white hover:underline">
+                              {rev.source === 'anilist' ? rev.authorName : rev.authorHandle}
+                            </p>
+                            {rev.source === 'anilist' && (
+                              <span className="rounded bg-[#02A9FF]/20 px-1.5 py-0.5 text-[9.5px] font-bold text-[#7DD3FC]">
+                                AniList Review
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[11px] text-[#AAAAAA]">
                             {formatTimeAgo(rev.createdAt)}
                           </p>
@@ -817,18 +983,29 @@ export const CommentsSection: React.FC<CommentsSectionProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void handleToggleHelpful(rev)}
-                          className={`flex items-center gap-1 rounded-full px-3 py-1 font-semibold transition ${
-                            rev.votedByMe
-                              ? 'bg-[#3EA6FF]/20 text-[#3EA6FF]'
-                              : 'bg-[#242424] text-[#CCCCCC] hover:bg-[#323232]'
-                          }`}
-                        >
-                          <ThumbsUp className={`h-3.5 w-3.5 ${rev.votedByMe ? 'fill-current' : ''}`} />
-                          Helpful ({rev.helpfulCount})
-                        </button>
+                        {rev.source === 'anilist' && rev.externalUrl ? (
+                          <a
+                            href={rev.externalUrl}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="inline-flex items-center gap-1 rounded-full bg-[#02A9FF]/15 px-3 py-1 font-semibold text-[#7DD3FC] hover:bg-[#02A9FF]/25"
+                          >
+                            Read on AniList <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void handleToggleHelpful(rev)}
+                            className={`flex items-center gap-1 rounded-full px-3 py-1 font-semibold transition ${
+                              rev.votedByMe
+                                ? 'bg-[#3EA6FF]/20 text-[#3EA6FF]'
+                                : 'bg-[#242424] text-[#CCCCCC] hover:bg-[#323232]'
+                            }`}
+                          >
+                            <ThumbsUp className={`h-3.5 w-3.5 ${rev.votedByMe ? 'fill-current' : ''}`} />
+                            Helpful ({rev.helpfulCount})
+                          </button>
+                        )}
 
                         {isOwn && cloud.userId && (
                           <button

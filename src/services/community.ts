@@ -3,61 +3,74 @@ import {
   ActivityKind,
   ActivityReply,
   Anime,
+  EpisodePollSummary,
   FavoriteCharacterItem,
   ListEntry,
   MediaType,
   PublicUserSummary,
   ReviewVerdict,
+  SocialNotificationItem,
   UserReview,
 } from '../types';
+import { fetchPublicAniListActivities, fetchPublicAniListReviews } from './anilist';
 import { animeStore } from './animeStore';
 import { UserProfile } from './profile';
 import { supabase } from './supabase';
 
 // ============================================================================
-// 1. User-Written Public Reviews
+// 1. User-Written Public Reviews (+ Public AniList Reviews Backfill)
 // ============================================================================
 
 export async function fetchMediaReviews(
   animeId: string,
-  currentUserId: string | null
+  currentUserId: string | null,
+  options?: { anilistId?: number; mediaType?: MediaType }
 ): Promise<UserReview[]> {
   try {
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('*, review_votes(user_id)')
-      .eq('anime_id', animeId)
-      .order('created_at', { ascending: false })
-      .limit(40);
-    if (error || !data) return [];
+    const [dbRes, alReviews] = await Promise.all([
+      supabase
+        .from('reviews')
+        .select('*, review_votes(user_id)')
+        .eq('anime_id', animeId)
+        .order('created_at', { ascending: false })
+        .limit(40),
+      options?.anilistId
+        ? fetchPublicAniListReviews(options.anilistId, options.mediaType ?? 'ANIME')
+        : Promise.resolve([] as UserReview[]),
+    ]);
 
-    return (data as any[])
-      .map<UserReview>((row) => {
-        const votes = Array.isArray(row.review_votes) ? row.review_votes : [];
-        return {
-          id: row.id,
-          animeId: row.anime_id,
-          mediaType: row.media_type === 'MANGA' ? 'MANGA' : 'ANIME',
-          userId: row.user_id,
-          authorName: row.author_name,
-          authorHandle: row.author_handle,
-          authorAvatar: row.author_avatar,
-          headline: row.headline ?? undefined,
-          body: row.body,
-          overallScore: row.overall_score !== null ? Number(row.overall_score) : undefined,
-          storyScore: row.story_score ?? undefined,
-          artScore: row.art_score ?? undefined,
-          soundScore: row.sound_score ?? undefined,
-          enjoymentScore: row.enjoyment_score ?? undefined,
-          verdict: (row.verdict as ReviewVerdict) ?? 'Recommended',
-          isSpoiler: Boolean(row.is_spoiler),
-          helpfulCount: votes.length,
-          votedByMe: Boolean(currentUserId && votes.some((v: any) => v.user_id === currentUserId)),
-          createdAt: new Date(row.created_at).getTime(),
-          updatedAt: new Date(row.updated_at).getTime(),
-        };
-      })
-      .sort((a, b) => b.helpfulCount - a.helpfulCount || b.createdAt - a.createdAt);
+    const localReviews: UserReview[] =
+      !dbRes.error && dbRes.data
+        ? (dbRes.data as any[]).map<UserReview>((row) => {
+            const votes = Array.isArray(row.review_votes) ? row.review_votes : [];
+            return {
+              id: row.id,
+              animeId: row.anime_id,
+              mediaType: row.media_type === 'MANGA' ? 'MANGA' : 'ANIME',
+              userId: row.user_id,
+              authorName: row.author_name,
+              authorHandle: row.author_handle,
+              authorAvatar: row.author_avatar,
+              headline: row.headline ?? undefined,
+              body: row.body,
+              overallScore: row.overall_score !== null ? Number(row.overall_score) : undefined,
+              storyScore: row.story_score ?? undefined,
+              artScore: row.art_score ?? undefined,
+              soundScore: row.sound_score ?? undefined,
+              enjoymentScore: row.enjoyment_score ?? undefined,
+              verdict: (row.verdict as ReviewVerdict) ?? 'Recommended',
+              isSpoiler: Boolean(row.is_spoiler),
+              helpfulCount: votes.length,
+              votedByMe: Boolean(currentUserId && votes.some((v: any) => v.user_id === currentUserId)),
+              source: 'listtube',
+              createdAt: new Date(row.created_at).getTime(),
+              updatedAt: new Date(row.updated_at).getTime(),
+            };
+          })
+        : [];
+
+    localReviews.sort((a, b) => b.helpfulCount - a.helpfulCount || b.createdAt - a.createdAt);
+    return [...localReviews, ...alReviews];
   } catch {
     return [];
   }
@@ -158,9 +171,11 @@ export async function fetchActivityFeed(
   mode: 'global' | 'following',
   followingIds: string[],
   currentUserId: string | null,
-  limit = 40
+  limit = 40,
+  blockedUserIds: string[] = []
 ): Promise<ActivityItem[]> {
   try {
+    const blockedSet = new Set(blockedUserIds);
     let query = supabase
       .from('activities')
       .select('*, activity_likes(user_id), activity_replies(*)')
@@ -176,45 +191,60 @@ export async function fetchActivityFeed(
     }
 
     const { data, error } = await query;
-    if (error || !data) return [];
-
-    return (data as any[]).map<ActivityItem>((row) => {
-      const likes = Array.isArray(row.activity_likes) ? row.activity_likes : [];
-      const replies = Array.isArray(row.activity_replies)
-        ? (row.activity_replies as any[])
-            .map<ActivityReply>((r) => ({
-              id: r.id,
-              activityId: r.activity_id,
-              userId: r.user_id,
-              authorName: r.author_name,
-              authorHandle: r.author_handle,
-              authorAvatar: r.author_avatar,
-              body: r.body,
-              createdAt: new Date(r.created_at).getTime(),
-            }))
-            .sort((a, b) => a.createdAt - b.createdAt)
+    const dbItems: ActivityItem[] =
+      !error && data
+        ? (data as any[])
+            .filter((row) => !blockedSet.has(row.user_id))
+            .map<ActivityItem>((row) => {
+              const likes = Array.isArray(row.activity_likes) ? row.activity_likes : [];
+              const replies = Array.isArray(row.activity_replies)
+                ? (row.activity_replies as any[])
+                    .filter((r) => !blockedSet.has(r.user_id))
+                    .map<ActivityReply>((r) => ({
+                      id: r.id,
+                      activityId: r.activity_id,
+                      userId: r.user_id,
+                      authorName: r.author_name,
+                      authorHandle: r.author_handle,
+                      authorAvatar: r.author_avatar,
+                      body: r.body,
+                      createdAt: new Date(r.created_at).getTime(),
+                    }))
+                    .sort((a, b) => a.createdAt - b.createdAt)
+                : [];
+              return {
+                id: row.id,
+                userId: row.user_id,
+                authorName: row.author_name,
+                authorHandle: row.author_handle,
+                authorAvatar: row.author_avatar,
+                kind: (row.kind as ActivityKind) ?? 'post',
+                animeId: row.anime_id ?? undefined,
+                animeTitle: row.anime_title ?? undefined,
+                animeCover: row.anime_cover ?? undefined,
+                mediaType:
+                  row.media_type === 'MANGA' ? 'MANGA' : row.media_type === 'ANIME' ? 'ANIME' : undefined,
+                statusText: row.status_text,
+                progress: row.progress ?? undefined,
+                score: row.score !== null && row.score !== undefined ? Number(row.score) : undefined,
+                likeCount: likes.length,
+                likedByMe: Boolean(currentUserId && likes.some((l: any) => l.user_id === currentUserId)),
+                replies,
+                source: 'listtube',
+                createdAt: new Date(row.created_at).getTime(),
+              };
+            })
         : [];
-      return {
-        id: row.id,
-        userId: row.user_id,
-        authorName: row.author_name,
-        authorHandle: row.author_handle,
-        authorAvatar: row.author_avatar,
-        kind: (row.kind as ActivityKind) ?? 'post',
-        animeId: row.anime_id ?? undefined,
-        animeTitle: row.anime_title ?? undefined,
-        animeCover: row.anime_cover ?? undefined,
-        mediaType: row.media_type === 'MANGA' ? 'MANGA' : row.media_type === 'ANIME' ? 'ANIME' : undefined,
-        statusText: row.status_text,
-        progress: row.progress ?? undefined,
-        score: row.score !== null && row.score !== undefined ? Number(row.score) : undefined,
-        likeCount: likes.length,
-        likedByMe: Boolean(currentUserId && likes.some((l: any) => l.user_id === currentUserId)),
-        replies,
-        createdAt: new Date(row.created_at).getTime(),
-      };
-    });
+
+    if (mode === 'global' && dbItems.length < 12) {
+      const publicAl = await fetchPublicAniListActivities(18);
+      return [...dbItems, ...publicAl].slice(0, limit);
+    }
+    return dbItems;
   } catch {
+    if (mode === 'global') {
+      return await fetchPublicAniListActivities(18);
+    }
     return [];
   }
 }
@@ -482,4 +512,192 @@ export async function toggleFollowUser(
     .upsert({ follower_id: followerId, following_id: targetUserId }, { onConflict: 'follower_id,following_id' });
   if (error) throw new Error(error.message);
   return true;
+}
+
+// ============================================================================
+// 4. Episode Rating Polls, Moderation (Report/Block) & Social Notifications
+// ============================================================================
+
+export async function fetchEpisodePoll(
+  mediaId: string,
+  episodeNumber: number,
+  currentUserId: string | null
+): Promise<EpisodePollSummary> {
+  const empty: EpisodePollSummary = {
+    mediaId,
+    episodeNumber,
+    average: 0,
+    totalVotes: 0,
+    distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+  };
+  try {
+    const { data, error } = await supabase
+      .from('episode_polls')
+      .select('user_id, rating')
+      .eq('media_id', mediaId)
+      .eq('episode_number', episodeNumber);
+    if (error || !data) return empty;
+    const dist: Record<1 | 2 | 3 | 4 | 5, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    let sum = 0;
+    let totalVotes = 0;
+    let myRating: 1 | 2 | 3 | 4 | 5 | undefined;
+    for (const row of data as { user_id: string; rating: number }[]) {
+      const r = Number(row.rating);
+      if (r >= 1 && r <= 5) {
+        const star = r as 1 | 2 | 3 | 4 | 5;
+        dist[star] += 1;
+        sum += star;
+        totalVotes += 1;
+        if (currentUserId && row.user_id === currentUserId) {
+          myRating = star;
+        }
+      }
+    }
+    return {
+      mediaId,
+      episodeNumber,
+      average: totalVotes > 0 ? Number((sum / totalVotes).toFixed(2)) : 0,
+      totalVotes,
+      distribution: dist,
+      myRating,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+export async function submitEpisodePoll(
+  mediaId: string,
+  episodeNumber: number,
+  userId: string,
+  rating: 1 | 2 | 3 | 4 | 5
+): Promise<void> {
+  const { error } = await supabase.from('episode_polls').upsert(
+    {
+      media_id: mediaId,
+      episode_number: episodeNumber,
+      user_id: userId,
+      rating,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'media_id,episode_number,user_id' }
+  );
+  if (error) throw new Error(error.message);
+}
+
+export async function fetchBlockedUserIds(userId: string): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('blocked_users')
+      .select('blocked_user_id')
+      .eq('user_id', userId);
+    if (error || !data) return [];
+    return (data as { blocked_user_id: string }[]).map((r) => r.blocked_user_id);
+  } catch {
+    return [];
+  }
+}
+
+export async function toggleBlockUser(
+  userId: string,
+  blockedUserId: string,
+  currentlyBlocked: boolean
+): Promise<boolean> {
+  if (currentlyBlocked) {
+    await supabase
+      .from('blocked_users')
+      .delete()
+      .eq('user_id', userId)
+      .eq('blocked_user_id', blockedUserId);
+    return false;
+  }
+  const { error } = await supabase
+    .from('blocked_users')
+    .upsert({ user_id: userId, blocked_user_id: blockedUserId }, { onConflict: 'user_id,blocked_user_id' });
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+export async function reportContent(params: {
+  reporterId: string;
+  targetType: 'comment' | 'activity' | 'review' | 'user';
+  targetId: string;
+  reason: string;
+}): Promise<void> {
+  const { error } = await supabase.from('content_reports').insert({
+    reporter_id: params.reporterId,
+    target_type: params.targetType,
+    target_id: params.targetId,
+    reason: params.reason.trim().slice(0, 400) || 'Inappropriate / Spam',
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function fetchSocialNotifications(userId: string): Promise<SocialNotificationItem[]> {
+  try {
+    const out: SocialNotificationItem[] = [];
+    const { data: myActs } = await supabase
+      .from('activities')
+      .select('id, status_text')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    const actIds = (myActs ?? []).map((a: any) => a.id);
+
+    const [repliesRes, followersRes] = await Promise.all([
+      actIds.length > 0
+        ? supabase
+            .from('activity_replies')
+            .select('id, activity_id, user_id, author_name, author_avatar, body, created_at')
+            .in('activity_id', actIds)
+            .neq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(12)
+        : Promise.resolve({ data: [] as any[] }),
+      supabase
+        .from('follows')
+        .select('follower_id, created_at')
+        .eq('following_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(10),
+    ]);
+
+    for (const r of (repliesRes as any).data ?? []) {
+      out.push({
+        id: `soc-reply:${r.id}`,
+        kind: 'reply',
+        title: `${r.author_name} replied to your update`,
+        subtitle: String(r.body ?? '').slice(0, 90),
+        avatar: r.author_avatar,
+        createdAt: new Date(r.created_at).getTime(),
+        targetId: r.user_id,
+      });
+    }
+
+    const followerRows = ((followersRes as any).data ?? []) as { follower_id: string; created_at: string }[];
+    if (followerRows.length > 0) {
+      const fIds = followerRows.map((f) => f.follower_id);
+      const { data: profs } = await supabase
+        .from('profiles')
+        .select('id, display_name, handle, avatar_url')
+        .in('id', fIds);
+      const profMap = new Map((profs ?? []).map((p: any) => [p.id, p]));
+      for (const f of followerRows) {
+        const p = profMap.get(f.follower_id);
+        out.push({
+          id: `soc-follow:${f.follower_id}`,
+          kind: 'follow',
+          title: `${p?.display_name || 'A member'} started following you`,
+          subtitle: p?.handle || 'Tap to view their library & Taste DNA',
+          avatar: p?.avatar_url,
+          createdAt: new Date(f.created_at).getTime(),
+          targetId: f.follower_id,
+        });
+      }
+    }
+
+    return out.sort((a, b) => b.createdAt - a.createdAt);
+  } catch {
+    return [];
+  }
 }

@@ -1,5 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Ban,
+  BookOpen,
+  ExternalLink,
+  Flag,
   Heart,
   Loader2,
   MessageCircle,
@@ -15,11 +19,14 @@ import { ActivityItem, LibraryState, PublicUserSummary } from '../types';
 import {
   deleteActivity,
   fetchActivityFeed,
+  fetchBlockedUserIds,
   fetchFollowingIds,
   fetchPublicUsers,
   postActivityReply,
   publishActivity,
+  reportContent,
   toggleActivityLike,
+  toggleBlockUser,
   toggleFollowUser,
 } from '../services/community';
 import { useCloudSync } from '../services/cloudSync';
@@ -73,15 +80,18 @@ export const FeedView: React.FC<FeedViewProps> = ({
     setLoading(true);
 
     const load = async () => {
-      const fIds = cloud.userId ? await fetchFollowingIds(cloud.userId) : [];
+      const [fIds, bIds] = cloud.userId
+        ? await Promise.all([fetchFollowingIds(cloud.userId), fetchBlockedUserIds(cloud.userId)])
+        : [[], []];
       if (cancelled) return;
       setFollowingIds(fIds);
 
       if (tab === 'people') {
+        const blockedSet = new Set(bIds);
         const list = await fetchPublicUsers(userSearch, 36);
-        if (!cancelled) setUsers(list);
+        if (!cancelled) setUsers(list.filter((u) => !blockedSet.has(u.id)));
       } else {
-        const feed = await fetchActivityFeed(tab, fIds, cloud.userId, 50);
+        const feed = await fetchActivityFeed(tab, fIds, cloud.userId, 50, bIds);
         if (!cancelled) setActivities(feed);
       }
       if (!cancelled) setLoading(false);
@@ -96,7 +106,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
   const handlePublishStatus = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cloud.userId) {
-      toast('Sign in with Google to post to the global feed');
+      toast('Sign in with AniList or MyAnimeList to post to the feed');
       onOpenTrackers();
       return;
     }
@@ -121,8 +131,12 @@ export const FeedView: React.FC<FeedViewProps> = ({
   };
 
   const handleLikeActivity = async (act: ActivityItem) => {
+    if (act.source === 'anilist') {
+      if (act.externalUrl) window.open(act.externalUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
     if (!cloud.userId) {
-      toast('Sign in with Google to like activity updates');
+      toast('Sign in with AniList or MyAnimeList to like updates');
       return;
     }
     const nextLiked = !act.likedByMe;
@@ -138,7 +152,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
   const handleSendReply = async (activityId: string) => {
     if (!cloud.userId) {
-      toast('Sign in with Google to reply');
+      toast('Sign in with AniList or MyAnimeList to reply');
       return;
     }
     const body = (replyDrafts[activityId] ?? '').trim();
@@ -161,7 +175,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
 
   const handleFollowToggle = async (targetId: string, name: string) => {
     if (!cloud.userId) {
-      toast('Sign in with Google to follow members');
+      toast('Sign in with AniList or MyAnimeList to follow members');
       onOpenTrackers();
       return;
     }
@@ -208,6 +222,44 @@ export const FeedView: React.FC<FeedViewProps> = ({
         </div>
       </div>
 
+      {/* Direct Community External Links: MAL Forum, AniList Forum & Anime Wiki */}
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/[0.08] bg-[#161616] px-3.5 py-2.5 text-[11.5px]">
+        <span className="font-bold text-[#AAAAAA]">Community Links:</span>
+        <a
+          href="https://myanimelist.net/forum/"
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex items-center gap-1 rounded-full bg-[#2E51A2]/25 px-3 py-1 font-bold text-[#93C5FD] transition hover:bg-[#2E51A2]/45"
+        >
+          MAL Forum <ExternalLink className="h-3 w-3" />
+        </a>
+        <a
+          href="https://anilist.co/forum/overview"
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex items-center gap-1 rounded-full bg-[#02A9FF]/20 px-3 py-1 font-bold text-[#7DD3FC] transition hover:bg-[#02A9FF]/35"
+        >
+          AniList Forum <ExternalLink className="h-3 w-3" />
+        </a>
+        <a
+          href="https://anime.fandom.com/wiki/Animepedia"
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-3 py-1 font-bold text-amber-300 transition hover:bg-amber-500/25"
+        >
+          <BookOpen className="h-3 w-3" />
+          Anime Wiki <ExternalLink className="h-3 w-3" />
+        </a>
+        <a
+          href="https://myanimelist.net/clubs.php"
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex items-center gap-1 rounded-full bg-white/[0.07] px-3 py-1 font-semibold text-neutral-200 transition hover:bg-white/[0.14]"
+        >
+          MAL Clubs <ExternalLink className="h-3 w-3" />
+        </a>
+      </div>
+
       {/* Status Composer */}
       {tab !== 'people' && (
         <form
@@ -228,7 +280,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
                 placeholder={
                   cloud.userId
                     ? `Post an anime thought, recommendation, or milestone as ${profile.handle}…`
-                    : 'Sign in with Google to post status updates to the live community feed…'
+                    : 'Sign in with AniList or MyAnimeList to post updates to the community feed…'
                 }
                 className="w-full rounded-xl border border-white/10 bg-[#0F0F0F] px-3 py-2 text-[13px] text-white placeholder:text-[#777777] outline-none focus:border-[#3EA6FF]"
               />
@@ -239,7 +291,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
                     onClick={onOpenTrackers}
                     className="text-[11.5px] font-bold text-[#3EA6FF] hover:underline"
                   >
-                    Sign in with Google →
+                    Sign in with AniList / MAL →
                   </button>
                 ) : (
                   <span className="text-[11px] text-[#777777]">
@@ -284,7 +336,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
               <Sparkles className="mx-auto mb-2 h-8 w-8 text-[#AAAAAA]/50" />
               <p className="text-[14px] font-bold text-white">No public profiles match yet</p>
               <p className="mt-1 text-[12px] text-[#AAAAAA]">
-                Sign in with Google to publish your ListTube profile to the member directory.
+                Sign in with AniList or MyAnimeList to publish your ListTube profile to the member directory.
               </p>
             </div>
           ) : (
@@ -353,7 +405,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
           <p className="mt-1 text-[12.5px] text-[#AAAAAA]">
             {tab === 'following'
               ? 'Follow other ListTube members in the People tab to see their watch progress and reviews.'
-              : 'Sign in with Google and update a series or post a status above to start the stream.'}
+              : 'Sign in with AniList / MAL or post a status above to start the stream.'}
           </p>
         </div>
       ) : (
@@ -361,6 +413,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
           {activities.map((act) => {
             const expanded = openReplies.has(act.id);
             const myEntry = act.animeId ? myLibrary.entries[act.animeId] : undefined;
+            const isExternalAl = act.source === 'anilist';
             return (
               <div
                 key={act.id}
@@ -370,7 +423,11 @@ export const FeedView: React.FC<FeedViewProps> = ({
                   <div className="flex min-w-0 items-start gap-3">
                     <button
                       type="button"
-                      onClick={() => onOpenUser(act.userId)}
+                      onClick={() =>
+                        isExternalAl
+                          ? window.open(act.externalUrl || 'https://anilist.co', '_blank', 'noopener,noreferrer')
+                          : onOpenUser(act.userId)
+                      }
                       className="shrink-0"
                     >
                       <img
@@ -383,11 +440,20 @@ export const FeedView: React.FC<FeedViewProps> = ({
                       <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
                         <button
                           type="button"
-                          onClick={() => onOpenUser(act.userId)}
+                          onClick={() =>
+                            isExternalAl
+                              ? window.open(act.externalUrl || 'https://anilist.co', '_blank', 'noopener,noreferrer')
+                              : onOpenUser(act.userId)
+                          }
                           className="font-bold text-white hover:text-[#3EA6FF] hover:underline"
                         >
-                          {act.authorHandle}
+                          {isExternalAl ? act.authorName : act.authorHandle}
                         </button>
+                        {isExternalAl && (
+                          <span className="rounded bg-[#02A9FF]/20 px-1.5 py-0.5 text-[9.5px] font-bold text-[#7DD3FC]">
+                            AniList Live
+                          </span>
+                        )}
                         <span className="text-[#AAAAAA]">· {timeAgo(act.createdAt)}</span>
                       </div>
                       <p className="mt-1 whitespace-pre-line text-[13.5px] text-[#F1F1F1]">
@@ -425,21 +491,34 @@ export const FeedView: React.FC<FeedViewProps> = ({
                       <Heart className={`h-3.5 w-3.5 ${act.likedByMe ? 'fill-current' : ''}`} />
                       <span>{act.likeCount}</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setOpenReplies((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(act.id)) next.delete(act.id);
-                          else next.add(act.id);
-                          return next;
-                        })
-                      }
-                      className="flex items-center gap-1 hover:text-white"
-                    >
-                      <MessageCircle className="h-3.5 w-3.5" />
-                      <span>{act.replies.length}</span>
-                    </button>
+                    {!isExternalAl ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenReplies((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(act.id)) next.delete(act.id);
+                            else next.add(act.id);
+                            return next;
+                          })
+                        }
+                        className="flex items-center gap-1 hover:text-white"
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" />
+                        <span>{act.replies.length}</span>
+                      </button>
+                    ) : (
+                      act.externalUrl && (
+                        <a
+                          href={act.externalUrl}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#7DD3FC] hover:underline"
+                        >
+                          Reply on AniList <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )
+                    )}
                     {act.animeId && myEntry && (
                       <span className="rounded bg-white/[0.06] px-2 py-0.5 text-[10.5px] font-semibold text-neutral-300">
                         In your list
@@ -447,19 +526,55 @@ export const FeedView: React.FC<FeedViewProps> = ({
                     )}
                   </div>
 
-                  {cloud.userId === act.userId && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await deleteActivity(act.id, cloud.userId!);
-                        setActivities((prev) => prev.filter((a) => a.id !== act.id));
-                      }}
-                      className="rounded p-1 hover:text-rose-400"
-                      aria-label="Delete post"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {cloud.userId === act.userId && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await deleteActivity(act.id, cloud.userId!);
+                          setActivities((prev) => prev.filter((a) => a.id !== act.id));
+                        }}
+                        className="rounded p-1 hover:text-rose-400"
+                        aria-label="Delete post"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {!isExternalAl && cloud.userId && cloud.userId !== act.userId && (
+                      <>
+                        <button
+                          type="button"
+                          title="Report update"
+                          aria-label="Report update"
+                          onClick={async () => {
+                            await reportContent({
+                              reporterId: cloud.userId!,
+                              targetType: 'activity',
+                              targetId: act.id,
+                              reason: 'Reported from feed',
+                            });
+                            toast('Report submitted for moderation review');
+                          }}
+                          className="rounded p-1 hover:text-amber-300"
+                        >
+                          <Flag className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Block user"
+                          aria-label="Block user"
+                          onClick={async () => {
+                            await toggleBlockUser(cloud.userId!, act.userId, false);
+                            setActivities((prev) => prev.filter((a) => a.userId !== act.userId));
+                            toast(`Blocked ${act.authorHandle}`);
+                          }}
+                          className="rounded p-1 hover:text-rose-400"
+                        >
+                          <Ban className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {expanded && (

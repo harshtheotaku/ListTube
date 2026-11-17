@@ -28,7 +28,7 @@ import { library } from '../services/library';
 import { cloudSync, useCloudSync } from '../services/cloudSync';
 import {
   fetchOAuthServerStatus,
-  getAppBaseUrl,
+  getOAuthRedirectUri,
   OAuthServerStatus,
 } from '../services/supabase';
 import { toast } from './Toast';
@@ -76,7 +76,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
     anilistConfigured: false,
     malConfigured: false,
   });
-  const [googleBusy, setGoogleBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState<'google' | 'anilist' | 'mal' | false>(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TrackerImport | null>(null);
@@ -122,6 +122,8 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
         startedAt: entry.startedAt,
         completedAt: entry.completedAt,
         notes: entry.notes,
+        customLists: entry.customLists,
+        priority: entry.priority,
       })),
       imported.account
     );
@@ -129,15 +131,57 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
     toast(`Connected ${imported.entries.length} titles — feed & stats updated!`);
   };
 
-  const handleGoogleSignIn = async () => {
-    setGoogleBusy(true);
+  const handleGoogleLogin = async () => {
     setError(null);
+    setGoogleBusy('google');
     try {
       await cloudSync.signInWithGoogle();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Google Sign-In failed');
+      setError(err instanceof Error ? err.message : 'Google sign-in failed');
       setGoogleBusy(false);
     }
+  };
+
+  const handleOAuthLogin = (target: Provider) => {
+    setError(null);
+    const redirectUri = getOAuthRedirectUri();
+    if (target === 'anilist') {
+      const clientId = (customAnilistClientId || oauthStatus.anilistClientId || '57274').trim();
+      if (customAnilistClientId.trim()) {
+        localStorage.setItem(
+          CUSTOM_OAUTH_KEY,
+          JSON.stringify({ anilistClientId: customAnilistClientId.trim(), malClientId: customMalClientId.trim() })
+        );
+      }
+      setGoogleBusy('anilist');
+      const useImplicit = !oauthStatus.anilistCodeFlowReady;
+      const url = buildAniListAuthorizeUrl({
+        clientId,
+        redirectUri,
+        useImplicit,
+        state: `anilist:${crypto.randomUUID?.() ?? Date.now()}`,
+      });
+      window.location.href = url;
+      return;
+    }
+
+    const malClientId = (customMalClientId || oauthStatus.malClientId || 'f74fba547b6b04cdb063b1ef1bfc76a3').trim();
+    if (customMalClientId.trim()) {
+      localStorage.setItem(
+        CUSTOM_OAUTH_KEY,
+        JSON.stringify({ anilistClientId: customAnilistClientId.trim(), malClientId: customMalClientId.trim() })
+      );
+    }
+    setGoogleBusy('mal');
+    const verifier = generatePkceVerifier(64);
+    const state = `mal:${crypto.randomUUID?.() ?? Date.now()}`;
+    storeMalPkceSession(verifier, state, malClientId);
+    window.location.href = buildMalAuthorizeUrl({
+      clientId: malClientId,
+      redirectUri,
+      codeChallenge: verifier,
+      state,
+    });
   };
 
   const submitUsername = async (event: React.FormEvent) => {
@@ -165,60 +209,6 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
     }
   };
 
-  const handleStartOAuth = (target: Provider) => {
-    setError(null);
-    const redirectUri = getAppBaseUrl();
-    if (target === 'anilist') {
-      const clientId = (oauthStatus.anilistClientId || customAnilistClientId).trim();
-      if (!clientId) {
-        setShowAdvancedOAuth(true);
-        setError(
-          `Add ANILIST_CLIENT_ID in Supabase Secrets (or enter an AniList App Client ID below) with redirect URL ${redirectUri}`
-        );
-        return;
-      }
-      if (customAnilistClientId.trim()) {
-        localStorage.setItem(
-          CUSTOM_OAUTH_KEY,
-          JSON.stringify({ anilistClientId: customAnilistClientId.trim(), malClientId: customMalClientId.trim() })
-        );
-      }
-      // Use Authorization Code if configured on server, else Implicit Token Grant for zero-secret Client IDs
-      const url = buildAniListAuthorizeUrl({
-        clientId,
-        redirectUri,
-        useImplicit: !oauthStatus.anilistConfigured,
-        state: `anilist:${crypto.randomUUID?.() ?? Date.now()}`,
-      });
-      window.location.href = url;
-      return;
-    }
-
-    const malClientId = (oauthStatus.malClientId || customMalClientId).trim();
-    if (!malClientId) {
-      setShowAdvancedOAuth(true);
-      setError(
-        `Add MAL_CLIENT_ID in Supabase Secrets (or enter your MAL App Client ID below) with redirect URL ${redirectUri}`
-      );
-      return;
-    }
-    if (customMalClientId.trim()) {
-      localStorage.setItem(
-        CUSTOM_OAUTH_KEY,
-        JSON.stringify({ anilistClientId: customAnilistClientId.trim(), malClientId: customMalClientId.trim() })
-      );
-    }
-    const verifier = generatePkceVerifier(64);
-    const state = `mal:${Date.now()}`;
-    storeMalPkceSession(verifier, state, malClientId);
-    window.location.href = buildMalAuthorizeUrl({
-      clientId: malClientId,
-      redirectUri,
-      codeChallenge: verifier,
-      state,
-    });
-  };
-
   const submitToken = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!anilistTokenInput.trim()) return;
@@ -227,6 +217,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
     try {
       const imported = await importAniListWithToken(anilistTokenInput);
       cloudSync.setAniListWritebackToken(anilistTokenInput);
+      await cloudSync.bridgeAniListToken(anilistTokenInput).catch(() => {});
       commitImport(imported);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'AniList token connect failed.');
@@ -296,7 +287,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
               Account &amp; Trackers
             </h2>
             <p className="text-[11.5px] text-[#AAAAAA]">
-              Connect with Google or enter your AniList / MAL username
+              1-tap sign in with AniList / MAL or import by username
             </p>
           </div>
           <button
@@ -416,22 +407,32 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                     </button>
                   </div>
 
-                  {/* Direct 2-Way OAuth Launchers */}
+                  {/* Direct 1-Tap Sign In & 2-Way OAuth Launchers */}
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <button
                       type="button"
-                      onClick={() => handleStartOAuth('anilist')}
-                      className="flex items-center justify-center gap-1.5 rounded-xl border border-[#02A9FF]/40 bg-[#02A9FF]/15 py-2 text-[11.5px] font-bold text-[#7DD3FC] transition hover:bg-[#02A9FF]/25"
+                      disabled={Boolean(googleBusy)}
+                      onClick={() => handleOAuthLogin('anilist')}
+                      className="flex items-center justify-center gap-1.5 rounded-xl border border-[#02A9FF]/40 bg-[#02A9FF]/15 py-2.5 text-[11.5px] font-bold text-[#7DD3FC] transition hover:bg-[#02A9FF]/25 disabled:opacity-50"
                     >
-                      <ExternalLink className="h-3.5 w-3.5" />
+                      {googleBusy === 'anilist' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      )}
                       <span>AniList OAuth</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleStartOAuth('mal')}
-                      className="flex items-center justify-center gap-1.5 rounded-xl border border-[#2E51A2]/60 bg-[#2E51A2]/25 py-2 text-[11.5px] font-bold text-[#93C5FD] transition hover:bg-[#2E51A2]/40"
+                      disabled={Boolean(googleBusy)}
+                      onClick={() => handleOAuthLogin('mal')}
+                      className="flex items-center justify-center gap-1.5 rounded-xl border border-[#2E51A2]/60 bg-[#2E51A2]/25 py-2.5 text-[11.5px] font-bold text-[#93C5FD] transition hover:bg-[#2E51A2]/40 disabled:opacity-50"
                     >
-                      <ExternalLink className="h-3.5 w-3.5" />
+                      {googleBusy === 'mal' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      )}
                       <span>MAL OAuth (PKCE)</span>
                     </button>
                   </div>
@@ -460,13 +461,13 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
               <div className="relative flex items-center py-1">
                 <div className="flex-grow border-t border-white/[0.1]" />
                 <span className="mx-3 text-[10.5px] font-bold uppercase tracking-wider text-[#AAAAAA]">
-                  Google Account
+                  Passwordless Cloud Account
                 </span>
                 <div className="flex-grow border-t border-white/[0.1]" />
               </div>
 
-              {/* 2. Real Google Sign-In (Replaces Sync Codes & Email/Password completely) */}
-              {cloud.userEmail ? (
+              {/* 2. Passwordless Cloud Account via AniList / MAL OAuth Bridge */}
+              {cloud.userId ? (
                 <div className="flex items-center justify-between rounded-2xl border border-emerald-500/30 bg-[#272727] p-3.5">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400">
@@ -474,16 +475,22 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                     </span>
                     <div className="min-w-0">
                       <p className="text-[10.5px] font-bold uppercase tracking-wider text-emerald-400">
-                        Connected with Google
+                        Cloud Sync Active
                       </p>
-                      <p className="truncate text-[13px] font-bold text-white">{cloud.userEmail}</p>
+                      <p className="truncate text-[13px] font-bold text-white">
+                        {cloud.userEmail?.includes('anilist.')
+                          ? 'Signed in with AniList'
+                          : cloud.userEmail?.includes('mal.')
+                            ? 'Signed in with MyAnimeList'
+                            : cloud.userEmail || 'Synced Account'}
+                      </p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
                       void cloudSync.signOut();
-                      toast('Signed out of Google');
+                      toast('Signed out of cloud sync');
                     }}
                     className="shrink-0 text-[11.5px] font-bold text-rose-400 hover:underline"
                   >
@@ -491,14 +498,17 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-2 rounded-2xl border border-white/[0.08] bg-[#181818] p-3.5">
+                  <p className="text-[11.5px] leading-relaxed text-[#AAAAAA]">
+                    Sign in with <strong className="text-white">Google</strong>, <strong className="text-white">AniList</strong>, or <strong className="text-white">MAL</strong> to unlock Community reviews/polls and sync lists across devices.
+                  </p>
                   <button
                     type="button"
-                    disabled={googleBusy}
-                    onClick={handleGoogleSignIn}
-                    className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-white py-3 text-[13px] font-bold text-[#111111] shadow transition hover:bg-neutral-200 disabled:opacity-50"
+                    disabled={Boolean(googleBusy)}
+                    onClick={() => void handleGoogleLogin()}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-[12.5px] font-bold text-[#111111] shadow transition hover:bg-neutral-200 disabled:opacity-50"
                   >
-                    {googleBusy ? (
+                    {googleBusy === 'google' ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
@@ -522,11 +532,26 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                     )}
                     <span>Continue with Google</span>
                   </button>
-                  {cloud.googleEnabled === false && (
-                    <p className="rounded-xl bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-                      Google OAuth needs to be toggled on in Supabase Dashboard → Authentication → Providers → Google (Redirect URL: <code className="text-white">{getAppBaseUrl()}</code>).
-                    </p>
-                  )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={Boolean(googleBusy)}
+                      onClick={() => handleOAuthLogin('anilist')}
+                      className="flex items-center justify-center gap-1.5 rounded-xl bg-[#02A9FF] py-2.5 text-[12.5px] font-extrabold text-[#041421] transition hover:brightness-110 disabled:opacity-50"
+                    >
+                      {googleBusy === 'anilist' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      <span>Sign in · AniList</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={Boolean(googleBusy)}
+                      onClick={() => handleOAuthLogin('mal')}
+                      className="flex items-center justify-center gap-1.5 rounded-xl bg-[#2E51A2] py-2.5 text-[12.5px] font-extrabold text-white transition hover:brightness-110 disabled:opacity-50"
+                    >
+                      {googleBusy === 'mal' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      <span>Sign in · MAL</span>
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -545,24 +570,20 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                 {showAdvancedOAuth && (
                   <div className="mt-2.5 space-y-2.5 rounded-xl border border-white/[0.08] bg-[#161616] p-3">
                     <p className="text-[10.5px] text-[#AAAAAA]">
-                      Redirect URI: <code className="select-all text-white">{getAppBaseUrl()}</code>
+                      Redirect URI: <code className="select-all text-white">{getOAuthRedirectUri()}</code>
                     </p>
-                    {!oauthStatus.anilistConfigured && (
-                      <input
-                        value={customAnilistClientId}
-                        onChange={(e) => setCustomAnilistClientId(e.target.value)}
-                        placeholder="AniList OAuth Client ID (from anilist.co/settings/developer)"
-                        className="h-9 w-full rounded-lg border border-white/15 bg-[#121212] px-3 text-[12px] text-white outline-none"
-                      />
-                    )}
-                    {!oauthStatus.malConfigured && (
-                      <input
-                        value={customMalClientId}
-                        onChange={(e) => setCustomMalClientId(e.target.value)}
-                        placeholder="MyAnimeList Client ID (from myanimelist.net/apiconfig)"
-                        className="h-9 w-full rounded-lg border border-white/15 bg-[#121212] px-3 text-[12px] text-white outline-none"
-                      />
-                    )}
+                    <input
+                      value={customAnilistClientId}
+                      onChange={(e) => setCustomAnilistClientId(e.target.value)}
+                      placeholder="AniList OAuth Client ID (default: 57274)"
+                      className="h-9 w-full rounded-lg border border-white/15 bg-[#121212] px-3 text-[12px] text-white outline-none"
+                    />
+                    <input
+                      value={customMalClientId}
+                      onChange={(e) => setCustomMalClientId(e.target.value)}
+                      placeholder="MyAnimeList Client ID (optional override)"
+                      className="h-9 w-full rounded-lg border border-white/15 bg-[#121212] px-3 text-[12px] text-white outline-none"
+                    />
                     <form onSubmit={submitToken} className="flex gap-2">
                       <input
                         type="password"
@@ -605,7 +626,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
           <button type="button" onClick={onClose} className="font-medium hover:text-white">
             Continue browsing
           </button>
-          <span>AniList · MyAnimeList · Google</span>
+          <span>Google · AniList · MyAnimeList</span>
         </div>
       </div>
     </div>

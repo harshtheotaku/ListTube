@@ -62,6 +62,8 @@ export interface PersonCreditWork {
   mediaType: MediaType;
   role?: string;
   year?: number;
+  score?: number;
+  popularity?: number;
 }
 
 export interface StaffPersonDetail {
@@ -72,15 +74,34 @@ export interface StaffPersonDetail {
   description?: string;
   primaryOccupations: string[];
   homeTown?: string;
+  gender?: string;
+  age?: number;
+  yearsActive?: number[];
+  favourites?: number;
   siteUrl?: string;
   works: PersonCreditWork[];
 }
 
 export interface CharacterDetailExtra {
   id: number;
+  name?: string;
+  nativeName?: string;
+  image?: string;
   description?: string;
+  gender?: string;
+  age?: string;
+  favourites?: number;
   siteUrl?: string;
   appearances: PersonCreditWork[];
+}
+
+export interface StudioDetail {
+  id?: number;
+  name: string;
+  isAnimationStudio?: boolean;
+  favourites?: number;
+  siteUrl?: string;
+  works: Anime[];
 }
 
 export interface ThemeSong {
@@ -169,6 +190,7 @@ export interface ListEntry {
   notes?: string;
   isPrivate?: boolean;
   customLists?: string[];
+  priority?: 0 | 1 | 2;
   addedAt: number;
   updatedAt: number;
 }
@@ -263,6 +285,8 @@ export interface UserReview {
   isSpoiler: boolean;
   helpfulCount: number;
   votedByMe: boolean;
+  source?: 'listtube' | 'anilist';
+  externalUrl?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -297,7 +321,36 @@ export interface ActivityItem {
   likeCount: number;
   likedByMe: boolean;
   replies: ActivityReply[];
+  source?: 'listtube' | 'anilist';
+  externalUrl?: string;
   createdAt: number;
+}
+
+export interface EpisodePollSummary {
+  mediaId: string;
+  episodeNumber: number;
+  average: number;
+  totalVotes: number;
+  distribution: Record<1 | 2 | 3 | 4 | 5, number>;
+  myRating?: 1 | 2 | 3 | 4 | 5;
+}
+
+export interface WikipediaSummary {
+  title: string;
+  extract: string;
+  description?: string;
+  thumbnail?: string;
+  url: string;
+}
+
+export interface SocialNotificationItem {
+  id: string;
+  kind: 'reply' | 'follow' | 'vote';
+  title: string;
+  subtitle: string;
+  avatar?: string;
+  createdAt: number;
+  targetId?: string;
 }
 
 export interface PublicUserSummary {

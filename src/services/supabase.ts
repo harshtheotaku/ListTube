@@ -16,16 +16,24 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
 
 export interface ResolvedReaderLink {
   site: string;
-  key: 'comix' | 'kagane' | 'reanime' | 'kotoplay' | 'animepahe' | string;
+  key: 'comix' | 'kagane' | 'reanime' | 'kotoplay' | string;
   url: string;
   isDirect: boolean;
+  recommended?: boolean;
 }
 
 export interface OAuthServerStatus {
   anilistConfigured: boolean;
+  anilistCodeFlowReady?: boolean;
   anilistClientId?: string;
   malConfigured: boolean;
   malClientId?: string;
+}
+
+export interface OAuthBridgePayload {
+  bridgeEmail: string;
+  bridgeTokenHash: string;
+  userId: string;
 }
 
 async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs = 12000): Promise<Response> {
@@ -55,6 +63,16 @@ export function getAppBaseUrl(): string {
       ? '/ListTube/'
       : '/';
   return `${window.location.origin}${base}`.replace(/\/+$/, '');
+}
+
+export function getOAuthRedirectUri(): string {
+  if (typeof window === 'undefined' || isNativeCapacitor() || !window.location.protocol.startsWith('http')) {
+    return 'https://listtube.vercel.app/';
+  }
+  if (window.location.hostname === 'listtube.vercel.app' || window.location.hostname.endsWith('.vercel.app')) {
+    return 'https://listtube.vercel.app/';
+  }
+  return `${window.location.origin}/`;
 }
 
 export function buildSharePreviewUrl(mediaId: string): string {
@@ -174,12 +192,11 @@ export async function resolveExternalLinksEdge(
   const fallback: ResolvedReaderLink[] =
     mediaType === 'ANIME'
       ? [
+          { site: 'KotoPlay', key: 'kotoplay', url: `https://kotoplay.to/search?keyword=${q}`, isDirect: false, recommended: true },
           { site: 'Re Anime', key: 'reanime', url: `https://reanime.cc/?s=${q}`, isDirect: false },
-          { site: 'KotoPlay', key: 'kotoplay', url: `https://kotoplay.to/search?keyword=${q}`, isDirect: false },
-          { site: 'AnimePahe', key: 'animepahe', url: 'https://animepahe.pw/', isDirect: false },
         ]
       : [
-          { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false },
+          { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false, recommended: true },
           { site: 'Kagane', key: 'kagane', url: `https://kagane.org/search?q=${q}`, isDirect: false },
         ];
 
@@ -225,7 +242,7 @@ export async function exchangeAniListOAuthEdge(params: {
   redirectUri: string;
   clientId?: string;
   clientSecret?: string;
-}): Promise<{ access_token: string; expires_in?: number }> {
+}): Promise<{ access_token: string; expires_in?: number; bridge?: OAuthBridgePayload | null }> {
   const res = await fetchWithTimeout(`${EDGE_API_BASE}/oauth/anilist/exchange`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -238,6 +255,21 @@ export async function exchangeAniListOAuthEdge(params: {
   return json;
 }
 
+export async function createAniListBridgeSessionEdge(
+  accessToken: string
+): Promise<{ viewer?: any; bridge?: OAuthBridgePayload | null }> {
+  const res = await fetchWithTimeout(`${EDGE_API_BASE}/oauth/anilist/session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accessToken }),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json?.error || `AniList session bridge HTTP ${res.status}`);
+  }
+  return json;
+}
+
 export async function exchangeMalOAuthEdge(params: {
   grantType: 'authorization_code' | 'refresh_token';
   code?: string;
@@ -246,7 +278,12 @@ export async function exchangeMalOAuthEdge(params: {
   refreshToken?: string;
   clientId?: string;
   clientSecret?: string;
-}): Promise<{ access_token: string; refresh_token?: string; expires_in?: number }> {
+}): Promise<{
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+  bridge?: OAuthBridgePayload | null;
+}> {
   const res = await fetchWithTimeout(`${EDGE_API_BASE}/oauth/mal/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -290,6 +327,8 @@ export async function writeBackAniListEdge(params: {
   completedAt?: string;
   notes?: string;
   isPrivate?: boolean;
+  customLists?: string[];
+  priority?: number;
 }): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await fetchWithTimeout(

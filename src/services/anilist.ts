@@ -1,4 +1,5 @@
 import {
+  ActivityItem,
   Anime,
   CharacterCredit,
   CharacterDetailExtra,
@@ -6,12 +7,16 @@ import {
   MediaType,
   PersonCreditWork,
   RelatedTitle,
+  ReviewVerdict,
   ScheduleItem,
   ScoreDistBucket,
   StaffCredit,
   StaffPersonDetail,
   StatusDistBucket,
   StreamingLink,
+  StudioDetail,
+  UserReview,
+  WikipediaSummary,
 } from '../types';
 import { animeStore } from './animeStore';
 import { edgeAniList } from './supabase';
@@ -408,10 +413,15 @@ export function mapMedia(media: AniListMedia, fallbackType: MediaType = 'ANIME')
   };
 }
 
-async function request<T>(query: string, variables: Record<string, unknown>, attempt = 0): Promise<T> {
+async function request<T>(
+  query: string,
+  variables: Record<string, unknown>,
+  attempt = 0,
+  ttlSeconds?: number
+): Promise<T> {
   if (attempt === 0) {
     try {
-      return await edgeAniList<T>(query, variables);
+      return await edgeAniList<T>(query, variables, ttlSeconds);
     } catch {
       // Fallback directly to AniList GraphQL if Edge Gateway is unreachable
     }
@@ -1119,14 +1129,20 @@ const STAFF_PERSON_QUERY = `
       description(asHtml: false)
       primaryOccupations
       homeTown
+      gender
+      age
+      yearsActive
+      favourites
       siteUrl
-      staffMedia(sort: [POPULARITY_DESC], perPage: 6) {
+      staffMedia(sort: [POPULARITY_DESC], perPage: 25) {
         edges {
           staffRole
           node {
             id
             type
             isAdult
+            averageScore
+            popularity
             title { english romaji }
             coverImage { extraLarge large medium }
             startDate { year }
@@ -1140,7 +1156,7 @@ const STAFF_PERSON_QUERY = `
 export async function fetchStaffPersonDetail(staffId: number): Promise<StaffPersonDetail | null> {
   if (!staffId) return null;
   return cached(
-    `staff-detail:${staffId}`,
+    `staff-detail:v2:${staffId}`,
     async () => {
       type Res = {
         Staff?: {
@@ -1150,6 +1166,10 @@ export async function fetchStaffPersonDetail(staffId: number): Promise<StaffPers
           description?: string | null;
           primaryOccupations?: (string | null)[] | null;
           homeTown?: string | null;
+          gender?: string | null;
+          age?: number | null;
+          yearsActive?: (number | null)[] | null;
+          favourites?: number | null;
           siteUrl?: string | null;
           staffMedia?: {
             edges?: {
@@ -1158,6 +1178,8 @@ export async function fetchStaffPersonDetail(staffId: number): Promise<StaffPers
                 id: number;
                 type?: MediaType | null;
                 isAdult?: boolean | null;
+                averageScore?: number | null;
+                popularity?: number | null;
                 title?: { english?: string | null; romaji?: string | null } | null;
                 coverImage?: { extraLarge?: string | null; large?: string | null; medium?: string | null } | null;
                 startDate?: { year?: number | null } | null;
@@ -1186,6 +1208,8 @@ export async function fetchStaffPersonDetail(staffId: number): Promise<StaffPers
           mediaType: mType,
           role: edge.staffRole ?? undefined,
           year: node.startDate?.year ?? undefined,
+          score: node.averageScore ? Number((node.averageScore / 10).toFixed(1)) : undefined,
+          popularity: node.popularity ?? undefined,
         });
       }
       return {
@@ -1196,6 +1220,10 @@ export async function fetchStaffPersonDetail(staffId: number): Promise<StaffPers
         description: cleanDescription(s.description),
         primaryOccupations: (s.primaryOccupations ?? []).filter((x): x is string => Boolean(x)),
         homeTown: s.homeTown ?? undefined,
+        gender: s.gender ?? undefined,
+        age: s.age ?? undefined,
+        yearsActive: (s.yearsActive ?? []).filter((n): n is number => typeof n === 'number'),
+        favourites: s.favourites ?? undefined,
         siteUrl: s.siteUrl ?? undefined,
         works,
       };
@@ -1208,15 +1236,22 @@ const CHARACTER_EXTRA_QUERY = `
   query CharacterExtra($id: Int) {
     Character(id: $id) {
       id
+      name { full native }
+      image { large medium }
       description(asHtml: false)
+      gender
+      age
+      favourites
       siteUrl
-      media(sort: [POPULARITY_DESC], perPage: 6) {
+      media(sort: [POPULARITY_DESC], perPage: 16) {
         edges {
           characterRole
           node {
             id
             type
             isAdult
+            averageScore
+            popularity
             title { english romaji }
             coverImage { extraLarge large medium }
             startDate { year }
@@ -1230,12 +1265,17 @@ const CHARACTER_EXTRA_QUERY = `
 export async function fetchCharacterExtra(characterId: number): Promise<CharacterDetailExtra | null> {
   if (!characterId) return null;
   return cached(
-    `char-extra:${characterId}`,
+    `char-extra:v2:${characterId}`,
     async () => {
       type Res = {
         Character?: {
           id: number;
+          name?: { full?: string | null; native?: string | null } | null;
+          image?: { large?: string | null; medium?: string | null } | null;
           description?: string | null;
+          gender?: string | null;
+          age?: string | null;
+          favourites?: number | null;
           siteUrl?: string | null;
           media?: {
             edges?: {
@@ -1244,6 +1284,8 @@ export async function fetchCharacterExtra(characterId: number): Promise<Characte
                 id: number;
                 type?: MediaType | null;
                 isAdult?: boolean | null;
+                averageScore?: number | null;
+                popularity?: number | null;
                 title?: { english?: string | null; romaji?: string | null } | null;
                 coverImage?: { extraLarge?: string | null; large?: string | null; medium?: string | null } | null;
                 startDate?: { year?: number | null } | null;
@@ -1272,14 +1314,330 @@ export async function fetchCharacterExtra(characterId: number): Promise<Characte
           mediaType: mType,
           role: edge.characterRole ?? undefined,
           year: node.startDate?.year ?? undefined,
+          score: node.averageScore ? Number((node.averageScore / 10).toFixed(1)) : undefined,
+          popularity: node.popularity ?? undefined,
         });
       }
       return {
         id: ch.id,
+        name: ch.name?.full ?? undefined,
+        nativeName: ch.name?.native ?? undefined,
+        image: ch.image?.large || ch.image?.medium || undefined,
         description: cleanDescription(ch.description),
+        gender: ch.gender ?? undefined,
+        age: ch.age ?? undefined,
+        favourites: ch.favourites ?? undefined,
         siteUrl: ch.siteUrl ?? undefined,
         appearances,
       };
+    },
+    6 * 60 * 60 * 1000
+  );
+}
+
+const STUDIO_DETAIL_QUERY = `
+  query StudioDetail($search: String) {
+    Studio(search: $search) {
+      id
+      name
+      isAnimationStudio
+      favourites
+      siteUrl
+      media(sort: [POPULARITY_DESC], perPage: 25) {
+        nodes {
+          isAdult
+          ${CORE}
+        }
+      }
+    }
+  }
+`;
+
+export async function fetchStudioDetail(studioName: string): Promise<StudioDetail | null> {
+  const clean = studioName.trim();
+  if (!clean) return null;
+  return cached(
+    `studio-detail:${clean.toLowerCase()}`,
+    async () => {
+      type Res = {
+        Studio?: {
+          id?: number;
+          name?: string;
+          isAnimationStudio?: boolean;
+          favourites?: number;
+          siteUrl?: string;
+          media?: { nodes?: (AniListMedia & { isAdult?: boolean })[] };
+        } | null;
+      };
+      try {
+        const data = await request<Res>(STUDIO_DETAIL_QUERY, { search: clean });
+        const st = data.Studio;
+        if (st?.name) {
+          const works = (st.media?.nodes ?? [])
+            .filter((n) => !n.isAdult)
+            .map((n) => mapMedia(n, 'ANIME'))
+            .filter((a) => Boolean(a.cover));
+          if (works.length > 0) animeStore.rememberMany(works);
+          return {
+            id: st.id,
+            name: st.name,
+            isAnimationStudio: st.isAnimationStudio,
+            favourites: st.favourites,
+            siteUrl: st.siteUrl,
+            works,
+          };
+        }
+      } catch {
+        /* fallback to fetchByStudio */
+      }
+      const works = await fetchByStudio(clean, 'ANIME', new Set(), 25);
+      return works.length > 0 ? { name: clean, works } : { name: clean, works: [] };
+    },
+    6 * 60 * 60 * 1000
+  );
+}
+
+export async function fetchWikipediaSummary(query: string): Promise<WikipediaSummary | null> {
+  const clean = query.trim();
+  if (!clean) return null;
+  return cached(
+    `wiki:${clean.toLowerCase()}`,
+    async () => {
+      try {
+        const directSlug = encodeURIComponent(clean.replace(/\s+/g, '_'));
+        const res = await fetch(
+          `https://en.wikipedia.org/api/rest_v1/page/summary/${directSlug}`,
+          { headers: { Accept: 'application/json' } }
+        );
+        if (res.ok) {
+          const j = (await res.json()) as {
+            title?: string;
+            extract?: string;
+            description?: string;
+            type?: string;
+            thumbnail?: { source?: string };
+            content_urls?: { desktop?: { page?: string } };
+          };
+          if (j.extract && j.type !== 'disambiguation') {
+            return {
+              title: j.title || clean,
+              extract: j.extract,
+              description: j.description,
+              thumbnail: j.thumbnail?.source,
+              url: j.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${directSlug}`,
+            };
+          }
+        }
+        const searchRes = await fetch(
+          `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
+            `${clean} anime`
+          )}&srlimit=2&format=json&origin=*`
+        );
+        if (searchRes.ok) {
+          const sj = (await searchRes.json()) as {
+            query?: { search?: { title: string }[] };
+          };
+          const hitTitle = sj.query?.search?.[0]?.title;
+          if (hitTitle) {
+            const sumRes = await fetch(
+              `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(
+                hitTitle.replace(/\s+/g, '_')
+              )}`
+            );
+            if (sumRes.ok) {
+              const j = (await sumRes.json()) as any;
+              if (j?.extract) {
+                return {
+                  title: j.title || hitTitle,
+                  extract: j.extract,
+                  description: j.description,
+                  thumbnail: j.thumbnail?.source,
+                  url: j.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(hitTitle.replace(/\s+/g, '_'))}`,
+                };
+              }
+            }
+          }
+        }
+      } catch {
+        /* ignore offline wiki failures */
+      }
+      return null;
+    },
+    24 * 60 * 60 * 1000
+  );
+}
+
+const PUBLIC_ACTIVITIES_QUERY = `
+  query PublicActivities($perPage: Int) {
+    Page(page: 1, perPage: $perPage) {
+      activities(type: ANIME_LIST, sort: ID_DESC) {
+        ... on ListActivity {
+          id
+          status
+          progress
+          createdAt
+          siteUrl
+          user {
+            id
+            name
+            avatar { medium }
+          }
+          media {
+            id
+            type
+            isAdult
+            title { english romaji }
+            coverImage { large }
+          }
+        }
+      }
+    }
+  }
+`;
+
+export async function fetchPublicAniListActivities(limit = 18): Promise<ActivityItem[]> {
+  try {
+    type Res = {
+      Page?: {
+        activities?: {
+          id: number;
+          status?: string;
+          progress?: string;
+          createdAt?: number;
+          siteUrl?: string;
+          user?: { id?: number; name?: string; avatar?: { medium?: string } };
+          media?: {
+            id?: number;
+            type?: MediaType;
+            isAdult?: boolean;
+            title?: { english?: string; romaji?: string };
+            coverImage?: { large?: string };
+          };
+        }[];
+      };
+    };
+    const data = await request<Res>(PUBLIC_ACTIVITIES_QUERY, { perPage: limit }, 0, 900);
+    const rows = data.Page?.activities ?? [];
+    return rows
+      .filter((r) => r?.media?.id && !r.media.isAdult && r.user?.name)
+      .map<ActivityItem>((r) => {
+        const mType: MediaType = r.media?.type === 'MANGA' ? 'MANGA' : 'ANIME';
+        const title = r.media?.title?.english || r.media?.title?.romaji || 'Anime';
+        const rawStatus = (r.status || '').trim();
+        const progText = r.progress ? ` ${r.progress} of` : '';
+        const cap = rawStatus ? rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1) : 'Updated';
+        return {
+          id: `al-act:${r.id}`,
+          userId: `al-user:${r.user?.id ?? r.user?.name}`,
+          authorName: r.user?.name || 'AniList Member',
+          authorHandle: `@${(r.user?.name || 'anilist').toLowerCase().replace(/[^a-z0-9_]/g, '')}`,
+          authorAvatar: r.user?.avatar?.medium || '',
+          kind: rawStatus.includes('watched') ? 'progress' : 'status',
+          animeId: `${mType === 'MANGA' ? 'anilist-manga' : 'anilist'}:${r.media!.id}`,
+          animeTitle: title,
+          animeCover: r.media?.coverImage?.large || '',
+          mediaType: mType,
+          statusText: `${cap}${progText} ${title}`,
+          progress: r.progress ? Number(String(r.progress).split('-').pop()) || undefined : undefined,
+          likeCount: 0,
+          likedByMe: false,
+          replies: [],
+          source: 'anilist',
+          externalUrl: r.siteUrl || `https://anilist.co/activity/${r.id}`,
+          createdAt: (r.createdAt ?? Math.floor(Date.now() / 1000)) * 1000,
+        };
+      });
+  } catch {
+    return [];
+  }
+}
+
+const PUBLIC_REVIEWS_QUERY = `
+  query PublicMediaReviews($id: Int, $type: MediaType) {
+    Media(id: $id, type: $type) {
+      reviews(sort: [RATING_DESC], perPage: 8) {
+        nodes {
+          id
+          summary
+          body
+          score
+          rating
+          createdAt
+          siteUrl
+          user {
+            id
+            name
+            avatar { medium }
+          }
+        }
+      }
+    }
+  }
+`;
+
+export async function fetchPublicAniListReviews(
+  anilistId: number,
+  mediaType: MediaType = 'ANIME'
+): Promise<UserReview[]> {
+  if (!anilistId) return [];
+  const mediaKey = `${mediaType === 'MANGA' ? 'anilist-manga' : 'anilist'}:${anilistId}`;
+  return cached(
+    `al-reviews:${mediaKey}`,
+    async () => {
+      try {
+        type Res = {
+          Media?: {
+            reviews?: {
+              nodes?: {
+                id: number;
+                summary?: string;
+                body?: string;
+                score?: number;
+                rating?: number;
+                createdAt?: number;
+                siteUrl?: string;
+                user?: { id?: number; name?: string; avatar?: { medium?: string } };
+              }[];
+            };
+          };
+        };
+        const data = await request<Res>(PUBLIC_REVIEWS_QUERY, { id: anilistId, type: mediaType }, 0, 21600);
+        const nodes = data.Media?.reviews?.nodes ?? [];
+        return nodes
+          .filter((n) => (n.summary || n.body) && n.id)
+          .map<UserReview>((n) => {
+            const score10 = typeof n.score === 'number' && n.score > 0 ? Number((n.score / 10).toFixed(1)) : undefined;
+            const verdict: ReviewVerdict =
+              score10 && score10 >= 7
+                ? 'Recommended'
+                : score10 && score10 >= 5
+                ? 'Mixed Feelings'
+                : 'Not Recommended';
+            const cleanBody = cleanDescription(n.body || n.summary || '');
+            return {
+              id: `al-rev:${n.id}`,
+              animeId: mediaKey,
+              mediaType,
+              userId: `al-user:${n.user?.id ?? n.user?.name}`,
+              authorName: n.user?.name || 'AniList Critic',
+              authorHandle: `@${(n.user?.name || 'anilist').toLowerCase().replace(/[^a-z0-9_]/g, '')}`,
+              authorAvatar: n.user?.avatar?.medium || '',
+              headline: n.summary?.slice(0, 90),
+              body: cleanBody,
+              overallScore: score10,
+              verdict,
+              isSpoiler: /spoiler/i.test(n.summary || ''),
+              helpfulCount: n.rating ?? 0,
+              votedByMe: false,
+              source: 'anilist',
+              externalUrl: n.siteUrl || `https://anilist.co/review/${n.id}`,
+              createdAt: (n.createdAt ?? Math.floor(Date.now() / 1000)) * 1000,
+              updatedAt: (n.createdAt ?? Math.floor(Date.now() / 1000)) * 1000,
+            };
+          });
+      } catch {
+        return [];
+      }
     },
     6 * 60 * 60 * 1000
   );

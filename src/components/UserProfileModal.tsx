@@ -93,7 +93,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
 
   const handleToggleFollow = async () => {
     if (!cloud.userId) {
-      toast('Sign in with Google to follow users');
+      toast('Sign in with AniList or MyAnimeList to follow users');
       return;
     }
     if (!user || cloud.userId === user.id) return;
@@ -130,7 +130,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
       <div className="mx-auto max-w-2xl px-4 py-12 text-center text-white">
         <p className="text-[16px] font-bold">Profile not published yet</p>
         <p className="mt-1 text-[12.5px] text-[#AAAAAA]">
-          This handle is a local-only comment or hasn’t connected with Google Cloud yet.
+          This handle is a local-only comment or hasn’t connected via AniList / MAL Cloud yet.
         </p>
         <button
           type="button"

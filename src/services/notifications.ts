@@ -2,10 +2,12 @@ import { useSyncExternalStore } from 'react';
 import { Anime } from '../types';
 import { animeStore } from './animeStore';
 import { fetchAiringSchedule, fetchSeasonal } from './anilist';
+import { fetchSocialNotifications } from './community';
 import { library } from './library';
 import { fetchOfficialNewsFeed } from './news';
+import { supabase } from './supabase';
 
-export type MalNotificationKind = 'episodes' | 'sequels' | 'news' | 'milestones';
+export type MalNotificationKind = 'episodes' | 'sequels' | 'news' | 'milestones' | 'social';
 
 export interface MalNotificationItem {
   id: string;
@@ -211,10 +213,14 @@ export const notificationsService = {
       const base = buildLocalNotifications();
       const map = new Map<string, Omit<MalNotificationItem, 'read'>>(base.map((i) => [i.id, i]));
 
-      const [scheduleRes, seasonalRes, newsRes] = await Promise.allSettled([
+      const { data: userData } = await supabase.auth.getUser();
+      const uid = userData?.user?.id ?? null;
+
+      const [scheduleRes, seasonalRes, newsRes, socialRes] = await Promise.allSettled([
         fetchAiringSchedule(),
         fetchSeasonal(10, 'ANIME', 1),
         fetchOfficialNewsFeed(),
+        uid ? fetchSocialNotifications(uid) : Promise.resolve([]),
       ]);
 
       // Tracked + Popular Airing Schedule alerts
@@ -284,6 +290,22 @@ export const notificationsService = {
             timeLabel: story.sourceName,
             externalUrl: story.url,
             isTrackedMatch: false,
+          });
+        }
+      }
+
+      // Social Notifications (replies, follows)
+      if (socialRes.status === 'fulfilled') {
+        for (const soc of socialRes.value) {
+          map.set(soc.id, {
+            id: soc.id,
+            kind: 'social',
+            title: soc.title,
+            subtitle: soc.subtitle,
+            image: soc.avatar,
+            timestamp: soc.createdAt,
+            timeLabel: 'Community',
+            isTrackedMatch: true,
           });
         }
       }

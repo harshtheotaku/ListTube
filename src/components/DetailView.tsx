@@ -9,6 +9,8 @@ import {
   ChevronDown,
   ChevronUp,
   ExternalLink,
+  Flag,
+  FolderPlus,
   Heart,
   Lock,
   Minus,
@@ -63,6 +65,7 @@ import {
   ResolvedReaderLink,
 } from '../services/supabase';
 import { CommentsSection } from './CommentsSection';
+import { EntityRouteTarget } from './EntityView';
 import { toast } from './Toast';
 import { CardSkeleton } from './Skeleton';
 
@@ -71,6 +74,7 @@ interface DetailViewProps {
   libraryState: LibraryState;
   onOpenId: (id: string) => void;
   onOpenChannel: (anime: Anime) => void;
+  onOpenEntity?: (target: EntityRouteTarget) => void;
   onSelectGenre?: (genre: string) => void;
   onEditProfile?: () => void;
   onOpenUser?: (userIdOrHandle: string) => void;
@@ -153,6 +157,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
   libraryState,
   onOpenId,
   onOpenChannel,
+  onOpenEntity,
   onSelectGenre,
   onEditProfile,
   onOpenUser,
@@ -185,6 +190,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
     endings: [],
   });
   const [externalLinks, setExternalLinks] = useState<ResolvedReaderLink[]>([]);
+  const [customShelfDraft, setCustomShelfDraft] = useState('');
   const profile = useProfile();
 
   const entry = libraryState.entries[animeId];
@@ -281,12 +287,11 @@ export const DetailView: React.FC<DetailViewProps> = ({
     setExternalLinks(
       type === 'ANIME'
         ? [
+            { site: 'KotoPlay', key: 'kotoplay', url: `https://kotoplay.to/search?keyword=${q}`, isDirect: false, recommended: true },
             { site: 'Re Anime', key: 'reanime', url: `https://reanime.cc/?s=${q}`, isDirect: false },
-            { site: 'KotoPlay', key: 'kotoplay', url: `https://kotoplay.to/search?keyword=${q}`, isDirect: false },
-            { site: 'AnimePahe', key: 'animepahe', url: 'https://animepahe.pw/', isDirect: false },
           ]
         : [
-            { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false },
+            { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false, recommended: true },
             { site: 'Kagane', key: 'kagane', url: `https://kagane.org/search?q=${q}`, isDirect: false },
           ]
     );
@@ -970,79 +975,169 @@ export const DetailView: React.FC<DetailViewProps> = ({
                   </button>
                 </div>
 
-                {/* Dates, Rewatches, Notes, Privacy Panel */}
+                {/* Dates, Rewatches, Priority, Custom Shelves, Notes & Privacy Panel */}
                 {advancedTrackOpen && (
-                  <div className="grid gap-3 border-t border-white/[0.08] pt-3 sm:grid-cols-3">
-                    <div>
-                      <label className="mb-1 block text-[10px] font-bold uppercase text-[#AAAAAA]">
-                        Start Date
-                      </label>
-                      <input
-                        type="date"
-                        value={entry?.startedAt ?? ''}
-                        onChange={(e) =>
-                          library.updateEntryDetails(anime.id, { startedAt: e.target.value || undefined })
-                        }
-                        className="h-8 w-full rounded-lg border border-white/15 bg-[#121212] px-2 text-[12px] text-white outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-[10px] font-bold uppercase text-[#AAAAAA]">
-                        Finish Date
-                      </label>
-                      <input
-                        type="date"
-                        value={entry?.completedAt ?? ''}
-                        onChange={(e) =>
-                          library.updateEntryDetails(anime.id, { completedAt: e.target.value || undefined })
-                        }
-                        className="h-8 w-full rounded-lg border border-white/15 bg-[#121212] px-2 text-[12px] text-white outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase text-[#AAAAAA]">
-                        <Repeat className="h-3 w-3 text-[#3EA6FF]" />
-                        {isManga ? 'Rereads' : 'Rewatches'}
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={999}
-                        value={entry?.repeat ?? 0}
-                        onChange={(e) =>
-                          library.updateEntryDetails(anime.id, { repeat: Number(e.target.value) || 0 })
-                        }
-                        className="h-8 w-full rounded-lg border border-white/15 bg-[#121212] px-2 text-[12px] text-white outline-none"
-                      />
-                    </div>
-
-                    <div className="sm:col-span-2">
-                      <label className="mb-1 block text-[10px] font-bold uppercase text-[#AAAAAA]">
-                        Personal Notes
-                      </label>
-                      <input
-                        value={entry?.notes ?? ''}
-                        onChange={(e) =>
-                          library.updateEntryDetails(anime.id, { notes: e.target.value })
-                        }
-                        placeholder="Private list notes synced to AniList / MAL…"
-                        className="h-8 w-full rounded-lg border border-white/15 bg-[#121212] px-2.5 text-[12px] text-white outline-none"
-                      />
-                    </div>
-
-                    <div className="flex items-end">
-                      <label className="flex h-8 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-white/10 bg-[#242424] px-2.5 text-[11.5px] font-semibold text-white">
+                  <div className="space-y-3 border-t border-white/[0.08] pt-3">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div>
+                        <label className="mb-1 block text-[10px] font-bold uppercase text-[#AAAAAA]">
+                          Start Date
+                        </label>
                         <input
-                          type="checkbox"
-                          checked={Boolean(entry?.isPrivate)}
+                          type="date"
+                          value={entry?.startedAt ?? ''}
                           onChange={(e) =>
-                            library.updateEntryDetails(anime.id, { isPrivate: e.target.checked })
+                            library.updateEntryDetails(anime.id, { startedAt: e.target.value || undefined })
                           }
-                          className="accent-[#FF0000]"
+                          className="h-8 w-full rounded-lg border border-white/15 bg-[#121212] px-2 text-[12px] text-white outline-none"
                         />
-                        <Lock className="h-3 w-3 text-[#AAAAAA]" />
-                        Private Entry
-                      </label>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[10px] font-bold uppercase text-[#AAAAAA]">
+                          Finish Date
+                        </label>
+                        <input
+                          type="date"
+                          value={entry?.completedAt ?? ''}
+                          onChange={(e) =>
+                            library.updateEntryDetails(anime.id, { completedAt: e.target.value || undefined })
+                          }
+                          className="h-8 w-full rounded-lg border border-white/15 bg-[#121212] px-2 text-[12px] text-white outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase text-[#AAAAAA]">
+                          <Repeat className="h-3 w-3 text-[#3EA6FF]" />
+                          {isManga ? 'Rereads' : 'Rewatches'}
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={999}
+                          value={entry?.repeat ?? 0}
+                          onChange={(e) =>
+                            library.updateEntryDetails(anime.id, { repeat: Number(e.target.value) || 0 })
+                          }
+                          className="h-8 w-full rounded-lg border border-white/15 bg-[#121212] px-2 text-[12px] text-white outline-none"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="mb-1 block text-[10px] font-bold uppercase text-[#AAAAAA]">
+                          Personal Notes
+                        </label>
+                        <input
+                          value={entry?.notes ?? ''}
+                          onChange={(e) =>
+                            library.updateEntryDetails(anime.id, { notes: e.target.value })
+                          }
+                          placeholder="Private list notes synced to AniList / MAL…"
+                          className="h-8 w-full rounded-lg border border-white/15 bg-[#121212] px-2.5 text-[12px] text-white outline-none"
+                        />
+                      </div>
+
+                      <div className="flex items-end">
+                        <label className="flex h-8 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-white/10 bg-[#242424] px-2.5 text-[11.5px] font-semibold text-white">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(entry?.isPrivate)}
+                            onChange={(e) =>
+                              library.updateEntryDetails(anime.id, { isPrivate: e.target.checked })
+                            }
+                            className="accent-[#FF0000]"
+                          />
+                          <Lock className="h-3 w-3 text-[#AAAAAA]" />
+                          Private Entry
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Priority + Custom List Shelves */}
+                    <div className="grid gap-3 border-t border-white/[0.06] pt-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 flex items-center gap-1 text-[10px] font-bold uppercase text-[#AAAAAA]">
+                          <Flag className="h-3 w-3 text-[#3EA6FF]" />
+                          Priority
+                        </label>
+                        <div className="flex gap-1.5">
+                          {([
+                            { value: 0, label: 'Normal' },
+                            { value: 1, label: 'Medium' },
+                            { value: 2, label: 'High' },
+                          ] as const).map((p) => {
+                            const active = (entry?.priority ?? 0) === p.value;
+                            return (
+                              <button
+                                key={p.value}
+                                type="button"
+                                onClick={() => library.updateEntryDetails(anime.id, { priority: p.value })}
+                                className={`flex-1 rounded-lg py-1.5 text-[11.5px] font-bold transition ${
+                                  active
+                                    ? p.value === 2
+                                      ? 'bg-rose-500 text-white'
+                                      : 'bg-[#3EA6FF] text-black'
+                                    : 'bg-[#242424] text-[#CCCCCC] hover:bg-[#323232]'
+                                }`}
+                              >
+                                {p.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 flex items-center gap-1 text-[10px] font-bold uppercase text-[#AAAAAA]">
+                          <FolderPlus className="h-3 w-3 text-[#3EA6FF]" />
+                          Custom Shelves
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(profile.customListNames ?? []).map((shelfName) => {
+                            const active = Boolean(entry?.customLists?.includes(shelfName));
+                            return (
+                              <button
+                                key={shelfName}
+                                type="button"
+                                onClick={() => {
+                                  const prev = entry?.customLists ?? [];
+                                  const next = active
+                                    ? prev.filter((x) => x !== shelfName)
+                                    : [...prev, shelfName];
+                                  library.updateEntryDetails(anime.id, { customLists: next });
+                                }}
+                                className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                                  active
+                                    ? 'bg-[#3EA6FF] text-black font-bold'
+                                    : 'bg-[#242424] text-[#CCCCCC] hover:bg-[#323232]'
+                                }`}
+                              >
+                                {active ? `✓ ${shelfName}` : shelfName}
+                              </button>
+                            );
+                          })}
+                          <div className="flex items-center gap-1">
+                            <input
+                              value={customShelfDraft}
+                              onChange={(e) => setCustomShelfDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  const created = profileStore.addCustomListName(customShelfDraft);
+                                  if (created) {
+                                    const prev = entry?.customLists ?? [];
+                                    library.updateEntryDetails(anime.id, {
+                                      customLists: Array.from(new Set([...prev, created])),
+                                    });
+                                    setCustomShelfDraft('');
+                                  }
+                                }
+                              }}
+                              placeholder="+ New shelf"
+                              className="h-7 w-24 rounded-lg border border-white/15 bg-[#121212] px-2 text-[11px] text-white outline-none focus:border-[#3EA6FF]"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1155,6 +1250,26 @@ export const DetailView: React.FC<DetailViewProps> = ({
                           MyAnimeList <ExternalLink className="h-3 w-3" />
                         </a>
                         <a
+                          href={
+                            anime.anilistId
+                              ? `https://anilist.co/${isManga ? 'manga' : 'anime'}/${anime.anilistId}`
+                              : `https://anilist.co/search/${isManga ? 'manga' : 'anime'}?search=${encodeURIComponent(anime.title)}`
+                          }
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="inline-flex items-center gap-1 rounded-full bg-black/40 px-3 py-1 text-[11.5px] font-bold text-[#7DD3FC] transition hover:bg-[#02A9FF]/20"
+                        >
+                          AniList <ExternalLink className="h-3 w-3" />
+                        </a>
+                        <a
+                          href={`https://anime.fandom.com/wiki/Special:Search?query=${encodeURIComponent(anime.title)}`}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="inline-flex items-center gap-1 rounded-full bg-black/40 px-3 py-1 text-[11.5px] font-bold text-amber-300 transition hover:bg-amber-500/20"
+                        >
+                          Anime Wiki <ExternalLink className="h-3 w-3" />
+                        </a>
+                        <a
                           href={wikipediaSearchUrl(anime.title)}
                           target="_blank"
                           rel="noreferrer noopener"
@@ -1162,18 +1277,75 @@ export const DetailView: React.FC<DetailViewProps> = ({
                         >
                           Wikipedia <ExternalLink className="h-3 w-3" />
                         </a>
-                        {anime.anilistId && (
-                          <a
-                            href={`https://anilist.co/${isManga ? 'manga' : 'anime'}/${anime.anilistId}`}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            className="inline-flex items-center gap-1 rounded-full bg-black/40 px-3 py-1 text-[11.5px] font-bold text-neutral-200 transition hover:bg-white/15"
-                          >
-                            AniList <ExternalLink className="h-3 w-3" />
-                          </a>
-                        )}
                       </div>
                     </div>
+                  )}
+                </div>
+
+                {/* Always-Visible Direct Community, Database, Wiki & Forum Links */}
+                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/[0.08] bg-[#161616] px-3.5 py-2.5 text-[11.5px]">
+                  <span className="font-bold text-[#AAAAAA]">Direct Links:</span>
+                  <a
+                    href={
+                      anime.malId
+                        ? `https://myanimelist.net/${isManga ? 'manga' : 'anime'}/${anime.malId}`
+                        : `https://myanimelist.net/search/all?q=${encodeURIComponent(anime.title)}`
+                    }
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-flex items-center gap-1 rounded-full bg-[#2E51A2]/25 px-3 py-1 font-bold text-[#93C5FD] transition hover:bg-[#2E51A2]/45"
+                  >
+                    MyAnimeList <ExternalLink className="h-3 w-3" />
+                  </a>
+                  <a
+                    href={
+                      anime.anilistId
+                        ? `https://anilist.co/${isManga ? 'manga' : 'anime'}/${anime.anilistId}`
+                        : `https://anilist.co/search/${isManga ? 'manga' : 'anime'}?search=${encodeURIComponent(anime.title)}`
+                    }
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-flex items-center gap-1 rounded-full bg-[#02A9FF]/20 px-3 py-1 font-bold text-[#7DD3FC] transition hover:bg-[#02A9FF]/35"
+                  >
+                    AniList <ExternalLink className="h-3 w-3" />
+                  </a>
+                  <a
+                    href={`https://anime.fandom.com/wiki/Special:Search?query=${encodeURIComponent(anime.title)}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-3 py-1 font-bold text-amber-300 transition hover:bg-amber-500/25"
+                  >
+                    <BookOpen className="h-3 w-3" />
+                    Anime Wiki <ExternalLink className="h-3 w-3" />
+                  </a>
+                  <a
+                    href={
+                      anime.malId
+                        ? `https://myanimelist.net/forum/?${isManga ? 'mangaid' : 'animeid'}=${anime.malId}`
+                        : 'https://myanimelist.net/forum/'
+                    }
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-flex items-center gap-1 rounded-full bg-white/[0.07] px-3 py-1 font-semibold text-neutral-200 transition hover:bg-white/[0.14]"
+                  >
+                    MAL Forum <ExternalLink className="h-3 w-3" />
+                  </a>
+                  <a
+                    href="https://anilist.co/forum/overview"
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-flex items-center gap-1 rounded-full bg-white/[0.07] px-3 py-1 font-semibold text-neutral-200 transition hover:bg-white/[0.14]"
+                  >
+                    AniList Forum <ExternalLink className="h-3 w-3" />
+                  </a>
+                  {!isManga && anime.studios[0] && onOpenEntity && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenEntity({ kind: 'studio', idOrName: anime.studios[0] })}
+                      className="inline-flex items-center gap-1 rounded-full bg-[#FF0000]/15 px-3 py-1 font-bold text-rose-200 transition hover:bg-[#FF0000]/25"
+                    >
+                      Studio: {anime.studios[0]} →
+                    </button>
                   )}
                 </div>
 
@@ -1183,16 +1355,15 @@ export const DetailView: React.FC<DetailViewProps> = ({
                   const q = encodeURIComponent(anime.title);
                   const communityLinks: ResolvedReaderLink[] = settings.showCommunityLinks
                     ? externalLinks.length > 0
-                      ? externalLinks
+                      ? externalLinks.filter((l) => l.key !== 'animepahe')
                       : isManga
                       ? [
-                          { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false },
+                          { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false, recommended: true },
                           { site: 'Kagane', key: 'kagane', url: `https://kagane.org/search?q=${q}`, isDirect: false },
                         ]
                       : [
+                          { site: 'KotoPlay', key: 'kotoplay', url: `https://kotoplay.to/search?keyword=${q}`, isDirect: false, recommended: true },
                           { site: 'Re Anime', key: 'reanime', url: `https://reanime.cc/?s=${q}`, isDirect: false },
-                          { site: 'KotoPlay', key: 'kotoplay', url: `https://kotoplay.to/search?keyword=${q}`, isDirect: false },
-                          { site: 'AnimePahe', key: 'animepahe', url: 'https://animepahe.pw/', isDirect: false },
                         ]
                     : [];
 
@@ -1234,23 +1405,36 @@ export const DetailView: React.FC<DetailViewProps> = ({
                             {isManga ? 'Read Manga On' : 'Watch Anime On'}
                           </h3>
                           <div className="flex flex-wrap gap-2">
-                            {communityLinks.map((site) => (
-                              <a
-                                key={site.key}
-                                href={site.url}
-                                target="_blank"
-                                rel="noreferrer noopener"
-                                className="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-[#222222] px-3.5 py-2 text-[12px] font-bold text-white transition hover:border-white/25 hover:bg-[#303030]"
-                              >
-                                <span>{site.site}</span>
-                                {site.isDirect && (
-                                  <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase tracking-wider text-emerald-300">
-                                    Direct
-                                  </span>
-                                )}
-                                <ExternalLink className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                              </a>
-                            ))}
+                            {communityLinks.map((site) => {
+                              const isRecommended =
+                                Boolean(site.recommended) || site.key === 'kotoplay' || site.key === 'comix';
+                              return (
+                                <a
+                                  key={site.key}
+                                  href={site.url}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                  className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-[12px] font-bold text-white transition ${
+                                    isRecommended
+                                      ? 'border-amber-400/35 bg-amber-500/10 hover:border-amber-300/60 hover:bg-amber-500/20'
+                                      : 'border-white/[0.08] bg-[#222222] hover:border-white/25 hover:bg-[#303030]'
+                                  }`}
+                                >
+                                  <span>{site.site}</span>
+                                  {isRecommended && (
+                                    <span className="rounded bg-amber-400/25 px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase tracking-wider text-amber-300">
+                                      Recommended
+                                    </span>
+                                  )}
+                                  {site.isDirect && (
+                                    <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase tracking-wider text-emerald-300">
+                                      Direct
+                                    </span>
+                                  )}
+                                  <ExternalLink className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                                </a>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -1416,6 +1600,15 @@ export const DetailView: React.FC<DetailViewProps> = ({
                                         <Heart className={`h-3 w-3 ${isCharFav ? 'fill-current' : ''}`} />
                                         <span>{isCharFav ? 'Favorited' : 'Pin Favorite'}</span>
                                       </button>
+                                      {onOpenEntity && (
+                                        <button
+                                          type="button"
+                                          onClick={() => onOpenEntity({ kind: 'character', idOrName: String(ch.id) })}
+                                          className="inline-flex items-center gap-1 rounded-full bg-[#FF0000] px-3 py-1 text-[11.5px] font-bold text-white transition hover:bg-[#CC0000]"
+                                        >
+                                          Full Character Page →
+                                        </button>
+                                      )}
                                       <a
                                         href={wikipediaSearchUrl(`${ch.name} ${anime.title}`)}
                                         target="_blank"
@@ -1532,6 +1725,15 @@ export const DetailView: React.FC<DetailViewProps> = ({
                                       </div>
                                     </div>
                                     <div className="flex flex-wrap gap-1.5">
+                                      {onOpenEntity && va.id && (
+                                        <button
+                                          type="button"
+                                          onClick={() => onOpenEntity({ kind: 'person', idOrName: String(va.id) })}
+                                          className="inline-flex items-center gap-1 rounded-full bg-[#FF0000] px-2.5 py-1 text-[11px] font-bold text-white hover:bg-[#CC0000]"
+                                        >
+                                          Full VA Profile →
+                                        </button>
+                                      )}
                                       <a
                                         href={wikipediaSearchUrl(va.name)}
                                         target="_blank"
@@ -1686,6 +1888,15 @@ export const DetailView: React.FC<DetailViewProps> = ({
                                 </div>
 
                                 <div className="flex flex-wrap gap-2">
+                                  {onOpenEntity && person.id > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onOpenEntity({ kind: 'person', idOrName: String(person.id) })}
+                                      className="inline-flex items-center gap-1 rounded-full bg-[#FF0000] px-3 py-1 text-[11.5px] font-bold text-white transition hover:bg-[#CC0000]"
+                                    >
+                                      Full Staff Filmography →
+                                    </button>
+                                  )}
                                   <a
                                     href={wikipediaSearchUrl(person.name)}
                                     target="_blank"

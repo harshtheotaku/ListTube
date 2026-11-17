@@ -2,3 +2,4 @@ User-agent: *
 Allow: /
 
 Sitemap: https://listtube.vercel.app/sitemap.xml
+Sitemap: https://listtube.vercel.app/api/sitemap?type=index

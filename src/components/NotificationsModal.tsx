@@ -3,6 +3,7 @@ import {
   Bell,
   CheckCheck,
   ExternalLink,
+  MessageSquare,
   Newspaper,
   RefreshCw,
   Sparkles,
@@ -59,6 +60,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
     if (kind === 'episodes') return <Tv className="h-3.5 w-3.5 text-[#FF0000]" />;
     if (kind === 'sequels') return <Sparkles className="h-3.5 w-3.5 text-[#3EA6FF]" />;
     if (kind === 'news') return <Newspaper className="h-3.5 w-3.5 text-emerald-400" />;
+    if (kind === 'social') return <MessageSquare className="h-3.5 w-3.5 text-violet-400" />;
     return <Bell className="h-3.5 w-3.5 text-amber-300" />;
   };
 
@@ -118,12 +120,13 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
           </div>
         </div>
 
-        {/* MAL Category Filter Pills */}
+        {/* MAL & Social Category Filter Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto border-b border-white/[0.08] bg-[#161616] px-4 py-2.5 no-scrollbar">
           {([
             { id: 'all', label: 'All' },
+            { id: 'social', label: 'Community' },
             { id: 'episodes', label: 'Airing Episodes' },
-            { id: 'sequels', label: 'Sequels & Releases' },
+            { id: 'sequels', label: 'Sequels' },
             { id: 'news', label: 'MAL News' },
           ] as { id: FilterKey; label: string }[]).map((chip) => (
             <button

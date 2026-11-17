@@ -18,6 +18,7 @@ import { TopBar } from './components/TopBar';
 import { HomeView } from './components/HomeView';
 import { GridSkeleton } from './components/Skeleton';
 import { ToastHost, toast } from './components/Toast';
+import type { EntityRouteTarget } from './components/EntityView';
 
 // Code-split secondary views and modals to keep initial JS chunk tiny
 const ExploreView = lazy(() =>
@@ -43,6 +44,9 @@ const DetailView = lazy(() =>
 );
 const ChannelView = lazy(() =>
   import('./components/ChannelView').then((m) => ({ default: m.ChannelView }))
+);
+const EntityView = lazy(() =>
+  import('./components/EntityView').then((m) => ({ default: m.EntityView }))
 );
 const UserProfileView = lazy(() =>
   import('./components/UserProfileModal').then((m) => ({ default: m.UserProfileView }))
@@ -88,6 +92,7 @@ function buildRouteUrl(snap: {
   detailId: string | null;
   channelId?: string | null;
   publicUser?: string | null;
+  entityTarget?: EntityRouteTarget | null;
 }): string {
   const seg = snap.detailId
     ? `/anime/${encodeURIComponent(snap.detailId)}`
@@ -95,6 +100,8 @@ function buildRouteUrl(snap: {
     ? `/channel/${encodeURIComponent(snap.channelId)}`
     : snap.publicUser
     ? `/user/${encodeURIComponent(snap.publicUser)}`
+    : snap.entityTarget
+    ? `/${snap.entityTarget.kind}/${encodeURIComponent(snap.entityTarget.idOrName)}`
     : `/${snap.tab}`;
 
   if (typeof window === 'undefined' || isNativeCapacitor() || !window.location.protocol.startsWith('http')) {
@@ -110,6 +117,7 @@ function parseCurrentRoute(): {
   detailId: string | null;
   channelId: string | null;
   publicUser: string | null;
+  entityTarget: EntityRouteTarget | null;
 } {
   // Handle GitHub Pages 404.html SPA redirect query parameter (?p=/anime/...)
   const search = new URLSearchParams(window.location.search);
@@ -134,6 +142,7 @@ function parseCurrentRoute(): {
       detailId: decodeURIComponent(raw.slice('anime/'.length)) || null,
       channelId: null,
       publicUser: null,
+      entityTarget: null,
     };
   }
   if (raw.startsWith('channel/')) {
@@ -142,6 +151,7 @@ function parseCurrentRoute(): {
       detailId: null,
       channelId: decodeURIComponent(raw.slice('channel/'.length)) || null,
       publicUser: null,
+      entityTarget: null,
     };
   }
   if (raw.startsWith('user/')) {
@@ -150,6 +160,37 @@ function parseCurrentRoute(): {
       detailId: null,
       channelId: null,
       publicUser: decodeURIComponent(raw.slice('user/'.length)) || null,
+      entityTarget: null,
+    };
+  }
+  if (raw.startsWith('person/')) {
+    const id = decodeURIComponent(raw.slice('person/'.length)).trim();
+    return {
+      tab: fallback,
+      detailId: null,
+      channelId: null,
+      publicUser: null,
+      entityTarget: id ? { kind: 'person', idOrName: id } : null,
+    };
+  }
+  if (raw.startsWith('character/')) {
+    const id = decodeURIComponent(raw.slice('character/'.length)).trim();
+    return {
+      tab: fallback,
+      detailId: null,
+      channelId: null,
+      publicUser: null,
+      entityTarget: id ? { kind: 'character', idOrName: id } : null,
+    };
+  }
+  if (raw.startsWith('studio/')) {
+    const name = decodeURIComponent(raw.slice('studio/'.length)).trim();
+    return {
+      tab: fallback,
+      detailId: null,
+      channelId: null,
+      publicUser: null,
+      entityTarget: name ? { kind: 'studio', idOrName: name } : null,
     };
   }
   return {
@@ -157,6 +198,7 @@ function parseCurrentRoute(): {
     detailId: null,
     channelId: null,
     publicUser: null,
+    entityTarget: null,
   };
 }
 
@@ -170,12 +212,14 @@ export const App: React.FC = () => {
     initialRoute.channelId ? animeStore.get(initialRoute.channelId) ?? null : null
   );
   const [publicUser, setPublicUser] = useState<string | null>(initialRoute.publicUser);
+  const [entityTarget, setEntityTarget] = useState<EntityRouteTarget | null>(initialRoute.entityTarget);
   const [mediaType, setMediaType] = useState<MediaType>(() => {
     if (window.location.hash.includes('mode=manga')) return 'MANGA';
     if (window.location.hash.includes('mode=anime')) return 'ANIME';
     return localStorage.getItem(MEDIA_TYPE_KEY) === 'MANGA' ? 'MANGA' : 'ANIME';
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [queriesByTab, setQueriesByTab] = useState<Record<AppTab, string>>(() => {
     const initialQ =
       typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('q')?.trim() ?? '' : '';
@@ -224,6 +268,14 @@ export const App: React.FC = () => {
     } else if (publicUser) {
       title = `@${publicUser} Profile — ListTube`;
       canonicalPath = `/user/${encodeURIComponent(publicUser)}`;
+    } else if (entityTarget) {
+      title =
+        entityTarget.kind === 'studio'
+          ? `${entityTarget.idOrName} Studio Productions — ListTube`
+          : entityTarget.kind === 'character'
+          ? `Character #${entityTarget.idOrName} Profile — ListTube`
+          : `Voice Actor & Staff #${entityTarget.idOrName} — ListTube`;
+      canonicalPath = `/${entityTarget.kind}/${encodeURIComponent(entityTarget.idOrName)}`;
     } else {
       const tabMeta: Record<AppTab, { title: string; path: string }> = {
         home: {
@@ -270,13 +322,14 @@ export const App: React.FC = () => {
       document.head.appendChild(linkEl);
     }
     linkEl.href = `${CANONICAL_ORIGIN}${canonicalPath}`;
-  }, [tab, detailId, channelAnime, publicUser]);
+  }, [tab, detailId, channelAnime, publicUser, entityTarget]);
 
   type NavSnapshot = {
     tab: AppTab;
     detailId: string | null;
     channelAnime: Anime | null;
     publicUser: string | null;
+    entityTarget: EntityRouteTarget | null;
   };
   const navStackRef = useRef<NavSnapshot[]>([]);
   const routeRef = useRef<NavSnapshot>({
@@ -284,11 +337,12 @@ export const App: React.FC = () => {
     detailId: initialRoute.detailId,
     channelAnime: initialRoute.channelId ? animeStore.get(initialRoute.channelId) ?? null : null,
     publicUser: initialRoute.publicUser,
+    entityTarget: initialRoute.entityTarget,
   });
-  routeRef.current = { tab, detailId, channelAnime, publicUser };
+  routeRef.current = { tab, detailId, channelAnime, publicUser, entityTarget };
 
-  const modalRef = useRef({ quickTarget, settingsOpen, trackersOpen, profileOpen, notificationsOpen });
-  modalRef.current = { quickTarget, settingsOpen, trackersOpen, profileOpen, notificationsOpen };
+  const modalRef = useRef({ quickTarget, settingsOpen, trackersOpen, profileOpen, notificationsOpen, drawerOpen });
+  modalRef.current = { quickTarget, settingsOpen, trackersOpen, profileOpen, notificationsOpen, drawerOpen };
 
   const scrollTop = () => window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
 
@@ -298,6 +352,7 @@ export const App: React.FC = () => {
       detailId: snap.detailId,
       channelId: snap.channelAnime?.id,
       publicUser: snap.publicUser,
+      entityTarget: snap.entityTarget,
     });
     window.history.replaceState(
       {
@@ -305,6 +360,7 @@ export const App: React.FC = () => {
         detail: snap.detailId ?? undefined,
         channel: snap.channelAnime?.id ?? undefined,
         user: snap.publicUser ?? undefined,
+        entity: snap.entityTarget ?? undefined,
       },
       '',
       nextUrl
@@ -318,7 +374,9 @@ export const App: React.FC = () => {
       top.tab === snap.tab &&
       top.detailId === snap.detailId &&
       top.channelAnime?.id === snap.channelAnime?.id &&
-      top.publicUser === snap.publicUser
+      top.publicUser === snap.publicUser &&
+      top.entityTarget?.kind === snap.entityTarget?.kind &&
+      top.entityTarget?.idOrName === snap.entityTarget?.idOrName
     ) {
       return;
     }
@@ -333,9 +391,14 @@ export const App: React.FC = () => {
       trackersOpen: to,
       profileOpen: po,
       notificationsOpen: no,
+      drawerOpen: dw,
     } = modalRef.current;
     if (qt) {
       setQuickTarget(null);
+      return true;
+    }
+    if (dw) {
+      setDrawerOpen(false);
       return true;
     }
     if (no) {
@@ -355,35 +418,49 @@ export const App: React.FC = () => {
       return true;
     }
 
+    if (navStackRef.current.length > 0 && window.history.length > 1) {
+      window.history.back();
+      return true;
+    }
+
     const prev = navStackRef.current.pop();
     if (prev) {
       setTab(prev.tab);
       setDetailId(prev.detailId);
       setChannelAnime(prev.channelAnime);
       setPublicUser(prev.publicUser);
+      setEntityTarget(prev.entityTarget);
       syncUrlReplace(prev);
       scrollTop();
       return true;
     }
 
     const curr = routeRef.current;
-    if (curr.detailId || curr.channelAnime || curr.publicUser) {
+    if (curr.detailId || curr.channelAnime || curr.publicUser || curr.entityTarget) {
       const next: NavSnapshot = {
         tab: curr.tab,
         detailId: null,
         channelAnime: null,
         publicUser: null,
+        entityTarget: null,
       };
       setDetailId(null);
       setChannelAnime(null);
       setPublicUser(null);
+      setEntityTarget(null);
       syncUrlReplace(next);
       scrollTop();
       return true;
     }
 
     if (curr.tab !== 'home') {
-      const next: NavSnapshot = { tab: 'home', detailId: null, channelAnime: null, publicUser: null };
+      const next: NavSnapshot = {
+        tab: 'home',
+        detailId: null,
+        channelAnime: null,
+        publicUser: null,
+        entityTarget: null,
+      };
       setTab('home');
       syncUrlReplace(next);
       scrollTop();
@@ -407,6 +484,7 @@ export const App: React.FC = () => {
     setDetailId(null);
     setChannelAnime(null);
     setPublicUser(null);
+    setEntityTarget(null);
     navStackRef.current = [];
     setQueriesByTab(EMPTY_QUERIES);
     scrollTop();
@@ -423,6 +501,7 @@ export const App: React.FC = () => {
         detailId: initialRoute.detailId,
         channelId: initialRoute.channelId,
         publicUser: initialRoute.publicUser,
+        entityTarget: initialRoute.entityTarget,
       }).split('?')[0] + qs;
       window.history.replaceState({ tab: initialRoute.tab }, '', nextUrl);
     } else {
@@ -431,6 +510,7 @@ export const App: React.FC = () => {
         detailId: initialRoute.detailId,
         channelAnime: initialRoute.channelId ? animeStore.get(initialRoute.channelId) ?? null : null,
         publicUser: initialRoute.publicUser,
+        entityTarget: initialRoute.entityTarget,
       });
     }
 
@@ -452,12 +532,14 @@ export const App: React.FC = () => {
   }, [initialRoute]);
 
   const openDetail = (id: string) => {
-    if (detailId === id && !publicUser) return;
+    setDrawerOpen(false);
+    if (detailId === id && !publicUser && !entityTarget) return;
     pushSnapshot(routeRef.current);
     const url = buildRouteUrl({ tab, detailId: id });
     window.history.pushState({ tab, detail: id }, '', url);
     setChannelAnime(null);
     setPublicUser(null);
+    setEntityTarget(null);
     setDetailId(id);
     scrollTop();
   };
@@ -468,25 +550,41 @@ export const App: React.FC = () => {
   };
 
   const openChannel = (anime: Anime) => {
+    setDrawerOpen(false);
     animeStore.remember(anime);
-    if (!detailId && !publicUser && channelAnime?.id === anime.id) return;
+    if (!detailId && !publicUser && !entityTarget && channelAnime?.id === anime.id) return;
     pushSnapshot(routeRef.current);
     const url = buildRouteUrl({ tab, detailId: null, channelId: anime.id });
     window.history.pushState({ tab, channel: anime.id }, '', url);
     setDetailId(null);
     setPublicUser(null);
+    setEntityTarget(null);
     setChannelAnime(anime);
     scrollTop();
   };
 
   const openPublicUser = (userIdOrHandle: string) => {
+    setDrawerOpen(false);
     if (publicUser === userIdOrHandle) return;
     pushSnapshot(routeRef.current);
     const url = buildRouteUrl({ tab, detailId: null, publicUser: userIdOrHandle });
     window.history.pushState({ tab, user: userIdOrHandle }, '', url);
     setDetailId(null);
     setChannelAnime(null);
+    setEntityTarget(null);
     setPublicUser(userIdOrHandle);
+    scrollTop();
+  };
+
+  const openEntity = (target: EntityRouteTarget) => {
+    setDrawerOpen(false);
+    pushSnapshot(routeRef.current);
+    const url = buildRouteUrl({ tab, detailId: null, entityTarget: target });
+    window.history.pushState({ tab, entity: target }, '', url);
+    setDetailId(null);
+    setChannelAnime(null);
+    setPublicUser(null);
+    setEntityTarget(target);
     scrollTop();
   };
 
@@ -501,28 +599,63 @@ export const App: React.FC = () => {
         detail?: string;
         channel?: string;
         user?: string;
+        entity?: EntityRouteTarget;
       } | null;
       navStackRef.current.pop();
-      if (state?.detail) {
-        setTab(state.tab ?? 'home');
-        setChannelAnime(null);
-        setPublicUser(null);
-        setDetailId(state.detail);
-      } else if (state?.channel) {
-        setTab(state.tab ?? 'home');
-        setDetailId(null);
-        setPublicUser(null);
-        setChannelAnime(animeStore.get(state.channel) ?? null);
-      } else if (state?.user) {
-        setTab(state.tab ?? 'feed');
-        setDetailId(null);
-        setChannelAnime(null);
-        setPublicUser(state.user);
+      setDrawerOpen(false);
+
+      if (state && (state.detail || state.channel || state.user || state.entity || state.tab)) {
+        if (state.detail) {
+          setTab(state.tab ?? 'home');
+          setChannelAnime(null);
+          setPublicUser(null);
+          setEntityTarget(null);
+          setDetailId(state.detail);
+        } else if (state.channel) {
+          setTab(state.tab ?? 'home');
+          setDetailId(null);
+          setPublicUser(null);
+          setEntityTarget(null);
+          const cached = animeStore.get(state.channel) ?? null;
+          setChannelAnime(cached);
+          if (!cached) {
+            const numeric = Number(state.channel.split(':')[1] ?? state.channel);
+            const mt: MediaType = state.channel.includes('manga') ? 'MANGA' : 'ANIME';
+            if (Number.isFinite(numeric) && numeric > 0) {
+              void fetchDetail(numeric, mt).then((resolved) => {
+                if (resolved) {
+                  animeStore.remember(resolved);
+                  setChannelAnime(resolved);
+                }
+              }).catch(() => {});
+            }
+          }
+        } else if (state.user) {
+          setTab(state.tab ?? 'feed');
+          setDetailId(null);
+          setChannelAnime(null);
+          setEntityTarget(null);
+          setPublicUser(state.user);
+        } else if (state.entity) {
+          setTab(state.tab ?? 'explore');
+          setDetailId(null);
+          setChannelAnime(null);
+          setPublicUser(null);
+          setEntityTarget(state.entity);
+        } else {
+          setDetailId(null);
+          setChannelAnime(null);
+          setPublicUser(null);
+          setEntityTarget(null);
+          if (state.tab) setTab(state.tab);
+        }
       } else {
-        setDetailId(null);
-        setChannelAnime(null);
-        setPublicUser(null);
-        if (state?.tab) setTab(state.tab);
+        const parsed = parseCurrentRoute();
+        setTab(parsed.tab);
+        setDetailId(parsed.detailId);
+        setPublicUser(parsed.publicUser);
+        setEntityTarget(parsed.entityTarget);
+        setChannelAnime(parsed.channelId ? animeStore.get(parsed.channelId) ?? null : null);
       }
       scrollTop();
     };
@@ -532,19 +665,25 @@ export const App: React.FC = () => {
 
   const navigate = (next: AppTab) => {
     const curr = routeRef.current;
-    if (curr.tab !== next || curr.detailId || curr.channelAnime || curr.publicUser) {
+    if (curr.tab !== next || curr.detailId || curr.channelAnime || curr.publicUser || curr.entityTarget) {
       pushSnapshot(curr);
     }
+    if (next === 'home') {
+      setQueriesByTab((prev) => ({ ...prev, home: '' }));
+    }
+    setDrawerOpen(false);
     setTab(next);
     setDetailId(null);
     setChannelAnime(null);
     setPublicUser(null);
+    setEntityTarget(null);
     const url = buildRouteUrl({ tab: next, detailId: null });
     if (
       window.history.state?.tab === next &&
       !window.history.state?.detail &&
       !window.history.state?.channel &&
-      !window.history.state?.user
+      !window.history.state?.user &&
+      !window.history.state?.entity
     ) {
       window.history.replaceState({ tab: next }, '', url);
     } else {
@@ -601,7 +740,8 @@ export const App: React.FC = () => {
   };
 
   const quickEntry = quickTarget ? libraryState.entries[quickTarget.id] : undefined;
-  const activeSearchKey: AppTab = detailId || channelAnime || publicUser ? 'explore' : tab;
+  const isWatchMode = Boolean(detailId || channelAnime || publicUser || entityTarget);
+  const activeSearchKey: AppTab = isWatchMode ? 'explore' : tab;
   const activeQuery = queriesByTab[activeSearchKey];
 
   const handleQueryChange = (val: string) => {
@@ -609,7 +749,7 @@ export const App: React.FC = () => {
   };
 
   const handleSearchSubmit = () => {
-    if (detailId || channelAnime || publicUser) {
+    if (isWatchMode) {
       navigate('explore');
       return;
     }
@@ -629,29 +769,56 @@ export const App: React.FC = () => {
         onHome={() => navigate('home')}
         onOpenAnime={openAnime}
         onOpenTrackers={() => setTrackersOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenNotifications={() => setNotificationsOpen(true)}
-        onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
+        onToggleSidebar={() => {
+          if (isWatchMode || window.innerWidth < 1024) {
+            setDrawerOpen((d) => !d);
+          } else {
+            setSidebarCollapsed((c) => !c);
+          }
+        }}
         mediaType={mediaType}
-        onMediaTypeChange={handleMediaTypeChange}
         trackers={libraryState.trackers}
       />
 
-      <Sidebar
-        active={tab}
-        collapsed={sidebarCollapsed}
-        mediaType={mediaType}
-        libraryState={libraryState}
-        onNavigate={navigate}
-        onOpenAnime={openAnime}
-        onOpenChannel={openChannel}
-        onOpenTrackers={() => setTrackersOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
-        trackers={libraryState.trackers}
-        stats={stats}
-      />
+      {!isWatchMode && (
+        <Sidebar
+          active={tab}
+          collapsed={sidebarCollapsed}
+          mediaType={mediaType}
+          onMediaTypeChange={handleMediaTypeChange}
+          libraryState={libraryState}
+          onNavigate={navigate}
+          onOpenAnime={openAnime}
+          onOpenChannel={openChannel}
+          onOpenTrackers={() => setTrackersOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenNotifications={() => setNotificationsOpen(true)}
+          trackers={libraryState.trackers}
+          stats={stats}
+        />
+      )}
 
-      <div className={sidebarCollapsed ? 'lg:pl-[74px]' : 'lg:pl-[236px]'}>
+      {drawerOpen && (
+        <Sidebar
+          active={tab}
+          collapsed={false}
+          overlay
+          onClose={() => setDrawerOpen(false)}
+          mediaType={mediaType}
+          onMediaTypeChange={handleMediaTypeChange}
+          libraryState={libraryState}
+          onNavigate={navigate}
+          onOpenAnime={openAnime}
+          onOpenChannel={openChannel}
+          onOpenTrackers={() => setTrackersOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenNotifications={() => setNotificationsOpen(true)}
+          trackers={libraryState.trackers}
+          stats={stats}
+        />
+      )}
+
+      <div className={isWatchMode ? 'lg:pl-0' : sidebarCollapsed ? 'lg:pl-[74px]' : 'lg:pl-[236px]'}>
         <main>
           <Suspense
             fallback={
@@ -666,6 +833,7 @@ export const App: React.FC = () => {
                 libraryState={libraryState}
                 onOpenId={openDetail}
                 onOpenChannel={openChannel}
+                onOpenEntity={openEntity}
                 onSelectGenre={openGenreInExplore}
                 onEditProfile={() => setProfileOpen(true)}
                 onOpenUser={openPublicUser}
@@ -688,6 +856,12 @@ export const App: React.FC = () => {
                 myLibrary={libraryState}
                 onOpenAnime={openDetail}
                 onClose={closeDetail}
+              />
+            ) : entityTarget ? (
+              <EntityView
+                target={entityTarget}
+                onBack={closeDetail}
+                onOpenAnimeId={openDetail}
               />
             ) : (
               <>

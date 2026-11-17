@@ -1,10 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bell, BookOpen, Cloud, Film, Menu, Search, Settings, Star, User, X } from 'lucide-react';
+import { Cloud, Menu, Search, Star, X } from 'lucide-react';
 import { Anime, MediaType, TrackerAccount } from '../types';
 import { searchSmart } from '../services/search';
 import { useProfile } from '../services/profile';
 import { useCloudSync } from '../services/cloudSync';
-import { useNotifications } from '../services/notifications';
 import { ListTubeLogo } from './ListTubeLogo';
 
 interface TopBarProps {
@@ -14,11 +13,8 @@ interface TopBarProps {
   onHome: () => void;
   onOpenAnime: (anime: Anime) => void;
   onOpenTrackers: () => void;
-  onOpenSettings: () => void;
-  onOpenNotifications: () => void;
   onToggleSidebar?: () => void;
   mediaType: MediaType;
-  onMediaTypeChange: (type: MediaType) => void;
   trackers: TrackerAccount[];
 }
 
@@ -29,11 +25,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   onHome,
   onOpenAnime,
   onOpenTrackers,
-  onOpenSettings,
-  onOpenNotifications,
   onToggleSidebar,
   mediaType,
-  onMediaTypeChange,
   trackers,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -43,7 +36,6 @@ export const TopBar: React.FC<TopBarProps> = ({
   const searchTicket = useRef(0);
   const profile = useProfile();
   const cloud = useCloudSync();
-  const { unreadCount } = useNotifications();
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -92,14 +84,14 @@ export const TopBar: React.FC<TopBarProps> = ({
   return (
     <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#0F0F0F]/95 backdrop-blur-xl">
       <div className="flex h-14 items-center justify-between gap-2 px-3 sm:gap-3 sm:px-5">
-        {/* Left: Hamburger Menu + ListTube Logo */}
+        {/* Left: Three-Line Menu Button + ListTube Logo */}
         <div className="flex shrink-0 items-center gap-2">
           {onToggleSidebar && (
             <button
               type="button"
               onClick={onToggleSidebar}
               aria-label="Toggle menu"
-              className="hidden rounded-full p-2 text-white transition hover:bg-[#272727] lg:flex"
+              className="flex rounded-full p-2 text-white transition hover:bg-[#272727]"
             >
               <Menu className="h-5 w-5" />
             </button>
@@ -114,8 +106,8 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
         </div>
 
-        {/* Center: Smart YouTube Search Bar with Instant Autocomplete Dropdown */}
-        <div ref={dropdownRef} className="relative min-w-0 flex-1 lg:max-w-xl">
+        {/* Center: Clean Search Bar with Autocomplete Dropdown */}
+        <div ref={dropdownRef} className="relative min-w-0 flex-1 sm:max-w-xl">
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -212,84 +204,24 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
         </div>
 
-        {/* Compact MAL Notifications Bell (Mobile & Desktop) */}
-        <div className="flex shrink-0 items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onOpenNotifications}
-            aria-label="Notifications"
-            title="MAL & Episode Notifications"
-            className="relative rounded-full p-2 text-[#AAAAAA] transition hover:bg-[#272727] hover:text-white"
-          >
-            <Bell className="h-5 w-5" />
-            {unreadCount > 0 && (
-              <span className="absolute right-1 top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#FF0000] px-1 text-[9.5px] font-extrabold text-white">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </button>
-
-          {/* Right (Desktop only): Anime | Manga Switch + Settings + Corner Connect. */}
-          <div className="hidden shrink-0 items-center gap-2 lg:flex">
-          {/* Anime / Manga Mode Switcher */}
-          <div
-            className="flex items-center rounded-full border border-white/[0.12] bg-[#1A1A1A] p-0.5"
-            role="group"
-            aria-label="Media Mode"
-          >
-            <button
-              type="button"
-              onClick={() => onMediaTypeChange('ANIME')}
-              className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
-                mediaType === 'ANIME'
-                  ? 'bg-[#FF0000] text-white shadow'
-                  : 'text-[#AAAAAA] hover:text-white'
-              }`}
-            >
-              <Film className="h-3 w-3" />
-              <span className="hidden md:inline">Anime</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onMediaTypeChange('MANGA')}
-              className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
-                mediaType === 'MANGA'
-                  ? 'bg-[#FF0000] text-white shadow'
-                  : 'text-[#AAAAAA] hover:text-white'
-              }`}
-            >
-              <BookOpen className="h-3 w-3" />
-              <span className="hidden md:inline">Manga</span>
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            aria-label="Settings"
-            title="ListTube Settings"
-            className="rounded-full p-2 text-[#AAAAAA] transition hover:bg-[#272727] hover:text-white"
-          >
-            <Settings className="h-4 w-4 sm:h-5 sm:w-5" />
-          </button>
-
-          {/* Non-Intrusive Corner Account & Username Connect Button */}
+        {/* Minimal Corner Sign In Pill (Only corner control beside search!) */}
+        <div className="flex shrink-0 items-center">
           <button
             type="button"
             onClick={onOpenTrackers}
-            aria-label={connected ? `Connected as ${connected.username}` : 'Google Sign-In or Connect Username'}
-            className="flex items-center gap-2 rounded-full border border-white/[0.16] bg-[#272727] py-1.5 pl-2 pr-3 text-[12px] font-semibold text-white transition hover:bg-[#383838]"
+            aria-label={connected ? `Connected as ${connected.username}` : 'Sign in'}
+            className="flex items-center gap-1.5 rounded-full border border-white/[0.16] bg-[#222222] py-1.5 pl-1.5 pr-2.5 text-[12px] font-semibold text-white transition hover:bg-[#333333] sm:pr-3"
           >
             <div className="relative">
               <img
                 src={profile.avatarUrl}
                 alt={profile.name}
-                className="h-5 w-5 rounded-full object-cover"
+                className="h-6 w-6 rounded-full object-cover"
               />
               {cloud.isLinked && (
                 <span
-                  title={cloud.userEmail ? `Google: ${cloud.userEmail}` : cloud.state}
-                  className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-[#272727] ${
+                  title={cloud.userEmail ? `Cloud Sync: ${cloud.userEmail}` : cloud.state}
+                  className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-[#222222] ${
                     cloud.state === 'syncing'
                       ? 'bg-amber-400'
                       : cloud.state === 'error'
@@ -300,17 +232,16 @@ export const TopBar: React.FC<TopBarProps> = ({
               )}
             </div>
             {connected ? (
-              <span className="hidden max-w-[95px] truncate sm:block">{connected.username}</span>
+              <span className="hidden max-w-[90px] truncate sm:block">{connected.username}</span>
             ) : cloud.isLinked ? (
               <span className="hidden items-center gap-1 text-emerald-300 sm:inline-flex">
                 <Cloud className="h-3.5 w-3.5" />
-                Google
+                Synced
               </span>
             ) : (
-              <span className="hidden text-[#3EA6FF] sm:inline">Sign In</span>
+              <span className="text-[11.5px] font-bold text-[#3EA6FF]">Sign In</span>
             )}
           </button>
-          </div>
         </div>
       </div>
     </header>
