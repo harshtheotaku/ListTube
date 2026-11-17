@@ -223,7 +223,7 @@ Deno.serve(async (req: Request) => {
 
       const res = await fetch(targetUrl, {
         headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; ListTube/1.1; +https://github.com/harshtheotaku/anitube)",
+          "User-Agent": "Mozilla/5.0 (compatible; ListTube/1.2; +https://github.com/harshtheotaku/ListTube)",
           Accept: "text/html,application/xhtml+xml",
         },
       });
@@ -297,8 +297,9 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ text: "" }, 200);
     }
 
-    // 5. Direct Manga Reader Link Resolution (Exact Series URL from Postgres Catalog + Fallbacks)
+    // 5. Direct Media Link Resolution (Exact Series URL from Postgres Catalog + Live Fallbacks)
     if (path === "/readers" && req.method === "GET") {
+      const mediaType = (url.searchParams.get("type") ?? "MANGA").toUpperCase() === "ANIME" ? "ANIME" : "MANGA";
       const title = (url.searchParams.get("title") ?? "").trim();
       const romaji = (url.searchParams.get("romaji") ?? "").trim();
       const terms = Array.from(
@@ -326,6 +327,90 @@ Deno.serve(async (req: Request) => {
       }
 
       const q = encodeURIComponent(title || romaji);
+
+      if (mediaType === "ANIME") {
+        // Live ReAnime resolution if not yet indexed in reader_catalog
+        if (!bestBySite.has("reanime") && (title || romaji)) {
+          try {
+            const searchQuery = encodeURIComponent(title || romaji);
+            const rRes = await fetch(`https://reanime.cc/?s=${searchQuery}`, {
+              headers: { "User-Agent": "Mozilla/5.0 (compatible; ListTube/1.2)" },
+            });
+            if (rRes.ok) {
+              const html = await rRes.text();
+              const linkRe = /<a[^>]+href="(https:\/\/reanime\.cc\/anime\/([^/"]+)\/?)"[^>]*title="([^"]+)"/gi;
+              let bestUrl = "";
+              let bestScore = -1;
+              let bestTitle = "";
+              let m: RegExpExecArray | null;
+              while ((m = linkRe.exec(html)) !== null) {
+                const candidateUrl = m[1];
+                const rawTitle = m[3];
+                const isDub = /\(Dub\)|-dub\/?$/i.test(rawTitle + candidateUrl);
+                const cleanNorm = normalizeTitle(rawTitle.replace(/\((?:Dub|Sub)\)/gi, ""));
+                for (const t of terms) {
+                  let score = 0;
+                  if (cleanNorm === t) score = 2.5;
+                  else if (cleanNorm.startsWith(t) || t.startsWith(cleanNorm)) score = 1.6;
+                  else {
+                    const tWords = new Set(t.split(" "));
+                    const cWords = cleanNorm.split(" ");
+                    const overlap = cWords.filter((w) => w.length >= 2 && tWords.has(w)).length;
+                    score = overlap / Math.max(tWords.size, cWords.length, 1);
+                  }
+                  if (!isDub) score += 0.15;
+                  if (score > bestScore && score >= 0.72) {
+                    bestScore = score;
+                    bestUrl = candidateUrl.endsWith("/") ? candidateUrl : `${candidateUrl}/`;
+                    bestTitle = cleanNorm;
+                  }
+                }
+              }
+              if (bestUrl) {
+                bestBySite.set("reanime", { url: bestUrl, sim: bestScore });
+                const slugPart = bestUrl.split("/anime/")[1]?.replace(/\/$/, "") || bestTitle.replace(/\s+/g, "-");
+                await supabase.from("reader_catalog").upsert(
+                  {
+                    id: `reanime:${slugPart.slice(0, 60)}`,
+                    site: "reanime",
+                    slug_title: slugPart,
+                    norm_title: bestTitle,
+                    url: bestUrl,
+                    updated_at: new Date().toISOString(),
+                  },
+                  { onConflict: "id" }
+                );
+              }
+            }
+          } catch {
+            /* fall back to search URL cleanly */
+          }
+        }
+
+        const watchers = [
+          {
+            site: "Re Anime",
+            key: "reanime",
+            url: bestBySite.get("reanime")?.url ?? `https://reanime.cc/?s=${q}`,
+            isDirect: Boolean(bestBySite.get("reanime")),
+          },
+          {
+            site: "KotoPlay",
+            key: "kotoplay",
+            url: bestBySite.get("kotoplay")?.url ?? `https://kotoplay.to/search?keyword=${q}`,
+            isDirect: Boolean(bestBySite.get("kotoplay")),
+          },
+          {
+            site: "AnimePahe",
+            key: "animepahe",
+            url: "https://animepahe.pw/",
+            isDirect: false,
+          },
+        ];
+
+        return jsonResponse({ readers: watchers });
+      }
+
       const readers = [
         {
           site: "Comix.to",
@@ -339,12 +424,6 @@ Deno.serve(async (req: Request) => {
           url: bestBySite.get("kagane")?.url ?? `https://kagane.org/search?q=${q}`,
           isDirect: Boolean(bestBySite.get("kagane")),
         },
-        {
-          site: "Asura Scans",
-          key: "asura",
-          url: bestBySite.get("asura")?.url ?? `https://asuracomic.net/series?page=1&name=${q}`,
-          isDirect: Boolean(bestBySite.get("asura")),
-        },
       ];
 
       return jsonResponse({ readers });
@@ -355,6 +434,7 @@ Deno.serve(async (req: Request) => {
       await supabase.from("api_cache").delete().eq("cache_key", "bootstrap_seed_hash");
       await supabase.from("api_cache").delete().lt("expires_at", new Date(Date.now() - 86400 * 1000).toISOString());
       const body = await req.json();
+
       const queries = Array.isArray(body.queries) ? body.queries : [];
       let warmed = 0;
       for (const item of queries.slice(0, 12)) {

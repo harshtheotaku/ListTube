@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BookOpen, Cloud, Film, Menu, Search, Settings, Star, User, X } from 'lucide-react';
+import { Bell, BookOpen, Cloud, Film, Menu, Search, Settings, Star, User, X } from 'lucide-react';
 import { Anime, MediaType, TrackerAccount } from '../types';
 import { searchSmart } from '../services/search';
 import { useProfile } from '../services/profile';
 import { useCloudSync } from '../services/cloudSync';
+import { useNotifications } from '../services/notifications';
 import { ListTubeLogo } from './ListTubeLogo';
 
 interface TopBarProps {
@@ -14,6 +15,7 @@ interface TopBarProps {
   onOpenAnime: (anime: Anime) => void;
   onOpenTrackers: () => void;
   onOpenSettings: () => void;
+  onOpenNotifications: () => void;
   onToggleSidebar?: () => void;
   mediaType: MediaType;
   onMediaTypeChange: (type: MediaType) => void;
@@ -28,6 +30,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenAnime,
   onOpenTrackers,
   onOpenSettings,
+  onOpenNotifications,
   onToggleSidebar,
   mediaType,
   onMediaTypeChange,
@@ -40,6 +43,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   const searchTicket = useRef(0);
   const profile = useProfile();
   const cloud = useCloudSync();
+  const { unreadCount } = useNotifications();
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -208,9 +212,25 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
         </div>
 
-        {/* Right (Desktop only): Anime | Manga Switch + Settings + Corner Connect.
-            On mobile (< lg), these live inside the You tab so Logo + Search Bar use the full top bar width. */}
-        <div className="hidden shrink-0 items-center gap-2 lg:flex">
+        {/* Compact MAL Notifications Bell (Mobile & Desktop) */}
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onOpenNotifications}
+            aria-label="Notifications"
+            title="MAL & Episode Notifications"
+            className="relative rounded-full p-2 text-[#AAAAAA] transition hover:bg-[#272727] hover:text-white"
+          >
+            <Bell className="h-5 w-5" />
+            {unreadCount > 0 && (
+              <span className="absolute right-1 top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#FF0000] px-1 text-[9.5px] font-extrabold text-white">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {/* Right (Desktop only): Anime | Manga Switch + Settings + Corner Connect. */}
+          <div className="hidden shrink-0 items-center gap-2 lg:flex">
           {/* Anime / Manga Mode Switcher */}
           <div
             className="flex items-center rounded-full border border-white/[0.12] bg-[#1A1A1A] p-0.5"
@@ -290,6 +310,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               <span className="hidden text-[#3EA6FF] sm:inline">Connect</span>
             )}
           </button>
+          </div>
         </div>
       </div>
     </header>

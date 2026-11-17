@@ -14,7 +14,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
 
 export interface ResolvedReaderLink {
   site: string;
-  key: 'comix' | 'kagane' | 'asura' | string;
+  key: 'comix' | 'kagane' | 'reanime' | 'kotoplay' | 'animepahe' | string;
   url: string;
   isDirect: boolean;
 }
@@ -129,45 +129,59 @@ export async function fetchNewsEdge(source: 'ann' | 'mal', id = 0): Promise<stri
   }
 }
 
-const readerCache = new Map<string, ResolvedReaderLink[]>();
+const linkCache = new Map<string, ResolvedReaderLink[]>();
 
 /**
- * Resolves exact canonical reader series URLs from Supabase reader_catalog
- * (89k+ indexed Comix.to series) with search query fallbacks for CF-gated sites.
+ * Resolves direct official/community destination URLs from Supabase reader_catalog
+ * (89k+ Comix.to manga, 9.2k+ KotoPlay & Re Anime anime) with clean search fallbacks.
  */
-export async function resolveMangaReadersEdge(
+export async function resolveExternalLinksEdge(
+  mediaType: 'ANIME' | 'MANGA',
   title: string,
   romaji?: string
 ): Promise<ResolvedReaderLink[]> {
   const cleanTitle = title.trim();
   const cleanRomaji = (romaji ?? '').trim();
-  const cacheKey = `${cleanTitle.toLowerCase()}||${cleanRomaji.toLowerCase()}`;
-  const cached = readerCache.get(cacheKey);
+  const cacheKey = `${mediaType}||${cleanTitle.toLowerCase()}||${cleanRomaji.toLowerCase()}`;
+  const cached = linkCache.get(cacheKey);
   if (cached) return cached;
 
   const q = encodeURIComponent(cleanTitle || cleanRomaji);
-  const fallback: ResolvedReaderLink[] = [
-    { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false },
-    { site: 'Kagane', key: 'kagane', url: `https://kagane.org/search?q=${q}`, isDirect: false },
-    { site: 'Asura Scans', key: 'asura', url: `https://asuracomic.net/series?page=1&name=${q}`, isDirect: false },
-  ];
+  const fallback: ResolvedReaderLink[] =
+    mediaType === 'ANIME'
+      ? [
+          { site: 'Re Anime', key: 'reanime', url: `https://reanime.cc/?s=${q}`, isDirect: false },
+          { site: 'KotoPlay', key: 'kotoplay', url: `https://kotoplay.to/search?keyword=${q}`, isDirect: false },
+          { site: 'AnimePahe', key: 'animepahe', url: 'https://animepahe.pw/', isDirect: false },
+        ]
+      : [
+          { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false },
+          { site: 'Kagane', key: 'kagane', url: `https://kagane.org/search?q=${q}`, isDirect: false },
+        ];
 
   try {
-    const qs = new URLSearchParams({ title: cleanTitle });
+    const qs = new URLSearchParams({ type: mediaType, title: cleanTitle });
     if (cleanRomaji) qs.set('romaji', cleanRomaji);
     const res = await fetchWithTimeout(
       `${EDGE_API_BASE}/readers?${qs.toString()}`,
       { headers: { Accept: 'application/json' } },
-      6500
+      7000
     );
     if (!res.ok) return fallback;
     const json = (await res.json()) as { readers?: ResolvedReaderLink[] };
     const resolved = Array.isArray(json.readers) && json.readers.length > 0 ? json.readers : fallback;
-    readerCache.set(cacheKey, resolved);
+    linkCache.set(cacheKey, resolved);
     return resolved;
   } catch {
     return fallback;
   }
+}
+
+export async function resolveMangaReadersEdge(
+  title: string,
+  romaji?: string
+): Promise<ResolvedReaderLink[]> {
+  return resolveExternalLinksEdge('MANGA', title, romaji);
 }
 
 export async function syncVaultCreate(payload: SyncVaultPayload): Promise<SyncVaultResponse> {

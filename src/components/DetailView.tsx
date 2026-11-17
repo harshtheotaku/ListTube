@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ExternalLink,
   Film,
+  Heart,
   Minus,
   Play,
   Plus,
@@ -33,7 +34,8 @@ import { library } from '../services/library';
 import { getSimilar } from '../services/recommender';
 import { franchiseNameOf } from '../services/franchise';
 import { useSettings } from '../services/settings';
-import { resolveMangaReadersEdge, ResolvedReaderLink } from '../services/supabase';
+import { profileStore, useProfile } from '../services/profile';
+import { resolveExternalLinksEdge, ResolvedReaderLink } from '../services/supabase';
 import { CommentsSection } from './CommentsSection';
 import { toast } from './Toast';
 import { CardSkeleton } from './Skeleton';
@@ -84,7 +86,8 @@ export const DetailView: React.FC<DetailViewProps> = ({
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [listPickerOpen, setListPickerOpen] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
-  const [mangaReaders, setMangaReaders] = useState<ResolvedReaderLink[]>([]);
+  const [externalLinks, setExternalLinks] = useState<ResolvedReaderLink[]>([]);
+  const profile = useProfile();
 
   const entry = libraryState.entries[animeId];
 
@@ -136,20 +139,28 @@ export const DetailView: React.FC<DetailViewProps> = ({
   }, [animeId]);
 
   useEffect(() => {
-    if (!anime || anime.mediaType !== 'MANGA') {
-      setMangaReaders([]);
+    if (!anime) {
+      setExternalLinks([]);
       return;
     }
     let cancelled = false;
+    const type: 'ANIME' | 'MANGA' = anime.mediaType === 'MANGA' ? 'MANGA' : 'ANIME';
     const q = encodeURIComponent(anime.title);
-    setMangaReaders([
-      { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false },
-      { site: 'Kagane', key: 'kagane', url: `https://kagane.org/search?q=${q}`, isDirect: false },
-      { site: 'Asura Scans', key: 'asura', url: `https://asuracomic.net/series?page=1&name=${q}`, isDirect: false },
-    ]);
-    resolveMangaReadersEdge(anime.title, anime.titleRomaji)
+    setExternalLinks(
+      type === 'ANIME'
+        ? [
+            { site: 'Re Anime', key: 'reanime', url: `https://reanime.cc/?s=${q}`, isDirect: false },
+            { site: 'KotoPlay', key: 'kotoplay', url: `https://kotoplay.to/search?keyword=${q}`, isDirect: false },
+            { site: 'AnimePahe', key: 'animepahe', url: 'https://animepahe.pw/', isDirect: false },
+          ]
+        : [
+            { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false },
+            { site: 'Kagane', key: 'kagane', url: `https://kagane.org/search?q=${q}`, isDirect: false },
+          ]
+    );
+    resolveExternalLinksEdge(type, anime.title, anime.titleRomaji)
       .then((links) => {
-        if (!cancelled && links.length > 0) setMangaReaders(links);
+        if (!cancelled && links.length > 0) setExternalLinks(links);
       })
       .catch(() => {});
     return () => {
@@ -503,6 +514,35 @@ export const DetailView: React.FC<DetailViewProps> = ({
                   <span>{isLiked ? 'Liked' : 'Like'}</span>
                 </button>
 
+                {(() => {
+                  const favList = isManga
+                    ? profile.favoriteMangaIds ?? []
+                    : profile.favoriteAnimeIds ?? [];
+                  const isFav = favList.includes(anime.id);
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        animeStore.remember(anime);
+                        animeStore.pin(anime.id);
+                        const added = profileStore.toggleFavoriteMedia(
+                          anime.id,
+                          isManga ? 'MANGA' : 'ANIME'
+                        );
+                        toast(added ? 'Added to Channel Favorites ★' : 'Removed from Favorites');
+                      }}
+                      className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[12.5px] font-semibold transition ${
+                        isFav
+                          ? 'border border-rose-500/40 bg-rose-500/20 text-rose-200'
+                          : 'bg-[#272727] text-white hover:bg-[#3F3F3F]'
+                      }`}
+                    >
+                      <Heart className={`h-4 w-4 ${isFav ? 'fill-current text-rose-400' : ''}`} />
+                      <span>{isFav ? 'Favorited' : 'Favorite'}</span>
+                    </button>
+                  );
+                })()}
+
                 <button
                   type="button"
                   onClick={handleShare}
@@ -666,21 +706,25 @@ export const DetailView: React.FC<DetailViewProps> = ({
               </div>
             )}
 
-            {/* Single Official English Streaming / Reading Link + Manga Reader Sites */}
+            {/* Single Official English Streaming / Reading Link + Community Sites */}
             {(() => {
               const officialEnglishLinks = pickSingleEnglishLink(anime.streaming, anime.mediaType);
               const q = encodeURIComponent(anime.title);
-              const mangaReaderLinks: ResolvedReaderLink[] = isManga
-                ? mangaReaders.length > 0
-                  ? mangaReaders
-                  : [
+              const communityLinks: ResolvedReaderLink[] =
+                externalLinks.length > 0
+                  ? externalLinks
+                  : isManga
+                  ? [
                       { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false },
                       { site: 'Kagane', key: 'kagane', url: `https://kagane.org/search?q=${q}`, isDirect: false },
-                      { site: 'Asura Scans', key: 'asura', url: `https://asuracomic.net/series?page=1&name=${q}`, isDirect: false },
                     ]
-                : [];
+                  : [
+                      { site: 'Re Anime', key: 'reanime', url: `https://reanime.cc/?s=${q}`, isDirect: false },
+                      { site: 'KotoPlay', key: 'kotoplay', url: `https://kotoplay.to/search?keyword=${q}`, isDirect: false },
+                      { site: 'AnimePahe', key: 'animepahe', url: 'https://animepahe.pw/', isDirect: false },
+                    ];
 
-              if (officialEnglishLinks.length === 0 && mangaReaderLinks.length === 0) return null;
+              if (officialEnglishLinks.length === 0 && communityLinks.length === 0) return null;
 
               return (
                 <div className="space-y-4 rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
@@ -712,14 +756,18 @@ export const DetailView: React.FC<DetailViewProps> = ({
                     </div>
                   )}
 
-                  {isManga && (
+                  {communityLinks.length > 0 && (
                     <div className={officialEnglishLinks.length > 0 ? 'border-t border-white/[0.08] pt-3.5' : ''}>
                       <h3 className="mb-2.5 flex items-center gap-2 text-[12.5px] font-bold uppercase tracking-wider text-[#CCCCCC]">
-                        <BookOpen className="h-4 w-4 text-[#FF2E54]" />
-                        Read Manga On
+                        {isManga ? (
+                          <BookOpen className="h-4 w-4 text-[#FF0000]" />
+                        ) : (
+                          <Play className="h-4 w-4 text-[#FF0000]" />
+                        )}
+                        {isManga ? 'Read Manga On' : 'Watch Anime On'}
                       </h3>
                       <div className="flex flex-wrap gap-2">
-                        {mangaReaderLinks.map((site) => (
+                        {communityLinks.map((site) => (
                           <a
                             key={site.key}
                             href={site.url}

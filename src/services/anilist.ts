@@ -41,6 +41,33 @@ export const MANGA_GENRES = [
   'Thriller',
 ];
 
+export const MAL_THEMES = [
+  'Isekai',
+  'Reincarnation',
+  'Time Manipulation',
+  'School',
+  'Military',
+  'Historical',
+  'Martial Arts',
+  'Mythology',
+  'Cyberpunk',
+  'Space',
+  'Vampire',
+  'Survival',
+  'Video Games',
+  'Detective',
+  'Samurai',
+  'Villainess',
+];
+
+export const MAL_DEMOGRAPHICS = [
+  'Shounen',
+  'Seinen',
+  'Shoujo',
+  'Josei',
+  'Kids',
+];
+
 const CORE = `
   id
   idMal
@@ -382,6 +409,9 @@ const PAGE_QUERY = `
     $sort: [MediaSort]
     $genreIn: [String]
     $tagIn: [String]
+    $formatIn: [MediaFormat]
+    $status: MediaStatus
+    $countryOfOrigin: CountryCode
     $season: MediaSeason
     $seasonYear: Int
     $search: String
@@ -393,6 +423,9 @@ const PAGE_QUERY = `
         sort: $sort
         genre_in: $genreIn
         tag_in: $tagIn
+        format_in: $formatIn
+        status: $status
+        countryOfOrigin: $countryOfOrigin
         season: $season
         seasonYear: $seasonYear
         search: $search
@@ -406,6 +439,9 @@ export interface QueryOptions {
   sort?: string[];
   genres?: string[];
   tags?: string[];
+  formats?: string[];
+  status?: 'RELEASING' | 'FINISHED' | 'NOT_YET_RELEASED';
+  countryOfOrigin?: 'JP' | 'KR' | 'CN';
   season?: 'WINTER' | 'SPRING' | 'SUMMER' | 'FALL';
   seasonYear?: number;
   search?: string;
@@ -422,6 +458,9 @@ export async function queryMedia(options: QueryOptions): Promise<Anime[]> {
     sort: options.sort ?? ['POPULARITY_DESC'],
     genreIn: options.genres?.length ? options.genres : undefined,
     tagIn: options.tags?.length ? options.tags : undefined,
+    formatIn: options.formats?.length ? options.formats : undefined,
+    status: options.status,
+    countryOfOrigin: options.countryOfOrigin,
     season: mediaType === 'ANIME' ? options.season : undefined,
     seasonYear: mediaType === 'ANIME' ? options.seasonYear : undefined,
     search: options.search,
@@ -451,12 +490,54 @@ export async function fetchTopRated(limit = 30, mediaType: MediaType = 'ANIME', 
   return queryMedia({ mediaType, sort: ['SCORE_DESC'], perPage: limit, page });
 }
 
-export async function fetchSeasonal(limit = 30, mediaType: MediaType = 'ANIME', page = 1): Promise<Anime[]> {
+export async function fetchSeasonal(
+  limit = 30,
+  mediaType: MediaType = 'ANIME',
+  page = 1,
+  seasonOverride?: 'WINTER' | 'SPRING' | 'SUMMER' | 'FALL',
+  yearOverride?: number
+): Promise<Anime[]> {
   if (mediaType === 'MANGA') {
     return queryMedia({ mediaType: 'MANGA', sort: ['TRENDING_DESC', 'SCORE_DESC'], perPage: limit, page });
   }
-  const { season, year } = currentSeason();
-  return queryMedia({ mediaType: 'ANIME', season, seasonYear: year, sort: ['POPULARITY_DESC'], perPage: limit, page });
+  const current = currentSeason();
+  return queryMedia({
+    mediaType: 'ANIME',
+    season: seasonOverride ?? current.season,
+    seasonYear: yearOverride ?? current.year,
+    sort: ['POPULARITY_DESC'],
+    perPage: limit,
+    page,
+  });
+}
+
+export async function fetchReleasing(limit = 24, mediaType: MediaType = 'ANIME', page = 1): Promise<Anime[]> {
+  return queryMedia({
+    mediaType,
+    status: 'RELEASING',
+    sort: ['SCORE_DESC', 'POPULARITY_DESC'],
+    perPage: limit,
+    page,
+  });
+}
+
+export async function fetchUpcoming(limit = 24, mediaType: MediaType = 'ANIME', page = 1): Promise<Anime[]> {
+  return queryMedia({
+    mediaType,
+    status: 'NOT_YET_RELEASED',
+    sort: ['POPULARITY_DESC'],
+    perPage: limit,
+    page,
+  });
+}
+
+export async function fetchMostFavorited(limit = 24, mediaType: MediaType = 'ANIME', page = 1): Promise<Anime[]> {
+  return queryMedia({
+    mediaType,
+    sort: ['FAVOURITES_DESC'],
+    perPage: limit,
+    page,
+  });
 }
 
 export async function fetchByGenre(

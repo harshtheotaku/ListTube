@@ -6,60 +6,39 @@ interface ListTubeLogoProps {
 }
 
 /**
- * Custom ListTube crest: stacked watchlist bars forming a stylized "L" monogram
- * with a four-point anime spark accent on an electric crimson-to-violet gradient badge.
+ * Clean geometric ListTube brand mark: architectural cinema-red badge pairing
+ * a flat checklist spine with a crisp negative-space play triangle (zero gradients or glows).
  */
 export const ListTubeLogo: React.FC<ListTubeLogoProps> = ({
   compact = false,
   showWordmark = true,
 }) => {
-  const size = compact ? 26 : 30;
+  const height = compact ? 22 : 24;
+  const width = compact ? 30 : 32;
   return (
     <span className="inline-flex shrink-0 items-center gap-2 select-none">
       <svg
-        width={size}
-        height={size}
-        viewBox="0 0 36 36"
+        width={width}
+        height={height}
+        viewBox="0 0 36 26"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
         aria-hidden="true"
-        className="shrink-0 drop-shadow-[0_2px_8px_rgba(225,29,116,0.4)]"
+        className="shrink-0"
       >
-        <defs>
-          <linearGradient id="listtube-crest-grad" x1="2" y1="2" x2="34" y2="34" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#FF2E54" />
-            <stop offset="52%" stopColor="#E11D74" />
-            <stop offset="100%" stopColor="#7C3AED" />
-          </linearGradient>
-        </defs>
-        {/* Squircle Gradient Crest */}
-        <rect
-          x="1.5"
-          y="1.5"
-          width="33"
-          height="33"
-          rx="10"
-          fill="url(#listtube-crest-grad)"
-          stroke="rgba(255,255,255,0.18)"
-          strokeWidth="1.2"
-        />
-        {/* Vertical Spine of "L" */}
-        <rect x="9.5" y="8.5" width="4.4" height="19" rx="2.2" fill="#FFFFFF" />
-        {/* Bottom Foot Bar completing "L" */}
-        <rect x="9.5" y="23.1" width="17" height="4.4" rx="2.2" fill="#FFFFFF" />
-        {/* Two Staggered Queue / List Bars */}
-        <rect x="16.5" y="9.5" width="9.5" height="3.6" rx="1.8" fill="#FFE4F0" />
-        <rect x="16.5" y="16.3" width="6.5" height="3.6" rx="1.8" fill="#FFE4F0" />
-        {/* Four-Point Anime Spark Glint Top-Right */}
-        <path
-          d="M27.6 14.2L28.3 16.3L30.4 17.0L28.3 17.7L27.6 19.8L26.9 17.7L24.8 17.0L26.9 16.3L27.6 14.2Z"
-          fill="#FFFFFF"
-        />
+        {/* Classic cinema-red rounded slate */}
+        <rect x="0.5" y="0.5" width="35" height="25" rx="6.5" fill="#FF0000" />
+        {/* Crisp left queue bars (List motif) */}
+        <rect x="7" y="7" width="8.5" height="2.6" rx="1.3" fill="#FFFFFF" />
+        <rect x="7" y="11.7" width="6.5" height="2.6" rx="1.3" fill="#FFFFFF" />
+        <rect x="7" y="16.4" width="10.5" height="2.6" rx="1.3" fill="#FFFFFF" />
+        {/* Sharp geometric Play triangle */}
+        <path d="M20 7.2L29.5 13L20 18.8V7.2Z" fill="#FFFFFF" />
       </svg>
 
       {showWordmark && (
-        <span className="text-[17px] font-black tracking-tight text-white sm:text-[18px]">
-          List<span className="text-[#FF2E54]">Tube</span>
+        <span className="font-sans text-[18px] font-extrabold tracking-[-0.03em] text-white sm:text-[19px]">
+          List<span className="text-[#FF0000]">Tube</span>
         </span>
       )}
     </span>

@@ -6,13 +6,13 @@
 
 Built with React, TypeScript, Tailwind CSS v4, and Capacitor Android — bringing YouTube's dark `#0F0F0F` AMOLED interface, infinite discovery feeds, franchise channels, and community-backed recommendation algorithms to Web & Android with zero forced login.
 
-[![Live Website](https://img.shields.io/badge/Live%20Website-GitHub%20Pages-FF2E54?style=for-the-badge&logo=githubpages&logoColor=white)](https://harshtheotaku.github.io/anitube/)
-[![Download Android APK](https://img.shields.io/badge/Download-Android%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=black)](https://github.com/harshtheotaku/anitube/releases/latest/download/ListTube-android.apk)
-[![Build Web & Android](https://github.com/harshtheotaku/anitube/actions/workflows/build.yml/badge.svg)](https://github.com/harshtheotaku/anitube/actions/workflows/build.yml)
-[![Deploy Website](https://github.com/harshtheotaku/anitube/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/harshtheotaku/anitube/actions/workflows/deploy-pages.yml)
+[![Live Website](https://img.shields.io/badge/Live%20Website-GitHub%20Pages-FF0000?style=for-the-badge&logo=githubpages&logoColor=white)](https://harshtheotaku.github.io/ListTube/)
+[![Download Android APK](https://img.shields.io/badge/Download-Android%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=black)](https://github.com/harshtheotaku/ListTube/releases/latest/download/ListTube-android.apk)
+[![Build Web & Android](https://github.com/harshtheotaku/ListTube/actions/workflows/build.yml/badge.svg)](https://github.com/harshtheotaku/ListTube/actions/workflows/build.yml)
+[![Deploy Website](https://github.com/harshtheotaku/ListTube/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/harshtheotaku/ListTube/actions/workflows/deploy-pages.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
-[**Launch Web App**](https://harshtheotaku.github.io/anitube/) · [**Download Android APK**](https://github.com/harshtheotaku/anitube/releases/latest/download/ListTube-android.apk) · [**Report an Issue**](https://github.com/harshtheotaku/anitube/issues)
+[**Launch Web App**](https://harshtheotaku.github.io/ListTube/) · [**Download Android APK**](https://github.com/harshtheotaku/ListTube/releases/latest/download/ListTube-android.apk) · [**Report an Issue**](https://github.com/harshtheotaku/ListTube/issues)
 
 </div>
 
@@ -30,8 +30,8 @@ Every anime & manga series acts like a dedicated YouTube Channel — complete wi
 
 ![ListTube Franchise Channel View](docs/screenshots/channel-desktop.png)
 
-### Watch Page, Single English Official Link & Community Manga Readers
-On-demand trailer playback (with optional **Auto-Play Trailers** setting), inline expandable synopsis, 5-list subscription status picker, **Up Next & Similar** community recommendations (AniList + MyAnimeList `/userrecs` + Season 1 prequel inheritance + Reddit consensus pairings), a single **English official** streaming/reading destination, and direct **Comix.to**, **Kagane**, and **Asura Scans** reader links for manga.
+### Watch Page, Official Link & Direct Community Destinations
+On-demand trailer playback (with optional **Auto-Play Trailers** setting), inline expandable synopsis, 5-list subscription & Favorites buttons, **Up Next & Similar** community recommendations (AniList + MyAnimeList `/userrecs` + Season 1 prequel inheritance + Reddit consensus pairings), a single **English official** streaming/reading destination, direct **Re Anime**, **KotoPlay**, and **AnimePahe** links for anime, plus direct **Comix.to** and **Kagane** reader links for manga.
 
 ![ListTube Watch Page](docs/screenshots/watch-desktop.png)
 
@@ -40,15 +40,17 @@ Write permanent device-local notes & comments on any anime or manga, with the **
 
 ![ListTube Comments & Pinned Review](docs/screenshots/comments-desktop.png)
 
-### Cloud Sync Vault, Supabase Backend & Cross-Device Backup
-Sync watchlists, progress, ratings, Taste DNA, custom PFPs, and comments seamlessly between Web and Android APK via a **1-Tap Cloud Sync Vault Code (`LT-XXXX-XXXX-XXXX`)** or **Supabase Email Account**, with optional live **2-way AniList progress/score write-back**.
+### Custom Channel Profile (YouTube Style × MyAnimeList Stats)
+Tap **Customize Channel** in the **You** tab to pick panoramic anime banners or upload your own, set your avatar (custom photo or 16 built-in character PFPs), edit your bio & handle, feature Favorite Anime/Manga/Characters, and inspect MAL-style dual **Anime & Manga Statistics**, **Score Distribution**, and **Last List Updates**.
 
-![ListTube Cloud Sync Hub](docs/screenshots/you-cloud-desktop.png)
+![ListTube Cloud Sync & MAL Channel Hub](docs/screenshots/you-cloud-desktop.png)
 
-### Custom Channel Profile & Popular Character Avatars
-Tap the small **Edit** button next to your PFP & name in the **You** tab to customize your display name, `@handle`, upload a photo, or choose from 16 built-in official anime character avatars (**Gojo, Frieren, Luffy, Levi, Killua, Zoro, Eren, Lelouch, Emilia, Maomao, Guts, L, Mikasa, Kurisu, Anya, Spike**).
+### MAL Homepage Catalog & Airing / Sequel Notifications
+Explore features MyAnimeList's full homepage catalog (Seasonal Chart, Top Airing, Upcoming, TV/Movies/Manhwa/Novels, and expandable **Genres / Themes / Demographics** directory), while the top **Bell** center alerts you on airing episodes, franchise sequels, and MAL news.
 
-![ListTube Edit Profile & Character PFP Picker](docs/screenshots/settings-pfp.png)
+![ListTube MAL Homepage Catalog](docs/screenshots/explore-mal-catalog.png)
+
+![ListTube Customize Channel Profile](docs/screenshots/settings-pfp.png)
 
 ### Dedicated Manga Mode (`4:5` Portrait Covers & 2-Column Mobile Grid)
 Switch seamlessly between **Anime (`16:9`)** and **Manga (`4:5` portrait covers)** with separate watch/read progress, genres, and recommendation profiles. On Android/mobile, Manga automatically lays out **2 cards per row** for fast browsing.
@@ -100,13 +102,13 @@ Switch seamlessly between **Anime (`16:9`)** and **Manga (`4:5` portrait covers)
 ## Quick Download & Install
 
 ### Android App (No Setup Needed)
-1. **Download the APK:** Tap [**Download ListTube-android.apk**](https://github.com/harshtheotaku/anitube/releases/latest/download/ListTube-android.apk) on your Android phone (Android 7.0+).
+1. **Download the APK:** Tap [**Download ListTube-android.apk**](https://github.com/harshtheotaku/ListTube/releases/latest/download/ListTube-android.apk) on your Android phone (Android 7.0+).
 2. **Open & Install:** Tap the downloaded `.apk` file and choose **Install** (allow "Install unknown apps" for your browser/file manager if prompted).
 3. **Launch ListTube:** Open the app — your profile, character PFP, comments, and recommendations work immediately with zero login required.
 
 ### Web App (Desktop & Mobile Browser)
 Open the live hosted website directly in any browser:
-> **https://harshtheotaku.github.io/anitube/**
+> **https://harshtheotaku.github.io/ListTube/**
 
 *(Supports desktop & mobile browsers and can be added to your Home Screen. Built with relative asset paths so custom domains work cleanly via CNAME.)*
 
@@ -118,8 +120,8 @@ Open the live hosted website directly in any browser:
 
 #### Run Locally (`http://localhost:5173`)
 ```bash
-git clone https://github.com/harshtheotaku/anitube.git
-cd anitube
+git clone https://github.com/harshtheotaku/ListTube.git
+cd ListTube
 npm install
 npm run dev
 ```
@@ -156,20 +158,21 @@ listtube/
 │   │   ├── ChannelView.tsx      # Franchise channel (Oldest/Newest/All, Similar Anime, From This Studio)
 │   │   ├── CommentsSection.tsx  # Persistent comments + full pinned spoiler-free MAL review
 │   │   ├── DetailView.tsx       # Trailer watch page, 5-list Subscribe, Up Next recommendations
-│   │   ├── ExploreView.tsx      # Infinite Trending / Top Rated / Seasonal / Genre discovery
+│   │   ├── ExploreView.tsx      # Full MAL Anime & Manga Homepage Catalog, Charts & Directory
 │   │   ├── HomeView.tsx         # Infinite "For You" feed, Anime|Manga switch & pull-to-refresh
-│   │   ├── ListTubeLogo.tsx     # Custom crimson-to-violet ListTube stacked "L" crest logo
+│   │   ├── ListTubeLogo.tsx     # Geometric red ListTube checklist + play badge logo
 │   │   ├── ListView.tsx         # Subscriptions manager with story channels & progress steppers
 │   │   ├── NewsView.tsx         # Illustrated anime & manga news feed
-│   │   ├── ProfileModal.tsx     # Compact profile name/handle & 16 built-in character PFP picker
+│   │   ├── NotificationsModal.tsx # MAL-style Airing Episodes, Sequel & News notification center
+│   │   ├── ProfileModal.tsx     # YouTube Studio style channel branding, bio & favorites editor
 │   │   ├── ScheduleView.tsx     # 7-day live airing countdowns
 │   │   ├── SettingsModal.tsx    # Auto-play trailer toggle & artwork cache controls
 │   │   ├── Shelf.tsx            # Horizontal recommendation shelves
 │   │   ├── Sidebar.tsx          # Collapsible YouTube navigation & subscribed channels
 │   │   ├── Skeleton.tsx         # Responsive 16:9 & 4:5 loading skeletons
-│   │   ├── TopBar.tsx           # Per-tab search bar + desktop mode/settings controls
-│   │   ├── TrackersModal.tsx    # AniList, MyAnimeList, Google profile & XML/JSON import
-│   │   └── YouView.tsx          # Mobile control hub (Anime|Manga, Schedule, News, DNA stats)
+│   │   ├── TopBar.tsx           # Per-tab search bar, MAL notifications bell & desktop controls
+│   │   ├── TrackersModal.tsx    # AniList, MyAnimeList, 1-Tap Cloud Vault & Email Auth sync
+│   │   └── YouView.tsx          # YouTube × MAL Channel hub (Stats bar, Favorites, Cloud Sync)
 │   └── services/
 │       ├── anilist.ts           # AniList GraphQL client routed via Postgres L2 Edge Cache
 │       ├── animeStore.ts        # Local metadata & artwork store
@@ -179,6 +182,7 @@ listtube/
 │       ├── jikan.ts             # Jikan REST fallback
 │       ├── library.ts           # Offline-first reactive persistence (localStorage + Cloud)
 │       ├── news.ts              # Edge-proxied MAL News & ANN RSS aggregator
+│       ├── notifications.ts     # Airing schedule, franchise sequel & news notification engine
 │       ├── platform.ts          # Runtime environment resolver (Capacitor / Proxy / Static Pages)
 │       ├── profile.ts           # User profile store + 16 official character PFP presets
 │       ├── recommender.ts       # Multi-source community vector, refresh rotation & MMR engine

@@ -7,12 +7,59 @@ export interface CharacterAvatar {
   url: string;
 }
 
+export interface ProfileBanner {
+  id: string;
+  label: string;
+  url: string;
+}
+
 export interface UserProfile {
   name: string;
   handle: string;
   avatarId: string;
   avatarUrl: string;
+  bannerId?: string;
+  bannerUrl?: string;
+  bio?: string;
+  location?: string;
+  joinedAt?: number;
+  favoriteAnimeIds?: string[];
+  favoriteMangaIds?: string[];
+  favoriteCharacters?: string[];
 }
+
+export const BUILT_IN_BANNERS: ProfileBanner[] = [
+  {
+    id: 'frieren-horizon',
+    label: 'Frieren Horizons',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/154587-ivXNJ23SM1xB.jpg',
+  },
+  {
+    id: 'aot-shiganshina',
+    label: 'Shiganshina Wall',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/16498-8jpFCOcDmneX.jpg',
+  },
+  {
+    id: 'jjk-shibuya',
+    label: 'Jujutsu High',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/113415-jQBSkxWAAk83.jpg',
+  },
+  {
+    id: 'solo-monarch',
+    label: 'Shadow Monarch',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/151807-37yfQA3ym8PA.jpg',
+  },
+  {
+    id: 'steins-akihabara',
+    label: 'Steins;Gate Lab',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/n9253-JIhmKgBKsWUN.jpg',
+  },
+  {
+    id: 'chainsaw-public',
+    label: 'Chainsaw Devil',
+    url: 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/127230-o8IRwCGVr9KW.jpg',
+  },
+];
 
 /**
  * Built-in official character portraits curated from top AniList character entries
@@ -124,6 +171,14 @@ const DEFAULT_PROFILE: UserProfile = {
   handle: '@listtube_fan',
   avatarId: BUILT_IN_AVATARS[0].id,
   avatarUrl: BUILT_IN_AVATARS[0].url,
+  bannerId: BUILT_IN_BANNERS[0].id,
+  bannerUrl: BUILT_IN_BANNERS[0].url,
+  bio: 'Tracking seasonal anime, manhwa, and timeless classics.',
+  location: '',
+  joinedAt: Date.now(),
+  favoriteAnimeIds: [],
+  favoriteMangaIds: [],
+  favoriteCharacters: [],
 };
 
 function sanitizeHandle(raw: string): string {
@@ -148,6 +203,14 @@ function loadProfile(): UserProfile {
       handle: sanitizeHandle(parsed.handle || parsed.name || DEFAULT_PROFILE.handle),
       avatarId: parsed.avatarId || DEFAULT_PROFILE.avatarId,
       avatarUrl: parsed.avatarUrl || DEFAULT_PROFILE.avatarUrl,
+      bannerId: parsed.bannerId || DEFAULT_PROFILE.bannerId,
+      bannerUrl: parsed.bannerUrl || DEFAULT_PROFILE.bannerUrl,
+      bio: typeof parsed.bio === 'string' ? parsed.bio : DEFAULT_PROFILE.bio,
+      location: typeof parsed.location === 'string' ? parsed.location : '',
+      joinedAt: parsed.joinedAt || DEFAULT_PROFILE.joinedAt,
+      favoriteAnimeIds: Array.isArray(parsed.favoriteAnimeIds) ? parsed.favoriteAnimeIds : [],
+      favoriteMangaIds: Array.isArray(parsed.favoriteMangaIds) ? parsed.favoriteMangaIds : [],
+      favoriteCharacters: Array.isArray(parsed.favoriteCharacters) ? parsed.favoriteCharacters : [],
     };
   } catch {
     return DEFAULT_PROFILE;
@@ -185,10 +248,18 @@ export const profileStore = {
           ? sanitizeHandle(nextName)
           : currentProfile.handle;
     save({
+      ...currentProfile,
       name: nextName,
       handle: nextHandle,
       avatarId: patch.avatarId ?? currentProfile.avatarId,
       avatarUrl: patch.avatarUrl ?? currentProfile.avatarUrl,
+      bannerId: patch.bannerId ?? currentProfile.bannerId,
+      bannerUrl: patch.bannerUrl ?? currentProfile.bannerUrl,
+      bio: patch.bio !== undefined ? patch.bio.slice(0, 280) : currentProfile.bio,
+      location: patch.location !== undefined ? patch.location.trim().slice(0, 40) : currentProfile.location,
+      favoriteAnimeIds: patch.favoriteAnimeIds ?? currentProfile.favoriteAnimeIds ?? [],
+      favoriteMangaIds: patch.favoriteMangaIds ?? currentProfile.favoriteMangaIds ?? [],
+      favoriteCharacters: patch.favoriteCharacters ?? currentProfile.favoriteCharacters ?? [],
     });
   },
   selectCharacterAvatar(character: CharacterAvatar) {
@@ -205,15 +276,69 @@ export const profileStore = {
       avatarUrl: dataUrl,
     });
   },
+  selectPresetBanner(banner: ProfileBanner) {
+    save({
+      ...currentProfile,
+      bannerId: banner.id,
+      bannerUrl: banner.url,
+    });
+  },
+  setCustomBanner(dataUrl: string) {
+    save({
+      ...currentProfile,
+      bannerId: 'custom',
+      bannerUrl: dataUrl,
+    });
+  },
+  toggleFavoriteMedia(mediaId: string, mediaType: 'ANIME' | 'MANGA'): boolean {
+    const key = mediaType === 'MANGA' ? 'favoriteMangaIds' : 'favoriteAnimeIds';
+    const current = currentProfile[key] ?? [];
+    const exists = current.includes(mediaId);
+    const next = exists
+      ? current.filter((id) => id !== mediaId)
+      : [mediaId, ...current].slice(0, 10);
+    save({
+      ...currentProfile,
+      [key]: next,
+    });
+    return !exists;
+  },
+  toggleFavoriteCharacter(charId: string): boolean {
+    const current = currentProfile.favoriteCharacters ?? [];
+    const exists = current.includes(charId);
+    const next = exists
+      ? current.filter((id) => id !== charId)
+      : [...current, charId].slice(0, 6);
+    save({
+      ...currentProfile,
+      favoriteCharacters: next,
+    });
+    return !exists;
+  },
   reset() {
-    save(DEFAULT_PROFILE);
+    save({ ...DEFAULT_PROFILE, joinedAt: Date.now() });
   },
   replaceFromCloud(next: UserProfile) {
     save({
+      ...currentProfile,
       name: next.name?.trim().slice(0, 32) || DEFAULT_PROFILE.name,
       handle: sanitizeHandle(next.handle || next.name || DEFAULT_PROFILE.handle),
       avatarId: next.avatarId || DEFAULT_PROFILE.avatarId,
       avatarUrl: next.avatarUrl || DEFAULT_PROFILE.avatarUrl,
+      bannerId: next.bannerId ?? currentProfile.bannerId ?? DEFAULT_PROFILE.bannerId,
+      bannerUrl: next.bannerUrl ?? currentProfile.bannerUrl ?? DEFAULT_PROFILE.bannerUrl,
+      bio: next.bio !== undefined ? next.bio : currentProfile.bio,
+      location: next.location !== undefined ? next.location : currentProfile.location,
+      joinedAt: next.joinedAt || currentProfile.joinedAt || DEFAULT_PROFILE.joinedAt,
+      favoriteAnimeIds: Array.isArray(next.favoriteAnimeIds)
+        ? next.favoriteAnimeIds
+        : currentProfile.favoriteAnimeIds ?? [],
+      favoriteMangaIds: Array.isArray(next.favoriteMangaIds)
+        ? next.favoriteMangaIds
+        : currentProfile.favoriteMangaIds ?? [],
+      favoriteCharacters: Array.isArray(next.favoriteCharacters)
+        ? next.favoriteCharacters
+        : currentProfile.favoriteCharacters ?? [],
     });
   },
 };

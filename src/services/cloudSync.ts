@@ -162,8 +162,14 @@ function compactSnapshot(anime: Anime): Anime {
 
 function buildLocalVaultPayload(): SyncVaultPayload {
   const lib = library.getSnapshot();
+  const profile = profileStore.getSnapshot();
   const snapshots: Record<string, Anime> = {};
-  for (const id of Object.keys(lib.entries)) {
+  const idsToSnap = new Set<string>([
+    ...Object.keys(lib.entries),
+    ...(profile.favoriteAnimeIds ?? []),
+    ...(profile.favoriteMangaIds ?? []),
+  ]);
+  for (const id of idsToSnap) {
     const a = animeStore.get(id);
     if (a) snapshots[id] = compactSnapshot(a);
   }
@@ -172,7 +178,7 @@ function buildLocalVaultPayload(): SyncVaultPayload {
       ...lib,
       mangaInterests: lib.mangaInterests ?? [],
     },
-    profile: profileStore.getSnapshot(),
+    profile,
     profileUpdatedAt: meta.profileUpdatedAt || Date.now(),
     settings: settingsStore.getSnapshot(),
     comments: commentsStore.exportAll(),
@@ -292,6 +298,12 @@ async function pushAuthAccount(uid: string): Promise<void> {
       handle: profile.handle,
       avatar_url: profile.avatarUrl,
       avatar_id: profile.avatarId,
+      banner_url: profile.bannerUrl ?? null,
+      bio: profile.bio ?? null,
+      location: profile.location ?? null,
+      favorite_anime_ids: profile.favoriteAnimeIds ?? [],
+      favorite_manga_ids: profile.favoriteMangaIds ?? [],
+      favorite_characters: profile.favoriteCharacters ?? [],
       autoplay_trailer: settings.autoplayTrailer,
       interests: lib.interests,
       manga_interests: lib.mangaInterests ?? [],
@@ -354,7 +366,7 @@ async function pullAuthAccount(uid: string): Promise<void> {
   const [profRes, prefRes, entriesRes] = await Promise.all([
     supabase
       .from('profiles')
-      .select('display_name, handle, avatar_url, avatar_id, autoplay_trailer, interests, manga_interests, updated_at')
+      .select('display_name, handle, avatar_url, avatar_id, banner_url, bio, location, favorite_anime_ids, favorite_manga_ids, favorite_characters, autoplay_trailer, interests, manga_interests, updated_at')
       .eq('id', uid)
       .maybeSingle(),
     supabase
@@ -418,6 +430,12 @@ async function pullAuthAccount(uid: string): Promise<void> {
             handle: profRow.handle,
             avatarUrl: profRow.avatar_url,
             avatarId: profRow.avatar_id || 'gojo',
+            bannerUrl: profRow.banner_url ?? undefined,
+            bio: profRow.bio ?? undefined,
+            location: profRow.location ?? undefined,
+            favoriteAnimeIds: Array.isArray(profRow.favorite_anime_ids) ? profRow.favorite_anime_ids : [],
+            favoriteMangaIds: Array.isArray(profRow.favorite_manga_ids) ? profRow.favorite_manga_ids : [],
+            favoriteCharacters: Array.isArray(profRow.favorite_characters) ? profRow.favorite_characters : [],
           }
         : undefined,
       profileUpdatedAt: profUpdatedAt,
