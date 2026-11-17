@@ -3,6 +3,7 @@ import { Anime, ListEntry, MediaType } from '../types';
 export interface DistEntry {
   label: string;
   count: number;
+  meanScore?: number;
 }
 
 export interface MediaStatsSummary {
@@ -19,6 +20,34 @@ export interface MediaStatsSummary {
   scoreDist: Record<number, number>;
   formatDist: DistEntry[];
   decadeDist: DistEntry[];
+  genreStats: DistEntry[];
+  studioStats: DistEntry[];
+}
+
+interface ScoreBucket {
+  count: number;
+  scoreSum: number;
+  scored: number;
+}
+
+function recordBucket(map: Record<string, ScoreBucket>, key: string, score?: number) {
+  const b = (map[key] ??= { count: 0, scoreSum: 0, scored: 0 });
+  b.count += 1;
+  if (score && score > 0) {
+    b.scoreSum += score;
+    b.scored += 1;
+  }
+}
+
+function finalizeRanked(map: Record<string, ScoreBucket>, limit = 6): DistEntry[] {
+  return Object.entries(map)
+    .map(([label, b]) => ({
+      label,
+      count: b.count,
+      meanScore: b.scored > 0 ? Math.round((b.scoreSum / b.scored) * 100) / 100 : undefined,
+    }))
+    .sort((a, b) => b.count - a.count || (b.meanScore ?? 0) - (a.meanScore ?? 0))
+    .slice(0, limit);
 }
 
 export function computeMediaStats(
@@ -38,6 +67,8 @@ export function computeMediaStats(
   const scoreDist: Record<number, number> = { 10: 0, 9: 0, 8: 0, 7: 0, 6: 0, 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
   const formatMap: Record<string, number> = {};
   const decadeMap: Record<string, number> = {};
+  const genreBuckets: Record<string, ScoreBucket> = {};
+  const studioBuckets: Record<string, ScoreBucket> = {};
 
   let watching = 0;
   let completed = 0;
@@ -74,6 +105,13 @@ export function computeMediaStats(
       const decade = `${Math.floor(a.year / 10) * 10}s`;
       decadeMap[decade] = (decadeMap[decade] ?? 0) + 1;
     }
+
+    for (const g of a?.genres ?? []) {
+      recordBucket(genreBuckets, g, e.score);
+    }
+    for (const s of a?.studios ?? []) {
+      recordBucket(studioBuckets, s, e.score);
+    }
   }
 
   const formatDist = Object.entries(formatMap)
@@ -100,5 +138,7 @@ export function computeMediaStats(
     scoreDist,
     formatDist,
     decadeDist,
+    genreStats: finalizeRanked(genreBuckets, 6),
+    studioStats: finalizeRanked(studioBuckets, 6),
   };
 }

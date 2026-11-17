@@ -1074,11 +1074,11 @@ export async function fetchAniListViewer(token: string): Promise<AniListViewer> 
 }
 
 const STUDIO_QUERY = `
-  query StudioMedia($search: String) {
+  query StudioMedia($search: String, $page: Int) {
     Studio(search: $search) {
       id
       name
-      media(isMain: true, sort: POPULARITY_DESC, perPage: 30) {
+      media(isMain: true, sort: POPULARITY_DESC, perPage: 36, page: $page) {
         nodes {
           isAdult
           ${CORE}
@@ -1088,12 +1088,42 @@ const STUDIO_QUERY = `
   }
 `;
 
+const STUDIO_SEARCH_LIST_QUERY = `
+  query StudioSearchList($search: String, $perPage: Int) {
+    Page(page: 1, perPage: $perPage) {
+      studios(search: $search, sort: [SEARCH_MATCH, FAVOURITES_DESC]) {
+        id
+        name
+        isAnimationStudio
+      }
+    }
+  }
+`;
+
+export async function searchAniListStudios(query: string, limit = 12): Promise<string[]> {
+  const clean = query.trim();
+  if (clean.length < 2) return [];
+  return cached(
+    `studio-search:${clean.toLowerCase()}:${limit}`,
+    async () => {
+      type SRes = {
+        Page?: { studios?: { id: number; name?: string | null }[] | null } | null;
+      };
+      const data = await request<SRes>(STUDIO_SEARCH_LIST_QUERY, { search: clean, perPage: limit });
+      return (data.Page?.studios ?? [])
+        .map((s) => s.name?.trim())
+        .filter((x): x is string => Boolean(x));
+    },
+    30 * 60 * 1000
+  );
+}
+
 const STAFF_MANGA_QUERY = `
-  query StaffManga($search: String) {
+  query StaffManga($search: String, $page: Int) {
     Staff(search: $search) {
       id
       name { full }
-      staffMedia(sort: POPULARITY_DESC, type: MANGA, perPage: 25) {
+      staffMedia(sort: POPULARITY_DESC, type: MANGA, perPage: 36, page: $page) {
         nodes {
           isAdult
           ${CORE}
@@ -1107,7 +1137,8 @@ export async function fetchByStudio(
   studioName: string,
   mediaType: MediaType = 'ANIME',
   excludeIds: Set<string> = new Set(),
-  limit = 20
+  limit = 20,
+  page = 1
 ): Promise<Anime[]> {
   const cleanName = studioName.trim();
   const seen = new Set<string>();
@@ -1128,8 +1159,8 @@ export async function fetchByStudio(
             media?: { nodes?: (AniListMedia & { isAdult?: boolean })[] };
           } | null;
         };
-        const data = await cached(`studio:${cleanName.toLowerCase()}`, () =>
-          request<StudioRes>(STUDIO_QUERY, { search: cleanName })
+        const data = await cached(`studio:${cleanName.toLowerCase()}:p${page}`, () =>
+          request<StudioRes>(STUDIO_QUERY, { search: cleanName, page })
         );
         for (const node of data.Studio?.media?.nodes ?? []) {
           if (node.isAdult) continue;
@@ -1141,8 +1172,8 @@ export async function fetchByStudio(
             staffMedia?: { nodes?: (AniListMedia & { isAdult?: boolean })[] };
           } | null;
         };
-        const data = await cached(`staff-manga:${cleanName.toLowerCase()}`, () =>
-          request<StaffRes>(STAFF_MANGA_QUERY, { search: cleanName })
+        const data = await cached(`staff-manga:${cleanName.toLowerCase()}:p${page}`, () =>
+          request<StaffRes>(STAFF_MANGA_QUERY, { search: cleanName, page })
         );
         for (const node of data.Staff?.staffMedia?.nodes ?? []) {
           if (node.isAdult) continue;
@@ -1154,8 +1185,8 @@ export async function fetchByStudio(
     }
   }
 
-  // Fallback / enrichment from cached animeStore entries sharing the studio/author
-  if (cleanName && out.length < limit) {
+  // Fallback / enrichment from cached animeStore entries sharing the studio/author (page 1 only)
+  if (cleanName && page === 1 && out.length < limit) {
     const targetLower = cleanName.toLowerCase();
     const localMatches = animeStore
       .all()
@@ -1509,65 +1540,65 @@ export async function fetchStudioDetail(studioName: string): Promise<StudioDetai
   );
 }
 
+async function tryWikipediaTitle(title: string): Promise<WikipediaSummary | null> {
+  const slug = encodeURIComponent(title.trim().replace(/\s+/g, '_'));
+  const res = await fetch(
+    `https://en.wikipedia.org/api/rest_v1/page/summary/${slug}`,
+    { headers: { Accept: 'application/json' } }
+  );
+  if (!res.ok) return null;
+  const j = (await res.json()) as {
+    title?: string;
+    extract?: string;
+    description?: string;
+    type?: string;
+    thumbnail?: { source?: string };
+    content_urls?: { desktop?: { page?: string } };
+  };
+  if (!j.extract || j.type === 'disambiguation') return null;
+  return {
+    title: j.title || title,
+    extract: j.extract,
+    description: j.description,
+    thumbnail: j.thumbnail?.source,
+    url: j.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${slug}`,
+  };
+}
+
 export async function fetchWikipediaSummary(query: string): Promise<WikipediaSummary | null> {
   const clean = query.trim();
   if (!clean) return null;
   return cached(
-    `wiki:${clean.toLowerCase()}`,
+    `wiki:v2:${clean.toLowerCase()}`,
     async () => {
       try {
-        const directSlug = encodeURIComponent(clean.replace(/\s+/g, '_'));
-        const res = await fetch(
-          `https://en.wikipedia.org/api/rest_v1/page/summary/${directSlug}`,
-          { headers: { Accept: 'application/json' } }
-        );
-        if (res.ok) {
-          const j = (await res.json()) as {
-            title?: string;
-            extract?: string;
-            description?: string;
-            type?: string;
-            thumbnail?: { source?: string };
-            content_urls?: { desktop?: { page?: string } };
-          };
-          if (j.extract && j.type !== 'disambiguation') {
-            return {
-              title: j.title || clean,
-              extract: j.extract,
-              description: j.description,
-              thumbnail: j.thumbnail?.source,
-              url: j.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${directSlug}`,
-            };
-          }
+        const romanized = clean
+          .replace(/uu/gi, 'u')
+          .replace(/ou/gi, 'o')
+          .replace(/oo/gi, 'o');
+        const directCandidates = Array.from(new Set([clean, romanized]));
+        for (const candidate of directCandidates) {
+          const hit = await tryWikipediaTitle(candidate);
+          if (hit) return hit;
         }
-        const searchRes = await fetch(
-          `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
-            `${clean} anime`
-          )}&srlimit=2&format=json&origin=*`
+
+        const searchTerms = Array.from(
+          new Set([romanized, `${clean} anime`, `${romanized} voice actor`])
         );
-        if (searchRes.ok) {
+        for (const sr of searchTerms) {
+          const searchRes = await fetch(
+            `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
+              sr
+            )}&srlimit=2&format=json&origin=*`
+          );
+          if (!searchRes.ok) continue;
           const sj = (await searchRes.json()) as {
             query?: { search?: { title: string }[] };
           };
-          const hitTitle = sj.query?.search?.[0]?.title;
-          if (hitTitle) {
-            const sumRes = await fetch(
-              `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(
-                hitTitle.replace(/\s+/g, '_')
-              )}`
-            );
-            if (sumRes.ok) {
-              const j = (await sumRes.json()) as any;
-              if (j?.extract) {
-                return {
-                  title: j.title || hitTitle,
-                  extract: j.extract,
-                  description: j.description,
-                  thumbnail: j.thumbnail?.source,
-                  url: j.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(hitTitle.replace(/\s+/g, '_'))}`,
-                };
-              }
-            }
+          for (const item of sj.query?.search ?? []) {
+            if (!item.title) continue;
+            const summary = await tryWikipediaTitle(item.title);
+            if (summary) return summary;
           }
         }
       } catch {

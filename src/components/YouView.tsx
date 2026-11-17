@@ -68,9 +68,12 @@ const HorizontalDistCard: React.FC<{
         <div className="space-y-2">
           {items.map((item) => (
             <div key={item.label} className="space-y-1">
-              <div className="flex justify-between text-[11.5px]">
-                <span className="font-semibold text-neutral-200">{item.label}</span>
-                <span className="font-mono text-[#AAAAAA]">{item.count}</span>
+              <div className="flex justify-between gap-2 text-[11.5px]">
+                <span className="truncate font-semibold text-neutral-200">{item.label}</span>
+                <span className="shrink-0 font-mono text-[#AAAAAA]">
+                  {item.count}
+                  {typeof item.meanScore === 'number' ? ` · ★ ${item.meanScore}` : ''}
+                </span>
               </div>
               <div className="h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
                 <div
@@ -865,6 +868,18 @@ export const YouView: React.FC<YouViewProps> = ({
               items={activeStats.decadeDist}
               barClass="bg-emerald-400"
               emptyText="Track titles with release years to map your favorite eras."
+            />
+            <HorizontalDistCard
+              title="Top Genres & Mean Score"
+              items={activeStats.genreStats}
+              barClass="bg-amber-400"
+              emptyText="Rate or track series to see your highest-affinity genres and mean scores."
+            />
+            <HorizontalDistCard
+              title={isManga ? 'Top Creators & Mean Score' : 'Top Studios & Mean Score'}
+              items={activeStats.studioStats}
+              barClass="bg-rose-400"
+              emptyText={`Track ${isManga ? 'manga authors' : 'anime studios'} to compare average ratings.`}
             />
           </div>
 

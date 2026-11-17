@@ -27,6 +27,7 @@ import {
   fetchTrending,
   fetchUpcoming,
   queryMedia,
+  searchAniListStudios,
 } from '../services/anilist';
 import { searchSmart } from '../services/search';
 import { AnimeCard } from './AnimeCard';
@@ -116,6 +117,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const [filterYearMax, setFilterYearMax] = useState<number>(0);
   const [filterMinScore, setFilterMinScore] = useState<number>(0);
   const [filterStudio, setFilterStudio] = useState<string>('');
+  const [studioSuggestions, setStudioSuggestions] = useState<string[]>([]);
   const [filterSort, setFilterSort] = useState<string>('POPULARITY_DESC');
   const [hideMyList, setHideMyList] = useState(false);
 
@@ -198,6 +200,26 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     const timer = setTimeout(() => setDebounced(query), 240);
     return () => clearTimeout(timer);
   }, [query]);
+
+  useEffect(() => {
+    const clean = filterStudio.trim();
+    if (clean.length < 2) {
+      setStudioSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      searchAniListStudios(clean, 10)
+        .then((res) => {
+          if (!cancelled) setStudioSuggestions(res);
+        })
+        .catch(() => {});
+    }, 180);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [filterStudio]);
 
   const multiAxisCount =
     selectedGenres.length +
@@ -371,7 +393,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         if (searchTerm && !hasMultiAxisFilter) {
           result = await searchSmart(searchTerm, mediaType, 24);
         } else if (hasMultiAxisFilter && filterStudio.trim()) {
-          const studioPool = await fetchByStudio(filterStudio.trim(), mediaType, new Set(), 48);
+          const studioPool = await fetchByStudio(filterStudio.trim(), mediaType, new Set(), 36, targetPage);
           result = studioPool.filter((a) => {
             if (searchTerm && !`${a.title} ${a.titleRomaji ?? ''}`.toLowerCase().includes(searchTerm.toLowerCase())) {
               return false;
@@ -917,38 +939,45 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                 <label className="mb-1 block text-[10.5px] font-bold uppercase text-[#AAAAAA]">
                   Studio
                 </label>
-                <select
+                <input
+                  type="text"
+                  list="explore-studio-datalist"
                   aria-label="Filter by studio"
+                  placeholder="Any Studio (type e.g. ufotable, Trigger)"
                   value={filterStudio}
                   onChange={(e) => setFilterStudio(e.target.value)}
-                  className="h-9 w-full rounded-lg border border-white/15 bg-[#0F0F0F] px-2.5 text-[12px] text-white outline-none focus:border-[#3EA6FF]"
-                >
-                  <option value="">Any Studio</option>
-                  {[
-                    'MAPPA',
-                    'ufotable',
-                    'Kyoto Animation',
-                    'Madhouse',
-                    'Bones',
-                    'Wit Studio',
-                    'CloverWorks',
-                    'A-1 Pictures',
-                    'Sunrise',
-                    'Production I.G',
-                    'Studio Ghibli',
-                    'Trigger',
-                    'Shaft',
-                    'P.A. Works',
-                    'David Production',
-                    'Toei Animation',
-                    'Pierrot',
-                    'J.C.Staff',
-                  ].map((st) => (
-                    <option key={st} value={st}>
-                      {st}
-                    </option>
+                  className="h-9 w-full rounded-lg border border-white/15 bg-[#0F0F0F] px-2.5 text-[12px] text-white placeholder:text-[#777777] outline-none focus:border-[#3EA6FF]"
+                />
+                <datalist id="explore-studio-datalist">
+                  {Array.from(
+                    new Set([
+                      ...studioSuggestions,
+                      'MAPPA',
+                      'ufotable',
+                      'Kyoto Animation',
+                      'Madhouse',
+                      'Bones',
+                      'Wit Studio',
+                      'CloverWorks',
+                      'A-1 Pictures',
+                      'Sunrise',
+                      'Production I.G',
+                      'Studio Ghibli',
+                      'Trigger',
+                      'Shaft',
+                      'P.A. Works',
+                      'David Production',
+                      'Toei Animation',
+                      'Pierrot',
+                      'J.C.Staff',
+                      'Science SARU',
+                      'Studio Bind',
+                      'White Fox',
+                    ])
+                  ).map((st) => (
+                    <option key={st} value={st} />
                   ))}
-                </select>
+                </datalist>
               </div>
             )}
           </div>
