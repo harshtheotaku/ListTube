@@ -1,84 +1,123 @@
 import { Anime } from '../types';
+import {
+  idbClearAllMedia,
+  idbLoadAllMedia,
+  idbPruneExcess,
+  idbPutMediaBatch,
+  stripHeavyMediaFields,
+} from './mediaDb';
 
 const KEY = 'anitube.anime.v2';
 const LEGACY_KEY = 'anitube.anime.v1';
-const LIMIT = 1200;
+const PINNED_LS_FALLBACK_LIMIT = 400;
 
-function load(): Map<string, Anime> {
+function loadPinnedSync(): Map<string, Anime> {
+  const map = new Map<string, Anime>();
   try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Record<string, Anime>;
-      return new Map(Object.entries(parsed));
-    }
-    // Migrate only pinned entries from v1 so stale unpinned entries re-fetch crisp official artwork
-    const legacyRaw = localStorage.getItem(LEGACY_KEY);
-    if (legacyRaw) {
-      const parsed = JSON.parse(legacyRaw) as Record<string, Anime>;
-      const migrated = new Map<string, Anime>();
-      for (const [id, item] of Object.entries(parsed)) {
-        if (item.pinned) {
-          migrated.set(id, { ...item, mediaType: item.mediaType ?? 'ANIME' });
-        }
+    const raw = localStorage.getItem(KEY) ?? localStorage.getItem(LEGACY_KEY);
+    if (!raw) return map;
+    const parsed = JSON.parse(raw) as Record<string, Anime>;
+    for (const [id, item] of Object.entries(parsed)) {
+      if (item && typeof item === 'object' && item.id && item.title) {
+        map.set(id, { ...item, mediaType: item.mediaType ?? 'ANIME' });
       }
-      return migrated;
     }
-    return new Map();
   } catch {
-    return new Map();
+    /* ignore */
+  }
+  return map;
+}
+
+const store = loadPinnedSync();
+const dirtyQueue = new Map<string, Anime>();
+const hydrationListeners = new Set<() => void>();
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let hydratedFromIdb = false;
+
+function notifyHydration() {
+  hydrationListeners.forEach((l) => l());
+}
+
+/**
+ * Keeps only lightweight pinned records in localStorage so synchronous initial paint
+ * never loses user list covers, while full 10,000+ record cache lives in IndexedDB.
+ */
+function flushFallbackPinnedToLocalStorage() {
+  try {
+    const pinned = [...store.entries()]
+      .filter(([, a]) => a.pinned)
+      .slice(0, PINNED_LS_FALLBACK_LIMIT)
+      .map(([id, a]) => [id, stripHeavyMediaFields(a)]);
+    localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(pinned)));
+    if (localStorage.getItem(LEGACY_KEY)) localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    try {
+      localStorage.setItem(KEY, '{}');
+    } catch {
+      /* ignore */
+    }
   }
 }
 
-const store = load();
-let flushTimer: ReturnType<typeof setTimeout> | null = null;
-
-function compact(anime: Anime): Anime {
-  return {
-    ...anime,
-    description: '',
-    similar: [],
-    streaming: [],
-    tags: anime.tags.slice(0, 8),
-  };
-}
-
-function entriesToPersist(): [string, Anime][] {
-  const entries = [...store.entries()];
-  if (entries.length <= LIMIT) return entries;
-
-  const pinned = entries.filter(([, anime]) => anime.pinned);
-  const rest = entries.filter(([, anime]) => !anime.pinned);
-  const room = Math.max(0, LIMIT - pinned.length);
-  const kept = rest.sort((a, b) => b[1].fetchedAt - a[1].fetchedAt).slice(0, room);
-  return [...kept, ...pinned];
-}
-
-function persist(): void {
+function schedulePersist(items: Anime[]): void {
+  for (const item of items) {
+    dirtyQueue.set(item.id, item);
+  }
   if (flushTimer) clearTimeout(flushTimer);
   flushTimer = setTimeout(() => {
     flushTimer = null;
-    try {
-      localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(entriesToPersist())));
-    } catch {
-      try {
-        const pinned = [...store.entries()].filter(([, anime]) => anime.pinned);
-        const rest = [...store.entries()]
-          .filter(([, anime]) => !anime.pinned)
-          .sort((a, b) => b[1].fetchedAt - a[1].fetchedAt)
-          .slice(0, Math.max(40, Math.floor((LIMIT - pinned.length) / 2)));
-        localStorage.setItem(KEY, JSON.stringify(Object.fromEntries([...rest, ...pinned])));
-      } catch {
-        try {
-          localStorage.setItem(KEY, '{}');
-        } catch {
-          /* storage unavailable */
-        }
+    const batch = [...dirtyQueue.values()];
+    dirtyQueue.clear();
+    void idbPutMediaBatch(batch).then(() => idbPruneExcess());
+    flushFallbackPinnedToLocalStorage();
+  }, 350);
+}
+
+let idbBootPromise: Promise<void> | null = null;
+
+export function bootstrapMediaDb(): Promise<void> {
+  if (typeof indexedDB === 'undefined') {
+    hydratedFromIdb = true;
+    return Promise.resolve();
+  }
+  if (idbBootPromise) return idbBootPromise;
+  idbBootPromise = (async () => {
+    const existingSync = [...store.values()];
+    const idbItems = await idbLoadAllMedia();
+    let added = false;
+    for (const item of idbItems) {
+      if (!item?.id || !item?.title) continue;
+      const prev = store.get(item.id);
+      if (!prev || (!prev.pinned && item.pinned)) {
+        store.set(item.id, prev?.pinned ? { ...item, pinned: true } : item);
+        added = true;
       }
     }
-  }, 400);
+    // Seed any pre-existing localStorage entries into IndexedDB once
+    if (existingSync.length > 0 && idbItems.length === 0) {
+      await idbPutMediaBatch(existingSync);
+      flushFallbackPinnedToLocalStorage();
+    }
+    hydratedFromIdb = true;
+    if (added) notifyHydration();
+  })();
+  return idbBootPromise;
+}
+
+if (typeof window !== 'undefined') {
+  void bootstrapMediaDb();
 }
 
 export const animeStore = {
+  isHydrated(): boolean {
+    return hydratedFromIdb;
+  },
+
+  subscribeHydration(listener: () => void): () => void {
+    hydrationListeners.add(listener);
+    return () => hydrationListeners.delete(listener);
+  },
+
   get(id: string): Anime | undefined {
     return store.get(id);
   },
@@ -87,28 +126,45 @@ export const animeStore = {
     return store.has(id);
   },
 
+  size(): number {
+    return store.size;
+  },
+
   remember(anime: Anime, options?: { compact?: boolean }): Anime {
     const existing = store.get(anime.id);
     const compactRequested = Boolean(options?.compact);
 
-    if (existing?.description && existing?.hasOfficialBanner && compactRequested) return existing;
+    if (existing?.description && existing?.hasOfficialBanner && compactRequested) {
+      return existing;
+    }
     if (
       existing &&
       existing.fetchedAt >= anime.fetchedAt &&
       existing.description &&
-      existing.hasOfficialBanner
+      existing.hasOfficialBanner &&
+      (!anime.characters?.length || existing.characters?.length)
     ) {
       return existing;
     }
 
-    const next = compactRequested ? compact(anime) : anime;
-    store.set(anime.id, existing?.pinned ? { ...next, pinned: true } : next);
-    persist();
+    const base = compactRequested ? stripHeavyMediaFields(anime) : anime;
+    const next: Anime = {
+      ...base,
+      pinned: Boolean(existing?.pinned || base.pinned),
+      characters: base.characters ?? existing?.characters,
+      staff: base.staff ?? existing?.staff,
+      openings: base.openings ?? existing?.openings,
+      endings: base.endings ?? existing?.endings,
+      scoreStats: base.scoreStats ?? existing?.scoreStats,
+      statusStats: base.statusStats ?? existing?.statusStats,
+    };
+    store.set(anime.id, next);
+    schedulePersist([next]);
     return next;
   },
 
   rememberMany(list: Anime[]): void {
-    let changed = false;
+    const changed: Anime[] = [];
     for (const anime of list) {
       const existing = store.get(anime.id);
       if (
@@ -117,30 +173,34 @@ export const animeStore = {
         (!existing.hasWideBanner && anime.hasWideBanner) ||
         (!existing.trailerYoutubeId && anime.trailerYoutubeId)
       ) {
-        store.set(anime.id, existing?.pinned ? { ...anime, pinned: true } : anime);
-        changed = true;
+        const merged = existing?.pinned ? { ...anime, pinned: true } : anime;
+        store.set(anime.id, merged);
+        changed.push(merged);
       }
     }
-    if (changed) persist();
+    if (changed.length > 0) schedulePersist(changed);
   },
 
   rememberImported(list: Anime[]): void {
+    const batch: Anime[] = [];
     for (const anime of list) {
       const existing = store.get(anime.id);
-      if (existing?.description && existing?.hasOfficialBanner) {
-        store.set(anime.id, { ...existing, pinned: true });
-      } else {
-        store.set(anime.id, { ...compact(anime), pinned: true });
-      }
+      const next: Anime =
+        existing?.description && existing?.hasOfficialBanner
+          ? { ...existing, pinned: true }
+          : { ...stripHeavyMediaFields(anime), pinned: true };
+      store.set(anime.id, next);
+      batch.push(next);
     }
-    persist();
+    if (batch.length > 0) schedulePersist(batch);
   },
 
   pin(id: string): void {
     const anime = store.get(id);
     if (!anime || anime.pinned) return;
-    store.set(id, { ...anime, pinned: true });
-    persist();
+    const next = { ...anime, pinned: true };
+    store.set(id, next);
+    schedulePersist([next]);
   },
 
   all(): Anime[] {
@@ -148,14 +208,20 @@ export const animeStore = {
   },
 
   clearUnpinned(): void {
+    const pinnedOnly: Anime[] = [];
     for (const [id, anime] of store.entries()) {
       if (!anime.pinned) store.delete(id);
+      else pinnedOnly.push(anime);
     }
-    persist();
+    dirtyQueue.clear();
+    void idbClearAllMedia().then(() => idbPutMediaBatch(pinnedOnly));
+    flushFallbackPinnedToLocalStorage();
   },
 
   clear(): void {
     store.clear();
+    dirtyQueue.clear();
+    void idbClearAllMedia();
     try {
       localStorage.removeItem(KEY);
       localStorage.removeItem(LEGACY_KEY);

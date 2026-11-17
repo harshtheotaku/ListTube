@@ -1,10 +1,12 @@
 import { useSyncExternalStore } from 'react';
-import { AppSettings } from '../types';
+import { AppSettings, ScoreFormat } from '../types';
 
 const SETTINGS_KEY = 'anitube.settings.v1';
 
 const DEFAULT_SETTINGS: AppSettings = {
   autoplayTrailer: false,
+  scoreFormat: 'POINT_10_DECIMAL',
+  showCommunityLinks: true,
 };
 
 function loadSettings(): AppSettings {
@@ -14,6 +16,8 @@ function loadSettings(): AppSettings {
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
     return {
       autoplayTrailer: parsed.autoplayTrailer ?? false,
+      scoreFormat: parsed.scoreFormat ?? 'POINT_10_DECIMAL',
+      showCommunityLinks: parsed.showCommunityLinks ?? true,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -44,9 +48,20 @@ export const settingsStore = {
   setAutoplayTrailer(enabled: boolean) {
     persist({ ...currentSettings, autoplayTrailer: enabled });
   },
+  setScoreFormat(scoreFormat: ScoreFormat) {
+    persist({ ...currentSettings, scoreFormat });
+  },
+  setShowCommunityLinks(showCommunityLinks: boolean) {
+    persist({ ...currentSettings, showCommunityLinks });
+  },
   replaceFromCloud(next: Partial<AppSettings>) {
     persist({
       autoplayTrailer: Boolean(next.autoplayTrailer ?? currentSettings.autoplayTrailer),
+      scoreFormat: next.scoreFormat ?? currentSettings.scoreFormat,
+      showCommunityLinks:
+        next.showCommunityLinks !== undefined
+          ? Boolean(next.showCommunityLinks)
+          : currentSettings.showCommunityLinks,
     });
   },
 };

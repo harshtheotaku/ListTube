@@ -1,32 +1,40 @@
 import { useSyncExternalStore } from 'react';
-import { Anime, LibraryState, ListEntry } from '../types';
+import { Anime, LibraryState, ListEntry, ListStatus, MediaType } from '../types';
+import { fetchByMalIds } from './anilist';
 import { animeStore } from './animeStore';
 import { commentsStore, UserComment } from './comments';
+import { publishActivity } from './community';
 import { library } from './library';
-import { profileStore, UserProfile } from './profile';
+import { profileStore, sanitizeHandle, UserProfile } from './profile';
 import { settingsStore } from './settings';
 import {
+  checkGoogleProviderEnabled,
+  exchangeAniListOAuthEdge,
+  exchangeMalOAuthEdge,
+  fetchMalOAuthListEdge,
+  getAppBaseUrl,
   supabase,
-  syncVaultCreate,
-  syncVaultPull,
-  syncVaultPush,
-  SyncVaultPayload,
   writeBackAniListEdge,
+  writeBackMalEdge,
 } from './supabase';
+import {
+  importAniListWithToken,
+  readAndClearMalPkceSession,
+} from './trackers';
 
-const CLOUD_META_KEY = 'listtube.cloud.v1';
+const CLOUD_META_KEY = 'listtube.cloud.v2';
 
 export type SyncState = 'idle' | 'syncing' | 'synced' | 'error' | 'offline';
 
 export interface CloudStatus {
-  syncCode: string | null;
-  syncVersion: number;
   userId: string | null;
   userEmail: string | null;
   state: SyncState;
   lastSyncedAt: number | null;
   lastError: string | null;
   anilistWritebackToken: string;
+  malConnected: boolean;
+  googleEnabled: boolean | null;
   isLinked: boolean;
 }
 
@@ -36,13 +44,13 @@ export interface MergedComment extends UserComment {
 }
 
 interface CloudMeta {
-  syncCode: string | null;
-  syncVersion: number;
   lastSyncedAt: number | null;
   anilistWritebackToken: string;
+  malAccessToken: string;
+  malRefreshToken: string;
+  malTokenExpiresAt: number;
   profileUpdatedAt: number;
   deletedEntryIds: string[];
-  deletedCommentIds: string[];
 }
 
 function loadMeta(): CloudMeta {
@@ -50,34 +58,34 @@ function loadMeta(): CloudMeta {
     const raw = localStorage.getItem(CLOUD_META_KEY);
     if (!raw) {
       return {
-        syncCode: null,
-        syncVersion: 0,
         lastSyncedAt: null,
         anilistWritebackToken: '',
+        malAccessToken: '',
+        malRefreshToken: '',
+        malTokenExpiresAt: 0,
         profileUpdatedAt: 0,
         deletedEntryIds: [],
-        deletedCommentIds: [],
       };
     }
     const parsed = JSON.parse(raw) as Partial<CloudMeta>;
     return {
-      syncCode: parsed.syncCode || null,
-      syncVersion: Number(parsed.syncVersion ?? 0),
       lastSyncedAt: parsed.lastSyncedAt ?? null,
       anilistWritebackToken: parsed.anilistWritebackToken ?? '',
+      malAccessToken: parsed.malAccessToken ?? '',
+      malRefreshToken: parsed.malRefreshToken ?? '',
+      malTokenExpiresAt: Number(parsed.malTokenExpiresAt ?? 0),
       profileUpdatedAt: Number(parsed.profileUpdatedAt ?? 0),
       deletedEntryIds: Array.isArray(parsed.deletedEntryIds) ? parsed.deletedEntryIds : [],
-      deletedCommentIds: Array.isArray(parsed.deletedCommentIds) ? parsed.deletedCommentIds : [],
     };
   } catch {
     return {
-      syncCode: null,
-      syncVersion: 0,
       lastSyncedAt: null,
       anilistWritebackToken: '',
+      malAccessToken: '',
+      malRefreshToken: '',
+      malTokenExpiresAt: 0,
       profileUpdatedAt: 0,
       deletedEntryIds: [],
-      deletedCommentIds: [],
     };
   }
 }
@@ -85,12 +93,15 @@ function loadMeta(): CloudMeta {
 let meta: CloudMeta = loadMeta();
 let userId: string | null = null;
 let userEmail: string | null = null;
-let syncState: SyncState = typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'idle';
+let googleEnabled: boolean | null = null;
+let syncState: SyncState =
+  typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'idle';
 let lastError: string | null = null;
 let applyingRemote = false;
 let initialized = false;
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let cachedSnapshot: CloudStatus | null = null;
+const oauthHandlers = new Set<(info: { provider: 'anilist' | 'mal'; count: number; error?: string }) => void>();
 
 const listeners = new Set<() => void>();
 
@@ -110,15 +121,15 @@ function emit() {
 function getSnapshot(): CloudStatus {
   if (!cachedSnapshot) {
     cachedSnapshot = {
-      syncCode: meta.syncCode,
-      syncVersion: meta.syncVersion,
       userId,
       userEmail,
       state: syncState,
       lastSyncedAt: meta.lastSyncedAt,
       lastError,
       anilistWritebackToken: meta.anilistWritebackToken,
-      isLinked: Boolean(meta.syncCode || userId),
+      malConnected: Boolean(meta.malAccessToken),
+      googleEnabled,
+      isLinked: Boolean(userId),
     };
   }
   return cachedSnapshot;
@@ -149,6 +160,7 @@ function compactSnapshot(anime: Anime): Anime {
     mediaLabel: anime.mediaLabel,
     episodes: anime.episodes,
     chapters: anime.chapters,
+    volumes: anime.volumes,
     score: anime.score,
     popularity: anime.popularity,
     status: anime.status,
@@ -160,38 +172,15 @@ function compactSnapshot(anime: Anime): Anime {
   };
 }
 
-function buildLocalVaultPayload(): SyncVaultPayload {
-  const lib = library.getSnapshot();
-  const profile = profileStore.getSnapshot();
-  const snapshots: Record<string, Anime> = {};
-  const idsToSnap = new Set<string>([
-    ...Object.keys(lib.entries),
-    ...(profile.favoriteAnimeIds ?? []),
-    ...(profile.favoriteMangaIds ?? []),
-  ]);
-  for (const id of idsToSnap) {
-    const a = animeStore.get(id);
-    if (a) snapshots[id] = compactSnapshot(a);
-  }
-  return {
-    library: {
-      ...lib,
-      mangaInterests: lib.mangaInterests ?? [],
-    },
-    profile,
-    profileUpdatedAt: meta.profileUpdatedAt || Date.now(),
-    settings: settingsStore.getSnapshot(),
-    comments: commentsStore.exportAll(),
-    snapshots,
-    deletedEntryIds: meta.deletedEntryIds,
-    deletedCommentIds: meta.deletedCommentIds,
-  };
-}
-
-function applyRemoteVaultPayload(remote: SyncVaultPayload): void {
+function applyRemoteData(remote: {
+  library?: Partial<LibraryState>;
+  profile?: UserProfile;
+  profileUpdatedAt?: number;
+  settings?: Partial<ReturnType<typeof settingsStore.getSnapshot>>;
+  snapshots?: Record<string, Anime>;
+}): void {
   applyingRemote = true;
   try {
-    // 1. Hydrate media snapshots so titles/covers render on a brand new device
     if (remote.snapshots && typeof remote.snapshots === 'object') {
       const items = Object.values(remote.snapshots).filter(
         (item): item is Anime => Boolean(item && typeof item === 'object' && 'id' in item && 'title' in item)
@@ -202,9 +191,8 @@ function applyRemoteVaultPayload(remote: SyncVaultPayload): void {
       }
     }
 
-    // 2. Merge library state
     const localLib = library.getSnapshot();
-    const remoteLib = remote.library as Partial<LibraryState> | undefined;
+    const remoteLib = remote.library;
     if (remoteLib) {
       const mergedEntries: Record<string, ListEntry> = { ...(localLib.entries ?? {}) };
       const deletedSet = new Set(meta.deletedEntryIds);
@@ -221,6 +209,9 @@ function applyRemoteVaultPayload(remote: SyncVaultPayload): void {
       const mergedNotInterested = Array.from(
         new Set([...(localLib.notInterested ?? []), ...(remoteLib.notInterested ?? [])])
       );
+      const mergedLiked = Array.from(
+        new Set([...(localLib.likedIds ?? []), ...(remoteLib.likedIds ?? [])])
+      );
       const mergedInterests =
         (remoteLib.interests?.length ?? 0) > 0 && (remoteLib.updatedAt ?? 0) >= localLib.updatedAt
           ? remoteLib.interests!
@@ -236,6 +227,7 @@ function applyRemoteVaultPayload(remote: SyncVaultPayload): void {
 
       library.replaceFromCloud({
         entries: mergedEntries,
+        likedIds: mergedLiked,
         notInterested: mergedNotInterested,
         events:
           (remoteLib.events?.length ?? 0) > localLib.events.length
@@ -248,40 +240,44 @@ function applyRemoteVaultPayload(remote: SyncVaultPayload): void {
       });
     }
 
-    // 3. Profile
-    const remoteProf = remote.profile as UserProfile | undefined;
+    const remoteProf = remote.profile;
     const remoteProfAt = Number(remote.profileUpdatedAt ?? 0);
     if (remoteProf && remoteProf.name && remoteProfAt >= meta.profileUpdatedAt) {
       profileStore.replaceFromCloud(remoteProf);
       meta.profileUpdatedAt = remoteProfAt;
     }
 
-    // 4. Settings
     if (remote.settings && typeof remote.settings === 'object') {
-      settingsStore.replaceFromCloud(remote.settings as { autoplayTrailer?: boolean });
-    }
-
-    // 5. Comments
-    if (remote.comments && typeof remote.comments === 'object') {
-      const localComments = commentsStore.exportAll();
-      const mergedComments: Record<string, UserComment[]> = {};
-      const allIds = new Set([...Object.keys(localComments), ...Object.keys(remote.comments)]);
-      const delSet = new Set(meta.deletedCommentIds);
-
-      for (const mId of allIds) {
-        const map = new Map<string, UserComment>();
-        for (const c of (remote.comments[mId] ?? []) as UserComment[]) {
-          if (c?.id && !delSet.has(c.id)) map.set(c.id, c);
-        }
-        for (const c of localComments[mId] ?? []) {
-          if (c?.id && !delSet.has(c.id)) map.set(c.id, c);
-        }
-        mergedComments[mId] = Array.from(map.values()).sort((a, b) => b.createdAt - a.createdAt);
-      }
-      commentsStore.replaceFromCloud(mergedComments);
+      settingsStore.replaceFromCloud(remote.settings);
     }
   } finally {
     applyingRemote = false;
+  }
+}
+
+async function seedProfileFromGoogleSession(uid: string): Promise<void> {
+  try {
+    const { data } = await supabase.auth.getUser();
+    const user = data.user;
+    if (!user || user.id !== uid) return;
+    const current = profileStore.getSnapshot();
+    const md = (user.user_metadata ?? {}) as Record<string, string | undefined>;
+    const gName = md.full_name || md.name;
+    const gAvatar = md.avatar_url || md.picture;
+    const patch: Partial<UserProfile> = {};
+    if (gName && current.name === 'ListTube Viewer') {
+      patch.name = gName;
+      patch.handle = sanitizeHandle(gName);
+    }
+    if (gAvatar && current.avatarId === 'gojo') {
+      patch.avatarId = 'google';
+      patch.avatarUrl = gAvatar;
+    }
+    if (Object.keys(patch).length > 0) {
+      profileStore.updateProfile(patch);
+    }
+  } catch {
+    /* ignore */
   }
 }
 
@@ -290,7 +286,6 @@ async function pushAuthAccount(uid: string): Promise<void> {
   const profile = profileStore.getSnapshot();
   const settings = settingsStore.getSnapshot();
 
-  // 1. Upsert profile
   const { error: profErr } = await supabase.from('profiles').upsert(
     {
       id: uid,
@@ -304,7 +299,10 @@ async function pushAuthAccount(uid: string): Promise<void> {
       favorite_anime_ids: profile.favoriteAnimeIds ?? [],
       favorite_manga_ids: profile.favoriteMangaIds ?? [],
       favorite_characters: profile.favoriteCharacters ?? [],
+      favorite_characters_data: profile.favoriteCharactersData ?? [],
       autoplay_trailer: settings.autoplayTrailer,
+      score_format: settings.scoreFormat,
+      show_community_links: settings.showCommunityLinks,
       interests: lib.interests,
       manga_interests: lib.mangaInterests ?? [],
       updated_at: new Date().toISOString(),
@@ -313,30 +311,65 @@ async function pushAuthAccount(uid: string): Promise<void> {
   );
   if (profErr) throw new Error(profErr.message);
 
-  // 2. Upsert preferences
   const { error: prefErr } = await supabase.from('user_preferences').upsert(
     {
       user_id: uid,
       not_interested: lib.notInterested,
+      liked_media: lib.likedIds,
       trackers: lib.trackers,
       recent_events: lib.events.slice(-150),
       anilist_token: meta.anilistWritebackToken || null,
+      mal_token: meta.malAccessToken || null,
+      mal_refresh_token: meta.malRefreshToken || null,
+      mal_token_expires_at: meta.malTokenExpiresAt || null,
+      show_community_links: settings.showCommunityLinks,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'user_id' }
   );
   if (prefErr) throw new Error(prefErr.message);
 
-  // 3. Upsert library_entries in batches
+  // Sync media_likes table
+  const likedSet = new Set(lib.likedIds);
+  const { data: remoteLikes } = await supabase
+    .from('media_likes')
+    .select('anime_id')
+    .eq('user_id', uid);
+  const remoteLikeSet = new Set((remoteLikes ?? []).map((r: any) => String(r.anime_id)));
+  const toInsertLikes = lib.likedIds
+    .filter((id) => !remoteLikeSet.has(id))
+    .map((animeId) => ({
+      user_id: uid,
+      anime_id: animeId,
+      media_type: animeStore.get(animeId)?.mediaType ?? (animeId.includes('manga') ? 'MANGA' : 'ANIME'),
+    }));
+  if (toInsertLikes.length > 0) {
+    await supabase.from('media_likes').upsert(toInsertLikes, { onConflict: 'user_id,anime_id' });
+  }
+  const toDeleteLikes = [...remoteLikeSet].filter((id) => !likedSet.has(id));
+  if (toDeleteLikes.length > 0) {
+    await supabase.from('media_likes').delete().eq('user_id', uid).in('anime_id', toDeleteLikes);
+  }
+
+  // Upsert rich library_entries
   const rows = Object.values(lib.entries).map((entry) => {
     const snap = animeStore.get(entry.animeId);
+    const decScore = typeof entry.score === 'number' && entry.score > 0 ? entry.score : null;
     return {
       user_id: uid,
       anime_id: entry.animeId,
       media_type: entry.mediaType ?? snap?.mediaType ?? 'ANIME',
       status: entry.status,
-      score: typeof entry.score === 'number' ? Math.round(entry.score) : null,
+      score: decScore ? Math.max(1, Math.min(10, Math.round(decScore))) : null,
+      score_decimal: decScore,
       progress: typeof entry.progress === 'number' ? entry.progress : 0,
+      progress_volumes: typeof entry.progressVolumes === 'number' ? entry.progressVolumes : 0,
+      rewatch_count: typeof entry.repeat === 'number' ? entry.repeat : 0,
+      started_at: entry.startedAt || null,
+      completed_at: entry.completedAt || null,
+      notes: entry.notes || null,
+      is_private: Boolean(entry.isPrivate),
+      custom_lists: entry.customLists ?? [],
       media_snapshot: snap ? compactSnapshot(snap) : {},
       added_at: entry.addedAt || entry.updatedAt || Date.now(),
       updated_at: entry.updatedAt || Date.now(),
@@ -351,7 +384,6 @@ async function pushAuthAccount(uid: string): Promise<void> {
     if (error) throw new Error(error.message);
   }
 
-  // 4. Propagate deletions
   if (meta.deletedEntryIds.length > 0) {
     await supabase
       .from('library_entries')
@@ -363,21 +395,28 @@ async function pushAuthAccount(uid: string): Promise<void> {
 }
 
 async function pullAuthAccount(uid: string): Promise<void> {
-  const [profRes, prefRes, entriesRes] = await Promise.all([
+  const [profRes, prefRes, entriesRes, likesRes] = await Promise.all([
     supabase
       .from('profiles')
-      .select('display_name, handle, avatar_url, avatar_id, banner_url, bio, location, favorite_anime_ids, favorite_manga_ids, favorite_characters, autoplay_trailer, interests, manga_interests, updated_at')
+      .select(
+        'display_name, handle, avatar_url, avatar_id, banner_url, bio, location, favorite_anime_ids, favorite_manga_ids, favorite_characters, favorite_characters_data, autoplay_trailer, score_format, show_community_links, interests, manga_interests, updated_at'
+      )
       .eq('id', uid)
       .maybeSingle(),
     supabase
       .from('user_preferences')
-      .select('not_interested, trackers, recent_events, anilist_token, updated_at')
+      .select(
+        'not_interested, liked_media, trackers, recent_events, anilist_token, mal_token, mal_refresh_token, mal_token_expires_at, show_community_links, updated_at'
+      )
       .eq('user_id', uid)
       .maybeSingle(),
     supabase
       .from('library_entries')
-      .select('anime_id, media_type, status, score, progress, media_snapshot, added_at, updated_at')
+      .select(
+        'anime_id, media_type, status, score, score_decimal, progress, progress_volumes, rewatch_count, started_at, completed_at, notes, is_private, custom_lists, media_snapshot, added_at, updated_at'
+      )
       .eq('user_id', uid),
+    supabase.from('media_likes').select('anime_id').eq('user_id', uid),
   ]);
 
   if (profRes.error) throw new Error(profRes.error.message);
@@ -391,12 +430,23 @@ async function pullAuthAccount(uid: string): Promise<void> {
     if (row.media_snapshot && typeof row.media_snapshot === 'object' && 'id' in row.media_snapshot) {
       remoteSnapshots[row.anime_id] = row.media_snapshot as Anime;
     }
+    const decScore =
+      row.score_decimal !== null && row.score_decimal !== undefined
+        ? Number(row.score_decimal)
+        : row.score ?? undefined;
     remoteEntries[row.anime_id] = {
       animeId: row.anime_id,
-      mediaType: (row.media_type === 'MANGA' ? 'MANGA' : 'ANIME'),
+      mediaType: row.media_type === 'MANGA' ? 'MANGA' : 'ANIME',
       status: row.status as ListEntry['status'],
-      score: row.score ?? undefined,
+      score: decScore,
       progress: row.progress ?? 0,
+      progressVolumes: row.progress_volumes ?? undefined,
+      repeat: row.rewatch_count ?? undefined,
+      startedAt: row.started_at ?? undefined,
+      completedAt: row.completed_at ?? undefined,
+      notes: row.notes ?? undefined,
+      isPrivate: Boolean(row.is_private),
+      customLists: Array.isArray(row.custom_lists) ? row.custom_lists : undefined,
       addedAt: Number(row.added_at),
       updatedAt: Number(row.updated_at),
     };
@@ -408,15 +458,30 @@ async function pullAuthAccount(uid: string): Promise<void> {
   if (prefRow?.anilist_token && !meta.anilistWritebackToken) {
     meta.anilistWritebackToken = String(prefRow.anilist_token);
   }
+  if (prefRow?.mal_token && !meta.malAccessToken) {
+    meta.malAccessToken = String(prefRow.mal_token);
+    meta.malRefreshToken = String(prefRow.mal_refresh_token ?? '');
+    meta.malTokenExpiresAt = Number(prefRow.mal_token_expires_at ?? 0);
+  }
 
-  const hasRemoteData = Boolean(profRow || prefRow || Object.keys(remoteEntries).length > 0);
+  const remoteLikedIds = Array.from(
+    new Set([
+      ...(Array.isArray(prefRow?.liked_media) ? prefRow.liked_media : []),
+      ...((likesRes.data ?? []).map((r: any) => String(r.anime_id))),
+    ])
+  );
+
+  const hasRemoteData = Boolean(
+    profRow || prefRow || Object.keys(remoteEntries).length > 0 || remoteLikedIds.length > 0
+  );
   if (hasRemoteData) {
     const profUpdatedAt = profRow?.updated_at ? new Date(profRow.updated_at).getTime() : 0;
     const prefUpdatedAt = prefRow?.updated_at ? new Date(prefRow.updated_at).getTime() : 0;
 
-    applyRemoteVaultPayload({
+    applyRemoteData({
       library: {
         entries: remoteEntries,
+        likedIds: remoteLikedIds,
         notInterested: Array.isArray(prefRow?.not_interested) ? prefRow.not_interested : [],
         events: Array.isArray(prefRow?.recent_events) ? prefRow.recent_events : [],
         trackers: Array.isArray(prefRow?.trackers) ? prefRow.trackers : [],
@@ -433,18 +498,35 @@ async function pullAuthAccount(uid: string): Promise<void> {
             bannerUrl: profRow.banner_url ?? undefined,
             bio: profRow.bio ?? undefined,
             location: profRow.location ?? undefined,
-            favoriteAnimeIds: Array.isArray(profRow.favorite_anime_ids) ? profRow.favorite_anime_ids : [],
-            favoriteMangaIds: Array.isArray(profRow.favorite_manga_ids) ? profRow.favorite_manga_ids : [],
-            favoriteCharacters: Array.isArray(profRow.favorite_characters) ? profRow.favorite_characters : [],
+            favoriteAnimeIds: Array.isArray(profRow.favorite_anime_ids)
+              ? profRow.favorite_anime_ids
+              : [],
+            favoriteMangaIds: Array.isArray(profRow.favorite_manga_ids)
+              ? profRow.favorite_manga_ids
+              : [],
+            favoriteCharacters: Array.isArray(profRow.favorite_characters)
+              ? profRow.favorite_characters
+              : [],
+            favoriteCharactersData: Array.isArray(profRow.favorite_characters_data)
+              ? profRow.favorite_characters_data
+              : [],
           }
         : undefined,
       profileUpdatedAt: profUpdatedAt,
-      settings: profRow ? { autoplayTrailer: Boolean(profRow.autoplay_trailer) } : undefined,
+      settings: profRow
+        ? {
+            autoplayTrailer: Boolean(profRow.autoplay_trailer),
+            scoreFormat: profRow.score_format ?? 'POINT_10_DECIMAL',
+            showCommunityLinks:
+              profRow.show_community_links !== undefined
+                ? Boolean(profRow.show_community_links)
+                : true,
+          }
+        : undefined,
       snapshots: remoteSnapshots,
     });
   }
 
-  // If local had entries that weren't in remote yet, push merged state back cleanly
   const localCount = Object.keys(library.getSnapshot().entries).length;
   const remoteCount = Object.keys(remoteEntries).length;
   if (localCount > remoteCount || !profRow) {
@@ -452,7 +534,209 @@ async function pullAuthAccount(uid: string): Promise<void> {
   }
 }
 
+async function ensureFreshMalToken(): Promise<string> {
+  if (!meta.malAccessToken) return '';
+  if (
+    meta.malRefreshToken &&
+    meta.malTokenExpiresAt > 0 &&
+    Date.now() > meta.malTokenExpiresAt - 120_000
+  ) {
+    try {
+      const refreshed = await exchangeMalOAuthEdge({
+        grantType: 'refresh_token',
+        refreshToken: meta.malRefreshToken,
+      });
+      meta.malAccessToken = refreshed.access_token;
+      if (refreshed.refresh_token) meta.malRefreshToken = refreshed.refresh_token;
+      if (refreshed.expires_in) meta.malTokenExpiresAt = Date.now() + refreshed.expires_in * 1000;
+      saveMeta();
+    } catch {
+      /* keep current token attempt */
+    }
+  }
+  return meta.malAccessToken;
+}
+
+export async function importFromMalOAuth(token: string): Promise<{ username: string; count: number }> {
+  const payload = await fetchMalOAuthListEdge(token);
+  const mapMalStatus: Record<string, ListStatus> = {
+    watching: 'watching',
+    reading: 'watching',
+    completed: 'completed',
+    on_hold: 'on_hold',
+    dropped: 'dropped',
+    plan_to_watch: 'planned',
+    plan_to_read: 'planned',
+  };
+
+  const toImport = async (rows: any[], mediaType: MediaType) => {
+    const malIds = rows.map((r) => Number(r?.node?.id)).filter((id) => id > 0);
+    const hydrated = malIds.length ? await fetchByMalIds(malIds, mediaType).catch(() => []) : [];
+    const byId = new Map(hydrated.map((a) => [a.malId, a]));
+
+    return rows
+      .filter((r) => r?.node?.id)
+      .map((r) => {
+        const malId = Number(r.node.id);
+        const st = r.list_status ?? {};
+        const fallback: Anime = {
+          id: `${mediaType === 'MANGA' ? 'mal-manga' : 'mal'}:${malId}`,
+          mediaType,
+          source: 'mal',
+          malId,
+          title: r.node.title || 'Untitled',
+          cover: r.node.main_picture?.large || r.node.main_picture?.medium || '',
+          banner: r.node.main_picture?.large || r.node.main_picture?.medium || '',
+          description: '',
+          genres: (r.node.genres ?? []).map((g: any) => g.name).filter(Boolean),
+          tags: [],
+          studios:
+            mediaType === 'MANGA'
+              ? (r.node.authors ?? [])
+                  .map((a: any) => `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim())
+                  .filter(Boolean)
+              : (r.node.studios ?? []).map((s: any) => s.name).filter(Boolean),
+          year: r.node.start_season?.year ?? undefined,
+          format: r.node.media_type?.toUpperCase() ?? undefined,
+          episodes: r.node.num_episodes || undefined,
+          chapters: r.node.num_chapters || undefined,
+          volumes: r.node.num_volumes || undefined,
+          score: r.node.mean || undefined,
+          popularity: r.node.num_list_users || 0,
+          streaming: [],
+          similar: [],
+          fetchedAt: Date.now(),
+        };
+        const progress =
+          mediaType === 'MANGA' ? st.num_chapters_read : st.num_episodes_watched;
+        return {
+          anime: byId.get(malId) ?? fallback,
+          status: mapMalStatus[st.status ?? 'plan_to_watch'] ?? 'planned',
+          score: st.score && st.score > 0 ? st.score : undefined,
+          progress: progress && progress > 0 ? progress : undefined,
+          progressVolumes: st.num_volumes_read || undefined,
+          repeat: (mediaType === 'MANGA' ? st.num_times_reread : st.num_times_rewatched) || undefined,
+          startedAt: st.start_date || undefined,
+          completedAt: st.finish_date || undefined,
+          notes: st.comments || undefined,
+        };
+      });
+  };
+
+  const [animeItems, mangaItems] = await Promise.all([
+    toImport(payload.anime ?? [], 'ANIME'),
+    toImport(payload.manga ?? [], 'MANGA'),
+  ]);
+  const allItems = [...animeItems, ...mangaItems];
+  animeStore.rememberImported(allItems.map((i) => i.anime));
+  library.importEntries(allItems, {
+    provider: 'mal',
+    username: payload.user?.name || 'MAL User',
+    connectedAt: Date.now(),
+    imported: allItems.length,
+    oauthConnected: true,
+    avatar: payload.user?.picture,
+  });
+
+  return { username: payload.user?.name || 'MAL User', count: allItems.length };
+}
+
 let prevEntriesSnapshot: Record<string, ListEntry> = { ...library.getSnapshot().entries };
+
+async function processOAuthReturnUrl(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  const search = new URLSearchParams(window.location.search);
+  const hash = window.location.hash;
+
+  // 1. AniList Implicit Grant return (#access_token=... without leading #/)
+  if (hash.startsWith('#access_token=')) {
+    const hashParams = new URLSearchParams(hash.slice(1));
+    const token = hashParams.get('access_token');
+    window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+    if (token) {
+      try {
+        const imported = await importAniListWithToken(token);
+        animeStore.rememberImported(imported.entries.map((e) => e.anime));
+        library.importEntries(imported.entries, imported.account);
+        cloudSync.setAniListWritebackToken(token);
+        oauthHandlers.forEach((cb) =>
+          cb({ provider: 'anilist', count: imported.entries.length })
+        );
+      } catch (err) {
+        oauthHandlers.forEach((cb) =>
+          cb({
+            provider: 'anilist',
+            count: 0,
+            error: err instanceof Error ? err.message : 'AniList OAuth failed',
+          })
+        );
+      }
+    }
+    return;
+  }
+
+  // 2. MAL PKCE Authorization Code or AniList Code return (?code=...&state=mal:... | anilist:...)
+  const code = search.get('code');
+  const state = search.get('state') ?? '';
+  if (!code) return;
+
+  if (state.startsWith('mal:')) {
+    const pkce = readAndClearMalPkceSession();
+    search.delete('code');
+    search.delete('state');
+    const cleanSearch = search.toString() ? `?${search.toString()}` : '';
+    window.history.replaceState({}, '', `${window.location.pathname}${cleanSearch}`);
+    if (!pkce || pkce.state !== state) return;
+    try {
+      const tokens = await exchangeMalOAuthEdge({
+        grantType: 'authorization_code',
+        code,
+        codeVerifier: pkce.verifier,
+        redirectUri: getAppBaseUrl(),
+        clientId: pkce.clientId,
+      });
+      cloudSync.setMalOAuthTokens({
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresIn: tokens.expires_in,
+      });
+      const res = await importFromMalOAuth(tokens.access_token);
+      oauthHandlers.forEach((cb) => cb({ provider: 'mal', count: res.count }));
+    } catch (err) {
+      oauthHandlers.forEach((cb) =>
+        cb({
+          provider: 'mal',
+          count: 0,
+          error: err instanceof Error ? err.message : 'MyAnimeList OAuth failed',
+        })
+      );
+    }
+  } else if (state.startsWith('anilist:')) {
+    search.delete('code');
+    search.delete('state');
+    const cleanSearch = search.toString() ? `?${search.toString()}` : '';
+    window.history.replaceState({}, '', `${window.location.pathname}${cleanSearch}`);
+    try {
+      const tokens = await exchangeAniListOAuthEdge({
+        code,
+        redirectUri: getAppBaseUrl(),
+      });
+      const imported = await importAniListWithToken(tokens.access_token);
+      animeStore.rememberImported(imported.entries.map((e) => e.anime));
+      library.importEntries(imported.entries, imported.account);
+      cloudSync.setAniListWritebackToken(tokens.access_token);
+      oauthHandlers.forEach((cb) => cb({ provider: 'anilist', count: imported.entries.length }));
+    } catch (err) {
+      oauthHandlers.forEach((cb) =>
+        cb({
+          provider: 'anilist',
+          count: 0,
+          error: err instanceof Error ? err.message : 'AniList OAuth failed',
+        })
+      );
+    }
+  }
+}
 
 function handleLibraryChange() {
   if (applyingRemote) {
@@ -462,36 +746,153 @@ function handleLibraryChange() {
 
   const current = library.getSnapshot().entries;
 
-  // Detect deletions
-  for (const prevId of Object.keys(prevEntriesSnapshot)) {
-    if (!current[prevId] && !meta.deletedEntryIds.includes(prevId)) {
-      meta.deletedEntryIds = [...meta.deletedEntryIds, prevId].slice(-200);
+  // Detect deletions -> queue DB deletion + push 2-way Delete to AniList & MAL OAuth!
+  for (const [prevId, prevEntry] of Object.entries(prevEntriesSnapshot)) {
+    if (!current[prevId]) {
+      if (!meta.deletedEntryIds.includes(prevId)) {
+        meta.deletedEntryIds = [...meta.deletedEntryIds, prevId].slice(-200);
+      }
+      const snap = animeStore.get(prevId);
+      const rawAniId =
+        snap?.anilistId ?? (prevId.startsWith('anilist') ? Number(prevId.split(':')[1]) : 0);
+      const rawMalId =
+        snap?.malId ?? (prevId.startsWith('mal') ? Number(prevId.split(':')[1]) : 0);
+      const mType: 'ANIME' | 'MANGA' =
+        prevEntry.mediaType === 'MANGA' || prevId.includes('manga') ? 'MANGA' : 'ANIME';
+
+      if (meta.anilistWritebackToken && rawAniId > 0) {
+        void writeBackAniListEdge({
+          token: meta.anilistWritebackToken,
+          mediaId: rawAniId,
+          action: 'delete',
+        });
+      }
+      if (meta.malAccessToken && rawMalId > 0) {
+        void ensureFreshMalToken().then((tk) => {
+          if (tk) {
+            void writeBackMalEdge({
+              token: tk,
+              malId: rawMalId,
+              mediaType: mType,
+              action: 'delete',
+            });
+          }
+        });
+      }
     }
   }
 
-  // Detect additions/edits -> optional AniList bidirectional write-back
-  if (meta.anilistWritebackToken) {
-    for (const [id, nextEntry] of Object.entries(current)) {
-      const prev = prevEntriesSnapshot[id];
-      const changed =
-        !prev ||
-        prev.status !== nextEntry.status ||
-        prev.progress !== nextEntry.progress ||
-        prev.score !== nextEntry.score;
+  // Detect additions/edits -> bidirectional write-back + social activity stream
+  for (const [id, nextEntry] of Object.entries(current)) {
+    const prev = prevEntriesSnapshot[id];
+    const changed =
+      !prev ||
+      prev.status !== nextEntry.status ||
+      prev.progress !== nextEntry.progress ||
+      prev.progressVolumes !== nextEntry.progressVolumes ||
+      prev.score !== nextEntry.score ||
+      prev.repeat !== nextEntry.repeat ||
+      prev.startedAt !== nextEntry.startedAt ||
+      prev.completedAt !== nextEntry.completedAt ||
+      prev.notes !== nextEntry.notes ||
+      prev.isPrivate !== nextEntry.isPrivate;
 
-      if (changed) {
-        const snap = animeStore.get(id);
-        const rawAnilistId =
-          snap?.anilistId ?? (id.startsWith('anilist') ? Number(id.split(':')[1]) : 0);
-        if (rawAnilistId > 0) {
-          void writeBackAniListEdge({
-            token: meta.anilistWritebackToken,
-            mediaId: rawAnilistId,
+    if (!changed) continue;
+    meta.deletedEntryIds = meta.deletedEntryIds.filter((d) => d !== id);
+
+    const snap = animeStore.get(id);
+    const mType: 'ANIME' | 'MANGA' =
+      nextEntry.mediaType === 'MANGA' || id.includes('manga') ? 'MANGA' : 'ANIME';
+    const rawAnilistId =
+      snap?.anilistId ?? (id.startsWith('anilist') ? Number(id.split(':')[1]) : 0);
+    const rawMalId = snap?.malId ?? (id.startsWith('mal') ? Number(id.split(':')[1]) : 0);
+
+    if (meta.anilistWritebackToken && rawAnilistId > 0) {
+      void writeBackAniListEdge({
+        token: meta.anilistWritebackToken,
+        mediaId: rawAnilistId,
+        action: 'save',
+        status: nextEntry.status,
+        score: nextEntry.score,
+        progress: nextEntry.progress,
+        progressVolumes: nextEntry.progressVolumes,
+        repeat: nextEntry.repeat,
+        startedAt: nextEntry.startedAt,
+        completedAt: nextEntry.completedAt,
+        notes: nextEntry.notes,
+        isPrivate: nextEntry.isPrivate,
+      });
+    }
+
+    if (meta.malAccessToken && rawMalId > 0) {
+      void ensureFreshMalToken().then((tk) => {
+        if (tk) {
+          void writeBackMalEdge({
+            token: tk,
+            malId: rawMalId,
+            mediaType: mType,
+            action: 'save',
             status: nextEntry.status,
             score: nextEntry.score,
             progress: nextEntry.progress,
+            progressVolumes: nextEntry.progressVolumes,
+            repeat: nextEntry.repeat,
+            startedAt: nextEntry.startedAt,
+            completedAt: nextEntry.completedAt,
+            notes: nextEntry.notes,
           });
         }
+      });
+    }
+
+    // Publish public social activity item when Google-authenticated & entry isn't private
+    if (userId && !nextEntry.isPrivate && snap) {
+      const profile = profileStore.getSnapshot();
+      const unitLabel = mType === 'MANGA' ? 'ch' : 'ep';
+      if (!prev || prev.status !== nextEntry.status) {
+        const label =
+          nextEntry.status === 'completed'
+            ? 'Completed'
+            : nextEntry.status === 'watching'
+            ? mType === 'MANGA'
+              ? 'Started reading'
+              : 'Started watching'
+            : nextEntry.status === 'planned'
+            ? 'Added to Plan list'
+            : nextEntry.status === 'on_hold'
+            ? 'Put on hold'
+            : 'Dropped';
+        void publishActivity({
+          userId,
+          profile,
+          kind: 'status',
+          anime: snap,
+          progress: nextEntry.progress,
+          score: nextEntry.score,
+          statusText: `${label} ${snap.title}`,
+        });
+      } else if (nextEntry.score && prev?.score !== nextEntry.score) {
+        void publishActivity({
+          userId,
+          profile,
+          kind: 'score',
+          anime: snap,
+          score: nextEntry.score,
+          statusText: `Rated ${snap.title} ${nextEntry.score}/10`,
+        });
+      } else if (
+        nextEntry.progress &&
+        prev?.progress !== nextEntry.progress &&
+        (nextEntry.progress % 5 === 0 || nextEntry.progress === 1)
+      ) {
+        void publishActivity({
+          userId,
+          profile,
+          kind: 'progress',
+          anime: snap,
+          progress: nextEntry.progress,
+          statusText: `Read/Watched ${unitLabel} ${nextEntry.progress} of ${snap.title}`,
+        });
       }
     }
   }
@@ -509,7 +910,7 @@ function handleProfileChange() {
 }
 
 function scheduleDebouncedSync() {
-  if (!meta.syncCode && !userId) return;
+  if (!userId) return;
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     syncState = 'offline';
     emit();
@@ -532,19 +933,23 @@ export const cloudSync = {
     settingsStore.subscribe(() => {
       if (!applyingRemote) scheduleDebouncedSync();
     });
-    commentsStore.subscribe(() => {
-      if (!applyingRemote) scheduleDebouncedSync();
-    });
 
     window.addEventListener('online', () => {
-      syncState = meta.syncCode || userId ? 'syncing' : 'idle';
+      syncState = userId ? 'syncing' : 'idle';
       emit();
-      if (meta.syncCode || userId) void cloudSync.syncNow();
+      if (userId) void cloudSync.syncNow();
     });
     window.addEventListener('offline', () => {
       syncState = 'offline';
       emit();
     });
+
+    void checkGoogleProviderEnabled().then((enabled) => {
+      googleEnabled = enabled;
+      emit();
+    });
+
+    void processOAuthReturnUrl();
 
     void supabase.auth.getSession().then(({ data }) => {
       const sessionUser = data.session?.user;
@@ -552,9 +957,7 @@ export const cloudSync = {
         userId = sessionUser.id;
         userEmail = sessionUser.email ?? null;
         emit();
-        void cloudSync.syncNow();
-      } else if (meta.syncCode) {
-        void cloudSync.pullVault(meta.syncCode);
+        void seedProfileFromGoogleSession(sessionUser.id).then(() => cloudSync.syncNow());
       }
     });
 
@@ -563,7 +966,7 @@ export const cloudSync = {
       userEmail = session?.user?.email ?? null;
       emit();
       if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
-        void cloudSync.syncNow();
+        void seedProfileFromGoogleSession(session.user.id).then(() => cloudSync.syncNow());
       }
     });
   },
@@ -573,10 +976,15 @@ export const cloudSync = {
     return () => listeners.delete(listener);
   },
 
+  onOAuthCompleted(listener: (info: { provider: 'anilist' | 'mal'; count: number; error?: string }) => void): () => void {
+    oauthHandlers.add(listener);
+    return () => oauthHandlers.delete(listener);
+  },
+
   getSnapshot,
 
   async syncNow(): Promise<void> {
-    if (!meta.syncCode && !userId) return;
+    if (!userId) return;
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       syncState = 'offline';
       emit();
@@ -588,19 +996,8 @@ export const cloudSync = {
     emit();
 
     try {
-      if (userId) {
-        await pullAuthAccount(userId);
-        await pushAuthAccount(userId);
-      }
-
-      if (meta.syncCode) {
-        const res = await syncVaultPush(meta.syncCode, buildLocalVaultPayload());
-        applyRemoteVaultPayload(res.payload);
-        meta.syncVersion = res.version;
-        meta.deletedEntryIds = [];
-        meta.deletedCommentIds = [];
-      }
-
+      await pullAuthAccount(userId);
+      await pushAuthAccount(userId);
       meta.lastSyncedAt = Date.now();
       saveMeta();
       syncState = 'synced';
@@ -608,127 +1005,35 @@ export const cloudSync = {
       emit();
     } catch (err) {
       syncState = 'error';
-      lastError = err instanceof Error ? err.message : 'Cloud sync failed';
+      lastError = err instanceof Error ? err.message : 'Google account sync failed';
       emit();
     }
   },
 
-  async createSyncCode(): Promise<string> {
+  async signInWithGoogle(): Promise<void> {
     syncState = 'syncing';
     lastError = null;
     emit();
-    try {
-      const res = await syncVaultCreate(buildLocalVaultPayload());
-      meta.syncCode = res.code;
-      meta.syncVersion = res.version;
-      meta.lastSyncedAt = Date.now();
-      meta.deletedEntryIds = [];
-      meta.deletedCommentIds = [];
-      saveMeta();
-      syncState = 'synced';
-      emit();
-      return res.code;
-    } catch (err) {
+
+    const enabled = await checkGoogleProviderEnabled();
+    googleEnabled = enabled;
+    if (!enabled) {
       syncState = 'error';
-      lastError = err instanceof Error ? err.message : 'Could not create cloud sync code';
+      lastError =
+        'Google Sign-In provider is disabled in Supabase Auth Dashboard. Enable Authentication → Providers → Google with your Google OAuth Client ID & Secret.';
       emit();
-      throw err;
+      throw new Error(lastError);
     }
-  },
 
-  async linkSyncCode(rawCode: string): Promise<void> {
-    const clean = rawCode.toUpperCase().replace(/[^A-Z0-9-]/g, '').trim();
-    if (clean.length < 8) throw new Error('Enter a valid Sync Code (e.g. LT-XXXX-XXXX-XXXX)');
-
-    syncState = 'syncing';
-    lastError = null;
-    emit();
-    try {
-      const pulled = await syncVaultPull(clean);
-      applyRemoteVaultPayload(pulled.payload);
-      const pushed = await syncVaultPush(clean, buildLocalVaultPayload());
-      applyRemoteVaultPayload(pushed.payload);
-
-      meta.syncCode = clean;
-      meta.syncVersion = pushed.version;
-      meta.lastSyncedAt = Date.now();
-      meta.deletedEntryIds = [];
-      meta.deletedCommentIds = [];
-      saveMeta();
-      syncState = 'synced';
-      emit();
-    } catch (err) {
-      syncState = 'error';
-      lastError = err instanceof Error ? err.message : 'Sync code not found';
-      emit();
-      throw err;
-    }
-  },
-
-  async pullVault(code: string): Promise<void> {
-    syncState = 'syncing';
-    emit();
-    try {
-      const pulled = await syncVaultPull(code);
-      applyRemoteVaultPayload(pulled.payload);
-      meta.syncVersion = pulled.version;
-      meta.lastSyncedAt = Date.now();
-      saveMeta();
-      syncState = 'synced';
-      emit();
-    } catch (err) {
-      syncState = 'error';
-      lastError = err instanceof Error ? err.message : 'Failed to pull vault';
-      emit();
-    }
-  },
-
-  unlinkSyncCode(): void {
-    meta.syncCode = null;
-    meta.syncVersion = 0;
-    saveMeta();
-    syncState = userId ? 'idle' : 'idle';
-    lastError = null;
-    emit();
-  },
-
-  async signUpWithEmail(email: string, password: string): Promise<{ message: string; activeSession: boolean }> {
-    syncState = 'syncing';
-    lastError = null;
-    emit();
-    const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
-    if (error) {
-      syncState = 'error';
-      lastError = error.message;
-      emit();
-      throw new Error(error.message);
-    }
-    if (data.session?.user) {
-      userId = data.session.user.id;
-      userEmail = data.session.user.email ?? email.trim();
-      await pushAuthAccount(userId);
-      meta.lastSyncedAt = Date.now();
-      saveMeta();
-      syncState = 'synced';
-      emit();
-      return { message: 'Account created and synced to cloud.', activeSession: true };
-    }
-    syncState = meta.syncCode ? 'synced' : 'idle';
-    emit();
-    return {
-      message:
-        'Check your inbox to verify your email address, or use a 1-tap Sync Code below right now.',
-      activeSession: false,
-    };
-  },
-
-  async signInWithEmail(email: string, password: string): Promise<void> {
-    syncState = 'syncing';
-    lastError = null;
-    emit();
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: getAppBaseUrl(),
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'select_account',
+        },
+      },
     });
     if (error) {
       syncState = 'error';
@@ -736,43 +1041,20 @@ export const cloudSync = {
       emit();
       throw new Error(error.message);
     }
-    userId = data.user?.id ?? null;
-    userEmail = data.user?.email ?? email.trim();
-    if (userId) {
-      await pullAuthAccount(userId);
-      await pushAuthAccount(userId);
-    }
-    meta.lastSyncedAt = Date.now();
-    saveMeta();
-    syncState = 'synced';
-    emit();
-  },
-
-  async sendMagicLink(email: string): Promise<string> {
-    const redirectTo =
-      typeof window !== 'undefined' && window.location.protocol.startsWith('http')
-        ? `${window.location.origin}${window.location.pathname}`
-        : undefined;
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: redirectTo },
-    });
-    if (error) throw new Error(error.message);
-    return `Magic sign-in link sent to ${email.trim()}. Check your email!`;
   },
 
   async signOut(): Promise<void> {
     await supabase.auth.signOut();
     userId = null;
     userEmail = null;
-    syncState = meta.syncCode ? 'synced' : 'idle';
+    syncState = 'idle';
     lastError = null;
     emit();
   },
 
   async uploadAvatar(file: File): Promise<string> {
     if (!userId) {
-      throw new Error('Sign in with Cloud Account to store high-res avatars in Storage');
+      throw new Error('Sign in with Google first to store custom avatars');
     }
     const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
     const path = `${userId}/avatar-${Date.now()}.${ext}`;
@@ -792,15 +1074,42 @@ export const cloudSync = {
     if (userId) scheduleDebouncedSync();
   },
 
+  setMalOAuthTokens(tokens: { accessToken: string; refreshToken?: string; expiresIn?: number }) {
+    meta.malAccessToken = tokens.accessToken.trim();
+    meta.malRefreshToken = tokens.refreshToken?.trim() ?? meta.malRefreshToken;
+    meta.malTokenExpiresAt = tokens.expiresIn ? Date.now() + tokens.expiresIn * 1000 : 0;
+    saveMeta();
+    emit();
+    if (userId) scheduleDebouncedSync();
+  },
+
+  clearMalOAuthTokens() {
+    meta.malAccessToken = '';
+    meta.malRefreshToken = '';
+    meta.malTokenExpiresAt = 0;
+    saveMeta();
+    emit();
+    if (userId) scheduleDebouncedSync();
+  },
+
+  async refreshMalTokenAndImport(): Promise<number> {
+    const tk = await ensureFreshMalToken();
+    if (!tk) throw new Error('Connect MyAnimeList via OAuth first');
+    const res = await importFromMalOAuth(tk);
+    return res.count;
+  },
+
   async loadCommentsForMedia(animeId: string): Promise<MergedComment[]> {
     const localList: MergedComment[] = commentsStore.getForAnime(animeId).map((c) => ({ ...c }));
     try {
       const { data, error } = await supabase
         .from('comments')
-        .select('id, anime_id, user_id, author_name, author_handle, author_avatar, body, likes, created_at, comment_likes(user_id)')
+        .select(
+          'id, anime_id, episode_number, parent_id, user_id, author_name, author_handle, author_avatar, body, likes, created_at, comment_likes(user_id)'
+        )
         .eq('anime_id', animeId)
         .order('created_at', { ascending: false })
-        .limit(60);
+        .limit(100);
 
       if (error || !data) return localList;
 
@@ -811,6 +1120,8 @@ export const cloudSync = {
         byId.set(row.id, {
           id: row.id,
           animeId: row.anime_id,
+          episodeNumber: row.episode_number ?? null,
+          parentId: row.parent_id ?? null,
           authorName: row.author_name,
           authorHandle: row.author_handle,
           authorAvatar: row.author_avatar,
@@ -835,8 +1146,13 @@ export const cloudSync = {
     }
   },
 
-  async postComment(animeId: string, text: string, profile: UserProfile): Promise<MergedComment | undefined> {
-    const item = commentsStore.addComment(animeId, text, profile);
+  async postComment(
+    animeId: string,
+    text: string,
+    profile: UserProfile,
+    options?: { episodeNumber?: number | null; parentId?: string | null }
+  ): Promise<MergedComment | undefined> {
+    const item = commentsStore.addComment(animeId, text, profile, options);
     if (!item) return undefined;
 
     if (userId) {
@@ -844,6 +1160,8 @@ export const cloudSync = {
         await supabase.from('comments').insert({
           id: item.id,
           anime_id: animeId,
+          episode_number: options?.episodeNumber ?? null,
+          parent_id: options?.parentId ?? null,
           user_id: userId,
           author_name: profile.name,
           author_handle: profile.handle,
@@ -853,7 +1171,7 @@ export const cloudSync = {
         });
         return { ...item, isCloud: true, ownerUserId: userId };
       } catch {
-        /* local + Sync Vault still holds comment */
+        /* local backup remains */
       }
     }
     return item;
@@ -881,8 +1199,6 @@ export const cloudSync = {
   },
 
   async deleteComment(animeId: string, comment: MergedComment): Promise<void> {
-    meta.deletedCommentIds = [...meta.deletedCommentIds, comment.id].slice(-200);
-    saveMeta();
     commentsStore.deleteComment(animeId, comment.id);
     if (userId && comment.ownerUserId === userId) {
       try {
@@ -894,7 +1210,6 @@ export const cloudSync = {
   },
 };
 
-// Auto-initialize once in browser runtime
 cloudSync.init();
 
 export function useCloudSync(): CloudStatus {

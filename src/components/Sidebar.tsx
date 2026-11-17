@@ -10,12 +10,13 @@ import {
   Sparkles,
   Tv,
   User,
+  Users,
 } from 'lucide-react';
 import { Anime, LibraryState, MediaType, TrackerAccount } from '../types';
 import { animeStore } from '../services/animeStore';
 import { franchiseNameOf } from '../services/franchise';
 
-export type AppTab = 'home' | 'explore' | 'list' | 'schedule' | 'news' | 'you';
+export type AppTab = 'home' | 'explore' | 'list' | 'schedule' | 'news' | 'feed' | 'you';
 
 interface SidebarProps {
   active: AppTab;
@@ -69,6 +70,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const miniNav: { id: AppTab; label: string; icon: React.ElementType }[] = [
       { id: 'home', label: 'Home', icon: Home },
       { id: 'explore', label: 'Explore', icon: Compass },
+      { id: 'feed', label: 'Feed', icon: Users },
       { id: 'schedule', label: 'Schedule', icon: Calendar },
       { id: 'news', label: 'News', icon: Newspaper },
       { id: 'list', label: 'Subs', icon: Tv },
@@ -118,11 +120,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       <div className="my-3 border-t border-white/[0.08]" />
 
-      {/* Live Hub: Schedule & News */}
+      {/* Live Hub: Feed, Schedule & News */}
       <div className="space-y-0.5">
         <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-[#AAAAAA]">
-          Live Hub
+          Community &amp; Live Hub
         </p>
+        <SidebarItem
+          icon={Users}
+          label="Activity & People"
+          active={active === 'feed'}
+          onClick={() => onNavigate('feed')}
+        />
         <SidebarItem
           icon={Calendar}
           label="Airing Schedule"

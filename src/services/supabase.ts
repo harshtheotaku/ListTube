@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { isNativeCapacitor } from './platform';
 
 export const SUPABASE_URL = 'https://kypafzhjdwnhsiyltndw.supabase.co';
 export const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_p-5p3ZhELAxfZu7IaaC2rA_1vCIv22R';
@@ -6,6 +7,7 @@ export const EDGE_API_BASE = `${SUPABASE_URL}/functions/v1/listtube-api`;
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
+    flowType: 'pkce',
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
@@ -19,31 +21,11 @@ export interface ResolvedReaderLink {
   isDirect: boolean;
 }
 
-export interface SyncVaultPayload {
-  library: {
-    entries: Record<string, unknown>;
-    notInterested: string[];
-    events: unknown[];
-    trackers: unknown[];
-    interests: string[];
-    mangaInterests: string[];
-    updatedAt: number;
-  };
-  profile?: unknown;
-  profileUpdatedAt?: number;
-  settings?: unknown;
-  comments?: Record<string, unknown[]>;
-  snapshots?: Record<string, unknown>;
-  deletedEntryIds?: string[];
-  deletedCommentIds?: string[];
-}
-
-export interface SyncVaultResponse {
-  ok?: boolean;
-  code: string;
-  payload: SyncVaultPayload;
-  version: number;
-  updatedAt: string;
+export interface OAuthServerStatus {
+  anilistConfigured: boolean;
+  anilistClientId?: string;
+  malConfigured: boolean;
+  malClientId?: string;
 }
 
 async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs = 12000): Promise<Response> {
@@ -60,6 +42,37 @@ async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs
     });
   } finally {
     clearTimeout(timer);
+  }
+}
+
+export function getAppBaseUrl(): string {
+  if (typeof window === 'undefined' || isNativeCapacitor() || !window.location.protocol.startsWith('http')) {
+    return 'https://harshtheotaku.github.io/ListTube';
+  }
+  const base = import.meta.env.BASE_URL && import.meta.env.BASE_URL !== './'
+    ? import.meta.env.BASE_URL
+    : window.location.pathname.startsWith('/ListTube')
+      ? '/ListTube/'
+      : '/';
+  return `${window.location.origin}${base}`.replace(/\/+$/, '');
+}
+
+export function buildSharePreviewUrl(mediaId: string): string {
+  const origin = getAppBaseUrl();
+  const qs = new URLSearchParams({ id: mediaId, origin });
+  return `${EDGE_API_BASE}/share?${qs.toString()}`;
+}
+
+export async function checkGoogleProviderEnabled(): Promise<boolean> {
+  try {
+    const res = await fetchWithTimeout(`${SUPABASE_URL}/auth/v1/settings`, {
+      headers: { Accept: 'application/json' },
+    }, 6000);
+    if (!res.ok) return false;
+    const json = (await res.json()) as { external?: { google?: boolean } };
+    return Boolean(json.external?.google);
+  } catch {
+    return false;
   }
 }
 
@@ -88,9 +101,6 @@ export async function edgeAniList<T>(
   return json.data;
 }
 
-/**
- * Fetches CORS-free HTML from MyAnimeList (/reviews or /userrecs) via Postgres-cached Edge Proxy.
- */
 export async function fetchMalEdgeHtml(
   type: 'anime' | 'manga',
   id: number,
@@ -111,9 +121,27 @@ export async function fetchMalEdgeHtml(
   }
 }
 
-/**
- * Fetches CORS-free ANN RSS XML or MAL News HTML via Postgres-cached Edge Proxy.
- */
+export async function fetchMalThemesEdge(
+  id: number
+): Promise<{ openings: string[]; endings: string[] }> {
+  if (!id) return { openings: [], endings: [] };
+  try {
+    const res = await fetchWithTimeout(
+      `${EDGE_API_BASE}/mal-themes?id=${id}`,
+      { headers: { Accept: 'application/json' } },
+      9500
+    );
+    if (!res.ok) return { openings: [], endings: [] };
+    const json = (await res.json()) as { openings?: string[]; endings?: string[] };
+    return {
+      openings: Array.isArray(json.openings) ? json.openings : [],
+      endings: Array.isArray(json.endings) ? json.endings : [],
+    };
+  } catch {
+    return { openings: [], endings: [] };
+  }
+}
+
 export async function fetchNewsEdge(source: 'ann' | 'mal', id = 0): Promise<string> {
   try {
     const res = await fetchWithTimeout(
@@ -131,10 +159,6 @@ export async function fetchNewsEdge(source: 'ann' | 'mal', id = 0): Promise<stri
 
 const linkCache = new Map<string, ResolvedReaderLink[]>();
 
-/**
- * Resolves direct official/community destination URLs from Supabase reader_catalog
- * (89k+ Comix.to manga, 9.2k+ KotoPlay & Re Anime anime) with clean search fallbacks.
- */
 export async function resolveExternalLinksEdge(
   mediaType: 'ANIME' | 'MANGA',
   title: string,
@@ -184,53 +208,88 @@ export async function resolveMangaReadersEdge(
   return resolveExternalLinksEdge('MANGA', title, romaji);
 }
 
-export async function syncVaultCreate(payload: SyncVaultPayload): Promise<SyncVaultResponse> {
-  const res = await fetchWithTimeout(
-    `${EDGE_API_BASE}/sync`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'create', payload }),
-    },
-    12000
-  );
-  const json = await res.json();
-  if (!res.ok || json.error) throw new Error(json.error || `Sync create failed (${res.status})`);
-  return json as SyncVaultResponse;
+export async function fetchOAuthServerStatus(): Promise<OAuthServerStatus> {
+  try {
+    const res = await fetchWithTimeout(`${EDGE_API_BASE}/oauth/status`, {
+      headers: { Accept: 'application/json' },
+    }, 6000);
+    if (!res.ok) return { anilistConfigured: false, malConfigured: false };
+    return (await res.json()) as OAuthServerStatus;
+  } catch {
+    return { anilistConfigured: false, malConfigured: false };
+  }
 }
 
-export async function syncVaultPush(code: string, payload: SyncVaultPayload): Promise<SyncVaultResponse> {
-  const res = await fetchWithTimeout(
-    `${EDGE_API_BASE}/sync`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'push', code, payload }),
-    },
-    12000
-  );
+export async function exchangeAniListOAuthEdge(params: {
+  code: string;
+  redirectUri: string;
+  clientId?: string;
+  clientSecret?: string;
+}): Promise<{ access_token: string; expires_in?: number }> {
+  const res = await fetchWithTimeout(`${EDGE_API_BASE}/oauth/anilist/exchange`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
   const json = await res.json();
-  if (!res.ok || json.error) throw new Error(json.error || `Sync push failed (${res.status})`);
-  return json as SyncVaultResponse;
+  if (!res.ok || !json.access_token) {
+    throw new Error(json?.error || `AniList OAuth exchange HTTP ${res.status}`);
+  }
+  return json;
 }
 
-export async function syncVaultPull(code: string): Promise<{ payload: SyncVaultPayload; version: number; updatedAt: string }> {
-  const res = await fetchWithTimeout(
-    `${EDGE_API_BASE}/sync?code=${encodeURIComponent(code)}`,
-    { headers: { Accept: 'application/json' } },
-    10000
-  );
+export async function exchangeMalOAuthEdge(params: {
+  grantType: 'authorization_code' | 'refresh_token';
+  code?: string;
+  codeVerifier?: string;
+  redirectUri?: string;
+  refreshToken?: string;
+  clientId?: string;
+  clientSecret?: string;
+}): Promise<{ access_token: string; refresh_token?: string; expires_in?: number }> {
+  const res = await fetchWithTimeout(`${EDGE_API_BASE}/oauth/mal/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
   const json = await res.json();
-  if (!res.ok || json.error) throw new Error(json.error || `Sync code not found (${res.status})`);
-  return json as { payload: SyncVaultPayload; version: number; updatedAt: string };
+  if (!res.ok || !json.access_token) {
+    throw new Error(json?.error || `MAL OAuth token HTTP ${res.status}`);
+  }
+  return json;
+}
+
+export async function fetchMalOAuthListEdge(token: string): Promise<{
+  user: { id: number; name: string; picture?: string };
+  anime: any[];
+  manga: any[];
+}> {
+  const res = await fetchWithTimeout(`${EDGE_API_BASE}/oauth/mal/list`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  }, 15000);
+  const json = await res.json();
+  if (!res.ok || json.error) {
+    throw new Error(json?.error || `MAL OAuth list HTTP ${res.status}`);
+  }
+  return json;
 }
 
 export async function writeBackAniListEdge(params: {
   token: string;
   mediaId: number;
+  action?: 'save' | 'delete';
   status?: string;
   score?: number;
   progress?: number;
+  progressVolumes?: number;
+  repeat?: number;
+  startedAt?: string;
+  completedAt?: string;
+  notes?: string;
+  isPrivate?: boolean;
 }): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await fetchWithTimeout(
@@ -248,6 +307,40 @@ export async function writeBackAniListEdge(params: {
     }
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Write-back network error' };
+    return { ok: false, error: err instanceof Error ? err.message : 'AniList write-back error' };
+  }
+}
+
+export async function writeBackMalEdge(params: {
+  token: string;
+  malId: number;
+  mediaType: 'ANIME' | 'MANGA';
+  action?: 'save' | 'delete';
+  status?: string;
+  score?: number;
+  progress?: number;
+  progressVolumes?: number;
+  repeat?: number;
+  startedAt?: string;
+  completedAt?: string;
+  notes?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(
+      `${EDGE_API_BASE}/mal-writeback`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      },
+      10000
+    );
+    const json = await res.json();
+    if (!res.ok || json.error) {
+      return { ok: false, error: json.error || `HTTP ${res.status}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'MAL write-back error' };
   }
 }

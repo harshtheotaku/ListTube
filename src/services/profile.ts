@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { FavoriteCharacterItem } from '../types';
 
 export interface CharacterAvatar {
   id: string;
@@ -26,6 +27,7 @@ export interface UserProfile {
   favoriteAnimeIds?: string[];
   favoriteMangaIds?: string[];
   favoriteCharacters?: string[];
+  favoriteCharactersData?: FavoriteCharacterItem[];
 }
 
 export const BUILT_IN_BANNERS: ProfileBanner[] = [
@@ -179,9 +181,10 @@ const DEFAULT_PROFILE: UserProfile = {
   favoriteAnimeIds: [],
   favoriteMangaIds: [],
   favoriteCharacters: [],
+  favoriteCharactersData: [],
 };
 
-function sanitizeHandle(raw: string): string {
+export function sanitizeHandle(raw: string): string {
   const clean = raw
     .trim()
     .replace(/^@+/, '')
@@ -211,6 +214,9 @@ function loadProfile(): UserProfile {
       favoriteAnimeIds: Array.isArray(parsed.favoriteAnimeIds) ? parsed.favoriteAnimeIds : [],
       favoriteMangaIds: Array.isArray(parsed.favoriteMangaIds) ? parsed.favoriteMangaIds : [],
       favoriteCharacters: Array.isArray(parsed.favoriteCharacters) ? parsed.favoriteCharacters : [],
+      favoriteCharactersData: Array.isArray(parsed.favoriteCharactersData)
+        ? parsed.favoriteCharactersData
+        : [],
     };
   } catch {
     return DEFAULT_PROFILE;
@@ -260,6 +266,8 @@ export const profileStore = {
       favoriteAnimeIds: patch.favoriteAnimeIds ?? currentProfile.favoriteAnimeIds ?? [],
       favoriteMangaIds: patch.favoriteMangaIds ?? currentProfile.favoriteMangaIds ?? [],
       favoriteCharacters: patch.favoriteCharacters ?? currentProfile.favoriteCharacters ?? [],
+      favoriteCharactersData:
+        patch.favoriteCharactersData ?? currentProfile.favoriteCharactersData ?? [],
     });
   },
   selectCharacterAvatar(character: CharacterAvatar) {
@@ -296,7 +304,7 @@ export const profileStore = {
     const exists = current.includes(mediaId);
     const next = exists
       ? current.filter((id) => id !== mediaId)
-      : [mediaId, ...current].slice(0, 10);
+      : [mediaId, ...current].slice(0, 12);
     save({
       ...currentProfile,
       [key]: next,
@@ -308,10 +316,23 @@ export const profileStore = {
     const exists = current.includes(charId);
     const next = exists
       ? current.filter((id) => id !== charId)
-      : [...current, charId].slice(0, 6);
+      : [...current, charId].slice(0, 12);
     save({
       ...currentProfile,
       favoriteCharacters: next,
+    });
+    return !exists;
+  },
+  toggleFavoriteCharacterItem(item: FavoriteCharacterItem): boolean {
+    const current = currentProfile.favoriteCharactersData ?? [];
+    const key = String(item.id);
+    const exists = current.some((c) => String(c.id) === key);
+    const next = exists
+      ? current.filter((c) => String(c.id) !== key)
+      : [item, ...current].slice(0, 12);
+    save({
+      ...currentProfile,
+      favoriteCharactersData: next,
     });
     return !exists;
   },
@@ -339,6 +360,9 @@ export const profileStore = {
       favoriteCharacters: Array.isArray(next.favoriteCharacters)
         ? next.favoriteCharacters
         : currentProfile.favoriteCharacters ?? [],
+      favoriteCharactersData: Array.isArray(next.favoriteCharactersData)
+        ? next.favoriteCharactersData
+        : currentProfile.favoriteCharactersData ?? [],
     });
   },
 };

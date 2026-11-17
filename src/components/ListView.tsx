@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Minus, Plus, Star, Tv } from 'lucide-react';
+import { Lock, Minus, Plus, Repeat, Star, Tv } from 'lucide-react';
 import {
   Anime,
   LibraryState,
@@ -13,6 +13,8 @@ import {
 import { animeStore } from '../services/animeStore';
 import { franchiseNameOf } from '../services/franchise';
 import { library } from '../services/library';
+import { formatUserScore } from '../services/scoring';
+import { useSettings } from '../services/settings';
 
 interface ListViewProps {
   libraryState: LibraryState;
@@ -33,10 +35,9 @@ interface RowProps {
 }
 
 const Row: React.FC<RowProps> = ({ anime, entry, onOpen, onOpenChannel }) => {
+  const settings = useSettings();
   const isManga = (anime.mediaType ?? 'ANIME') === 'MANGA';
-  const total = isManga
-    ? anime.chapters ?? 0
-    : anime.episodes ?? (anime.nextEpisode ? Math.max(1, anime.nextEpisode.number - 1) : 0);
+  const total = isManga ? anime.chapters ?? 0 : anime.episodes ?? 0;
   const progress = entry.progress ?? 0;
   const percent = total > 0 ? Math.min(100, (progress / total) * 100) : 0;
   const channelName = franchiseNameOf(anime.title);
@@ -129,7 +130,7 @@ const Row: React.FC<RowProps> = ({ anime, entry, onOpen, onOpenChannel }) => {
           </div>
 
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${
                   entry.status === 'watching'
@@ -142,12 +143,23 @@ const Row: React.FC<RowProps> = ({ anime, entry, onOpen, onOpenChannel }) => {
               {entry.score ? (
                 <span className="flex items-center gap-0.5 text-[11px] font-bold text-amber-300">
                   <Star className="h-3 w-3 fill-current" />
-                  {entry.score}/10
+                  {formatUserScore(entry.score, settings.scoreFormat)}
                 </span>
               ) : null}
+              {entry.repeat ? (
+                <span className="flex items-center gap-0.5 text-[10.5px] font-semibold text-neutral-300">
+                  <Repeat className="h-3 w-3 text-[#3EA6FF]" />
+                  {entry.repeat}x
+                </span>
+              ) : null}
+              {entry.isPrivate && (
+                <span title="Private entry" className="text-[#AAAAAA]">
+                  <Lock className="h-3 w-3" />
+                </span>
+              )}
             </div>
 
-            {total > 0 && entry.status === 'watching' && (
+            {(entry.status === 'watching' || entry.status === 'on_hold' || progress > 0) && (
               <div className="flex items-center gap-1 rounded-full bg-[#272727] px-2 py-0.5">
                 <button
                   type="button"
@@ -157,13 +169,13 @@ const Row: React.FC<RowProps> = ({ anime, entry, onOpen, onOpenChannel }) => {
                 >
                   <Minus className="h-3 w-3" />
                 </button>
-                <span className="min-w-[36px] text-center text-[11px] font-bold text-white">
-                  {progress}/{total}
+                <span className="min-w-[44px] text-center text-[11px] font-bold text-white">
+                  {total > 0 ? `${progress}/${total}` : `${progress} ${isManga ? 'ch' : 'ep'}`}
                 </span>
                 <button
                   type="button"
                   aria-label="Increase progress"
-                  onClick={() => library.setProgress(anime.id, Math.min(total, progress + 1))}
+                  onClick={() => library.setProgress(anime.id, progress + 1)}
                   className="p-1 text-[#AAAAAA] hover:text-white"
                 >
                   <Plus className="h-3 w-3" />

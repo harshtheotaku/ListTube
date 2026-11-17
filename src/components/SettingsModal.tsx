@@ -1,5 +1,6 @@
 import React from 'react';
-import { Play, RefreshCw, Settings, X } from 'lucide-react';
+import { Globe, Play, RefreshCw, Settings, Star, X } from 'lucide-react';
+import { SCORE_FORMATS } from '../services/scoring';
 import { settingsStore, useSettings } from '../services/settings';
 import { animeStore } from '../services/animeStore';
 import { toast } from './Toast';
@@ -24,7 +25,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md overflow-hidden rounded-t-3xl border border-white/[0.1] bg-[#1F1F1F] text-white shadow-2xl sm:rounded-3xl">
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/[0.1] bg-[#1F1F1F] text-white shadow-2xl sm:rounded-3xl">
         <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4">
           <h2 id="settings-title" className="flex items-center gap-2 text-[16px] font-bold text-white">
             <Settings className="h-4 w-4 text-[#FF0000]" />
@@ -41,6 +42,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         </div>
 
         <div className="space-y-4 p-5">
+          {/* Score Scale Preference (MAL / AniList Parity) */}
+          <div className="space-y-2.5 rounded-2xl border border-white/[0.08] bg-[#272727] p-4">
+            <div className="flex items-start gap-3">
+              <Star className="mt-0.5 h-5 w-5 shrink-0 fill-amber-300 text-amber-300" />
+              <div>
+                <p className="text-[13.5px] font-bold text-white">Scoring System</p>
+                <p className="mt-0.5 text-[11.5px] text-[#AAAAAA]">
+                  Choose how your ratings display and enter across lists and reviews (AniList 100-pt / 0.5 decimal synced seamlessly).
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              {SCORE_FORMATS.map((fmt) => {
+                const active = settings.scoreFormat === fmt.id;
+                return (
+                  <button
+                    key={fmt.id}
+                    type="button"
+                    onClick={() => {
+                      settingsStore.setScoreFormat(fmt.id);
+                      toast(`Scoring scale set to ${fmt.label}`);
+                    }}
+                    className={`rounded-xl border px-3 py-2 text-left text-[11.5px] font-semibold transition ${
+                      active
+                        ? 'border-[#FF0000] bg-[#FF0000]/15 text-white'
+                        : 'border-white/[0.08] bg-[#181818] text-[#CCCCCC] hover:border-white/25'
+                    }`}
+                  >
+                    {fmt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Auto-play Trailer Toggle */}
           <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-[#272727] p-4">
             <div className="flex items-start gap-3">
@@ -69,14 +105,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </button>
           </div>
 
+          {/* External Community Links Toggle */}
+          <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-[#272727] p-4">
+            <div className="flex items-start gap-3">
+              <Globe className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
+              <div>
+                <p className="text-[13.5px] font-bold text-white">Community Watch &amp; Reader Links</p>
+                <p className="mt-0.5 text-[11.5px] text-[#AAAAAA]">
+                  Show external community shortcuts (Comix.to, Kagane, Re Anime, KotoPlay, AnimePahe) alongside Official platforms.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.showCommunityLinks}
+              onClick={() => settingsStore.setShowCommunityLinks(!settings.showCommunityLinks)}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+                settings.showCommunityLinks ? 'bg-emerald-500' : 'bg-white/20'
+              }`}
+            >
+              <span
+                className={`block h-5 w-5 translate-y-0.5 rounded-full bg-white shadow transition-transform ${
+                  settings.showCommunityLinks ? 'translate-x-5.5' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
+
           {/* Clear Thumbnail / Artwork Cache */}
           <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-[#272727] p-4">
             <div className="flex items-start gap-3">
               <RefreshCw className="mt-0.5 h-5 w-5 shrink-0 text-[#3EA6FF]" />
               <div>
-                <p className="text-[13.5px] font-bold text-white">Refresh Artwork Cache</p>
+                <p className="text-[13.5px] font-bold text-white">Refresh IndexedDB Cache</p>
                 <p className="mt-0.5 text-[11.5px] text-[#AAAAAA]">
-                  Re-fetch high-resolution banners &amp; posters from AniList while keeping your watchlist intact.
+                  Re-fetch high-resolution banners, characters &amp; posters while keeping your watchlist pinned.
                 </p>
               </div>
             </div>
@@ -84,7 +148,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               type="button"
               onClick={() => {
                 animeStore.clearUnpinned();
-                toast('Artwork cache refreshed — reload to fetch latest banners');
+                toast('IndexedDB cache refreshed — reload to fetch latest metadata');
               }}
               className="shrink-0 rounded-xl bg-white/10 px-3 py-1.5 text-[11.5px] font-bold text-white hover:bg-white/20"
             >

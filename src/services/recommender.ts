@@ -28,6 +28,7 @@ const EVENT_WEIGHT: Record<string, number> = {
   add: 0.45,
   progress: 0.35,
   complete: 0.85,
+  like: 0.75,
   hold: -0.3,
   drop: -1.15,
   not_interested: -2.2,

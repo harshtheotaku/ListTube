@@ -1,4 +1,15 @@
-import { Anime, MediaType, RelatedTitle, ScheduleItem, StreamingLink } from '../types';
+import {
+  Anime,
+  CharacterCredit,
+  FavoriteCharacterItem,
+  MediaType,
+  RelatedTitle,
+  ScheduleItem,
+  ScoreDistBucket,
+  StaffCredit,
+  StatusDistBucket,
+  StreamingLink,
+} from '../types';
 import { animeStore } from './animeStore';
 import { edgeAniList } from './supabase';
 
@@ -128,6 +139,38 @@ interface AniListMedia {
   } | null;
   recommendations?: {
     nodes?: ({ rating?: number; mediaRecommendation?: AniListMedia | null } | null)[];
+  } | null;
+  characters?: {
+    edges?: {
+      role?: string | null;
+      node?: {
+        id: number;
+        name?: { full?: string | null; native?: string | null } | null;
+        image?: { large?: string | null; medium?: string | null } | null;
+        description?: string | null;
+        siteUrl?: string | null;
+      } | null;
+      voiceActors?: {
+        id?: number;
+        languageV2?: string | null;
+        name?: { full?: string | null } | null;
+        image?: { medium?: string | null } | null;
+      }[] | null;
+    }[];
+  } | null;
+  staffEdges?: {
+    edges?: {
+      role?: string | null;
+      node?: {
+        id: number;
+        name?: { full?: string | null; native?: string | null } | null;
+        image?: { medium?: string | null } | null;
+      } | null;
+    }[];
+  } | null;
+  stats?: {
+    scoreDistribution?: { score: number; amount: number }[] | null;
+    statusDistribution?: { status: string; amount: number }[] | null;
   } | null;
 }
 
@@ -414,6 +457,9 @@ const PAGE_QUERY = `
     $countryOfOrigin: CountryCode
     $season: MediaSeason
     $seasonYear: Int
+    $startDateGreater: FuzzyDateInt
+    $startDateLesser: FuzzyDateInt
+    $averageScoreGreater: Int
     $search: String
   ) {
     Page(page: $page, perPage: $perPage) {
@@ -428,6 +474,9 @@ const PAGE_QUERY = `
         countryOfOrigin: $countryOfOrigin
         season: $season
         seasonYear: $seasonYear
+        startDate_greater: $startDateGreater
+        startDate_lesser: $startDateLesser
+        averageScore_greater: $averageScoreGreater
         search: $search
       ) { ${CORE} }
     }
@@ -440,18 +489,21 @@ export interface QueryOptions {
   genres?: string[];
   tags?: string[];
   formats?: string[];
-  status?: 'RELEASING' | 'FINISHED' | 'NOT_YET_RELEASED';
+  status?: 'RELEASING' | 'FINISHED' | 'NOT_YET_RELEASED' | 'HIATUS';
   countryOfOrigin?: 'JP' | 'KR' | 'CN';
   season?: 'WINTER' | 'SPRING' | 'SUMMER' | 'FALL';
   seasonYear?: number;
+  yearMin?: number;
+  yearMax?: number;
+  minScore?: number;
   search?: string;
   page?: number;
   perPage?: number;
 }
 
-export async function queryMedia(options: QueryOptions): Promise<Anime[]> {
+export function buildPageQueryVariables(options: QueryOptions): Record<string, unknown> {
   const mediaType = options.mediaType ?? 'ANIME';
-  const variables = {
+  return {
     type: mediaType,
     page: options.page ?? 1,
     perPage: Math.min(options.perPage ?? 30, 50),
@@ -463,8 +515,19 @@ export async function queryMedia(options: QueryOptions): Promise<Anime[]> {
     countryOfOrigin: options.countryOfOrigin,
     season: mediaType === 'ANIME' ? options.season : undefined,
     seasonYear: mediaType === 'ANIME' ? options.seasonYear : undefined,
-    search: options.search,
+    startDateGreater: options.yearMin ? Number(`${options.yearMin}0000`) : undefined,
+    startDateLesser: options.yearMax ? Number(`${options.yearMax}1231`) : undefined,
+    averageScoreGreater:
+      typeof options.minScore === 'number' && options.minScore > 0
+        ? Math.min(99, Math.round(options.minScore * 10))
+        : undefined,
+    search: options.search?.trim() ? options.search.trim() : undefined,
   };
+}
+
+export async function queryMedia(options: QueryOptions): Promise<Anime[]> {
+  const mediaType = options.mediaType ?? 'ANIME';
+  const variables = buildPageQueryVariables(options);
   const key = `q:${JSON.stringify(variables)}`;
   return cached(key, async () => {
     const data = await request<PageResponse>(PAGE_QUERY, variables);
@@ -579,6 +642,38 @@ const DETAIL_QUERY = `
     Media(id: $id, type: $type) {
       ${CORE}
       externalLinks { site url type language }
+      characters(sort: [ROLE, RELEVANCE, FAVOURITES_DESC], perPage: 18) {
+        edges {
+          role
+          node {
+            id
+            name { full native }
+            image { large medium }
+            description(asHtml: false)
+            siteUrl
+          }
+          voiceActors(sort: [ROLE, RELEVANCE]) {
+            id
+            languageV2
+            name { full }
+            image { medium }
+          }
+        }
+      }
+      staffEdges: staff(sort: RELEVANCE, perPage: 12) {
+        edges {
+          role
+          node {
+            id
+            name { full native }
+            image { medium }
+          }
+        }
+      }
+      stats {
+        scoreDistribution { score amount }
+        statusDistribution { status amount }
+      }
       relations {
         edges {
           relationType
@@ -604,6 +699,67 @@ export async function fetchDetail(id: number, mediaType: MediaType = 'ANIME'): P
       if (!data.Media) return null;
       const media = data.Media;
       const anime = mapMedia(media, mediaType);
+
+      // Characters & Voice Actors (Japanese + English)
+      const characters: CharacterCredit[] = [];
+      for (const edge of media.characters?.edges ?? []) {
+        if (!edge.node?.name?.full) continue;
+        const img = edge.node.image?.large || edge.node.image?.medium || '';
+        const vas = edge.voiceActors ?? [];
+        const jp =
+          vas.find((v) => v.languageV2?.toLowerCase() === 'japanese') ??
+          vas.find((v) => v.languageV2?.toLowerCase() !== 'english');
+        const en = vas.find((v) => v.languageV2?.toLowerCase() === 'english');
+        characters.push({
+          id: edge.node.id,
+          name: edge.node.name.full,
+          nativeName: edge.node.name.native ?? undefined,
+          image: img,
+          role: edge.role ?? 'SUPPORTING',
+          description: cleanDescription(edge.node.description),
+          siteUrl: edge.node.siteUrl ?? undefined,
+          voiceActor: jp?.name?.full
+            ? {
+                id: jp.id,
+                name: jp.name.full,
+                image: jp.image?.medium ?? undefined,
+                language: jp.languageV2 ?? 'Japanese',
+              }
+            : undefined,
+          englishVoiceActor: en?.name?.full
+            ? {
+                id: en.id,
+                name: en.name.full,
+                image: en.image?.medium ?? undefined,
+              }
+            : undefined,
+        });
+      }
+      anime.characters = characters;
+
+      // Staff credits
+      const staffList: StaffCredit[] = [];
+      for (const edge of media.staffEdges?.edges ?? []) {
+        if (!edge.node?.name?.full) continue;
+        staffList.push({
+          id: edge.node.id,
+          name: edge.node.name.full,
+          nativeName: edge.node.name.native ?? undefined,
+          image: edge.node.image?.medium ?? undefined,
+          role: edge.role ?? 'Staff',
+        });
+      }
+      anime.staff = staffList;
+
+      // Score & Status distributions
+      anime.scoreStats = (media.stats?.scoreDistribution ?? []).map<ScoreDistBucket>((b) => ({
+        score: b.score,
+        amount: b.amount,
+      }));
+      anime.statusStats = (media.stats?.statusDistribution ?? []).map<StatusDistBucket>((b) => ({
+        status: b.status,
+        amount: b.amount,
+      }));
 
       const fullRelatedItems: Anime[] = [];
 
@@ -652,6 +808,63 @@ export async function fetchDetail(id: number, mediaType: MediaType = 'ANIME'): P
       });
 
       return anime;
+    },
+    30 * 60 * 1000
+  );
+}
+
+const CHARACTER_SEARCH_QUERY = `
+  query CharSearch($search: String, $perPage: Int) {
+    Page(page: 1, perPage: $perPage) {
+      characters(search: $search, sort: [SEARCH_MATCH, FAVOURITES_DESC]) {
+        id
+        name { full }
+        image { large medium }
+        media(perPage: 1, sort: POPULARITY_DESC) {
+          nodes { title { english romaji } }
+        }
+      }
+    }
+  }
+`;
+
+export async function searchAniListCharacters(
+  query: string,
+  limit = 16
+): Promise<FavoriteCharacterItem[]> {
+  const clean = query.trim();
+  if (!clean) return [];
+  return cached(
+    `char-search:${clean.toLowerCase()}:${limit}`,
+    async () => {
+      type CharRes = {
+        Page?: {
+          characters?: {
+            id: number;
+            name?: { full?: string | null } | null;
+            image?: { large?: string | null; medium?: string | null } | null;
+            media?: { nodes?: { title?: { english?: string | null; romaji?: string | null } }[] };
+          }[];
+        };
+      };
+      const data = await request<CharRes>(CHARACTER_SEARCH_QUERY, {
+        search: clean,
+        perPage: limit,
+      });
+      const out: FavoriteCharacterItem[] = [];
+      for (const ch of data.Page?.characters ?? []) {
+        const name = ch.name?.full?.trim();
+        const image = ch.image?.large || ch.image?.medium || '';
+        if (!name || !image) continue;
+        const firstMedia = ch.media?.nodes?.[0]?.title;
+        out.push({
+          id: ch.id,
+          name,
+          image,
+          mediaTitle: firstMedia?.english || firstMedia?.romaji || undefined,
+        });
+      }
+      return out;
     },
     30 * 60 * 1000
   );

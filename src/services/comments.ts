@@ -4,6 +4,8 @@ import { UserProfile } from './profile';
 export interface UserComment {
   id: string;
   animeId: string;
+  episodeNumber?: number | null;
+  parentId?: string | null;
   authorName: string;
   authorHandle: string;
   authorAvatar: string;
@@ -50,7 +52,12 @@ export const commentsStore = {
   getForAnime(animeId: string): UserComment[] {
     return commentsState[animeId] ?? EMPTY_LIST;
   },
-  addComment(animeId: string, text: string, profile: UserProfile): UserComment | undefined {
+  addComment(
+    animeId: string,
+    text: string,
+    profile: UserProfile,
+    options?: { episodeNumber?: number | null; parentId?: string | null }
+  ): UserComment | undefined {
     const trimmed = text.trim();
     if (!trimmed) return undefined;
     const id =
@@ -60,6 +67,8 @@ export const commentsStore = {
     const item: UserComment = {
       id,
       animeId,
+      episodeNumber: options?.episodeNumber ?? null,
+      parentId: options?.parentId ?? null,
       authorName: profile.name,
       authorHandle: profile.handle,
       authorAvatar: profile.avatarUrl,
@@ -94,14 +103,11 @@ export const commentsStore = {
     if (!list) return;
     persist({
       ...commentsState,
-      [animeId]: list.filter((c) => c.id !== commentId),
+      [animeId]: list.filter((c) => c.id !== commentId && c.parentId !== commentId),
     });
   },
   exportAll(): CommentsMap {
     return commentsState;
-  },
-  replaceFromCloud(next: CommentsMap) {
-    persist(next);
   },
 };
 

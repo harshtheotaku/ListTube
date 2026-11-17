@@ -7,6 +7,7 @@ import {
   Filter,
   Loader2,
   SearchX,
+  SlidersHorizontal,
   Sparkles,
   X,
 } from 'lucide-react';
@@ -17,8 +18,6 @@ import {
   MAL_DEMOGRAPHICS,
   MAL_THEMES,
   currentSeason,
-  fetchByGenre,
-  fetchByTag,
   fetchMostFavorited,
   fetchPopular,
   fetchReleasing,
@@ -95,11 +94,24 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const [chart, setChart] = useState<CatalogChartKey>('mal_home');
   const [dirGroup, setDirGroup] = useState<DirectoryGroup>('genres');
   const [directoryExpanded, setDirectoryExpanded] = useState(false);
-  const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  // Multi-axis combinable filters (AniList / MAL Advanced Browse parity)
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedSeason, setSelectedSeason] = useState<{ season: SeasonName; year: number } | null>(
     null
   );
+  const [filterFormat, setFilterFormat] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<
+    '' | 'RELEASING' | 'FINISHED' | 'NOT_YET_RELEASED' | 'HIATUS'
+  >('');
+  const [filterCountry, setFilterCountry] = useState<'' | 'JP' | 'KR' | 'CN'>('');
+  const [filterYearMin, setFilterYearMin] = useState<number>(0);
+  const [filterYearMax, setFilterYearMax] = useState<number>(0);
+  const [filterMinScore, setFilterMinScore] = useState<number>(0);
+  const [filterSort, setFilterSort] = useState<string>('POPULARITY_DESC');
+  const [hideMyList, setHideMyList] = useState(false);
 
   const [shelves, setShelves] = useState<CatalogShelfData[]>([]);
   const [shelvesLoading, setShelvesLoading] = useState(true);
@@ -152,9 +164,17 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
   useEffect(() => {
     setChart('mal_home');
-    setSelectedGenre(null);
-    setSelectedTag(null);
+    setSelectedGenres([]);
+    setSelectedTags([]);
     setSelectedSeason(null);
+    setFilterFormat('');
+    setFilterStatus('');
+    setFilterCountry('');
+    setFilterYearMin(0);
+    setFilterYearMax(0);
+    setFilterMinScore(0);
+    setFilterSort('POPULARITY_DESC');
+    setHideMyList(false);
     setDirectoryExpanded(false);
   }, [mediaType]);
 
@@ -163,12 +183,23 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     return () => clearTimeout(timer);
   }, [query]);
 
+  const multiAxisCount =
+    selectedGenres.length +
+    selectedTags.length +
+    (selectedSeason ? 1 : 0) +
+    (filterFormat ? 1 : 0) +
+    (filterStatus ? 1 : 0) +
+    (filterCountry ? 1 : 0) +
+    (filterYearMin ? 1 : 0) +
+    (filterYearMax ? 1 : 0) +
+    (filterMinScore ? 1 : 0) +
+    (filterSort !== 'POPULARITY_DESC' ? 1 : 0) +
+    (hideMyList ? 1 : 0);
+
+  const hasMultiAxisFilter = multiAxisCount > 0;
+
   const isCatalogHome =
-    !debounced.trim() &&
-    chart === 'mal_home' &&
-    !selectedGenre &&
-    !selectedTag &&
-    !selectedSeason;
+    !debounced.trim() && chart === 'mal_home' && !hasMultiAxisFilter;
 
   // Load MAL-style homepage shelves when on MAL Catalog overview
   useEffect(() => {
@@ -320,20 +351,30 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         const searchTerm = debounced.trim();
         let result: Anime[] = [];
 
-        if (searchTerm) {
+        if (searchTerm && !hasMultiAxisFilter) {
           result = await searchSmart(searchTerm, mediaType, 24);
-        } else if (selectedTag) {
-          result = await fetchByTag(selectedTag, 24, ['POPULARITY_DESC', 'SCORE_DESC'], mediaType, targetPage);
-        } else if (selectedGenre) {
-          result = await fetchByGenre(
-            selectedGenre,
-            24,
-            ['SCORE_DESC', 'POPULARITY_DESC'],
+        } else if (hasMultiAxisFilter) {
+          const sortArr =
+            searchTerm && filterSort === 'POPULARITY_DESC'
+              ? ['SEARCH_MATCH', 'POPULARITY_DESC']
+              : [filterSort, filterSort === 'SCORE_DESC' ? 'POPULARITY_DESC' : 'SCORE_DESC'];
+          result = await queryMedia({
             mediaType,
-            targetPage
-          );
-        } else if (selectedSeason && !isManga) {
-          result = await fetchSeasonal(24, 'ANIME', targetPage, selectedSeason.season, selectedSeason.year);
+            search: searchTerm || undefined,
+            genres: selectedGenres.length ? selectedGenres : undefined,
+            tags: selectedTags.length ? selectedTags : undefined,
+            formats: filterFormat ? [filterFormat] : undefined,
+            status: filterStatus || undefined,
+            countryOfOrigin: filterCountry || undefined,
+            season: !isManga && selectedSeason ? selectedSeason.season : undefined,
+            seasonYear: !isManga && selectedSeason ? selectedSeason.year : undefined,
+            yearMin: filterYearMin || undefined,
+            yearMax: filterYearMax || undefined,
+            minScore: filterMinScore || undefined,
+            sort: sortArr,
+            perPage: 24,
+            page: targetPage,
+          });
         } else {
           switch (chart) {
             case 'top':
@@ -440,13 +481,17 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
         if (id !== requestId.current) return;
 
+        const filtered = hideMyList
+          ? result.filter((item) => !library.entries[item.id])
+          : result;
+
         setItems((previous) => {
-          if (!append) return result;
+          if (!append) return filtered;
           const seen = new Set(previous.map((a) => a.id));
-          return [...previous, ...result.filter((a) => !seen.has(a.id))];
+          return [...previous, ...filtered.filter((a) => !seen.has(a.id))];
         });
         setPage(targetPage);
-        setHasMore(!searchTerm && result.length >= 18);
+        setHasMore((!searchTerm || hasMultiAxisFilter) && result.length >= 18);
       } catch (err) {
         if (id === requestId.current) {
           console.warn('[explore] failed to load', err);
@@ -459,7 +504,25 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         }
       }
     },
-    [debounced, selectedGenre, selectedTag, selectedSeason, chart, mediaType, isManga]
+    [
+      debounced,
+      hasMultiAxisFilter,
+      selectedGenres,
+      selectedTags,
+      selectedSeason,
+      filterFormat,
+      filterStatus,
+      filterCountry,
+      filterYearMin,
+      filterYearMax,
+      filterMinScore,
+      filterSort,
+      hideMyList,
+      chart,
+      mediaType,
+      isManga,
+      library.entries,
+    ]
   );
 
   useEffect(() => {
@@ -482,26 +545,70 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     return () => observer.disconnect();
   }, [hasMore, loading, loadingMore, page, loadGrid]);
 
+  const toggleGenre = (genre: string) => {
+    setSelectedGenres((prev) =>
+      prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]
+    );
+  };
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
+
   const activeLabel = useMemo(() => {
     if (debounced.trim()) return `Results for "${debounced.trim()}"`;
-    if (selectedGenre) return `${selectedGenre} · MAL ${isManga ? 'Manga' : 'Anime'} Directory`;
-    if (selectedTag) return `${selectedTag} · ${isManga ? 'Manga' : 'Anime'} Directory`;
-    if (selectedSeason) {
-      return `${SEASON_LABEL[selectedSeason.season]} ${selectedSeason.year} Seasonal Chart`;
+    if (hasMultiAxisFilter) {
+      const parts: string[] = [];
+      if (selectedGenres.length) parts.push(selectedGenres.join(' + '));
+      if (selectedTags.length) parts.push(selectedTags.join(' + '));
+      if (filterFormat) parts.push(filterFormat);
+      if (filterCountry) parts.push(filterCountry);
+      if (selectedSeason) parts.push(`${SEASON_LABEL[selectedSeason.season]} ${selectedSeason.year}`);
+      if (filterMinScore) parts.push(`${filterMinScore}★+`);
+      if (filterYearMin || filterYearMax) {
+        parts.push(`${filterYearMin || '...'}–${filterYearMax || '...'}`);
+      }
+      return parts.length
+        ? `Filtered ${isManga ? 'Manga' : 'Anime'}: ${parts.join(' · ')}`
+        : `Custom Filtered ${isManga ? 'Manga' : 'Anime'}`;
     }
     if (chart === 'mal_home') return `More Top & Popular ${isManga ? 'Manga' : 'Anime'}`;
     return charts.find((c) => c.id === chart)?.label ?? 'Explore';
-  }, [debounced, selectedGenre, selectedTag, selectedSeason, chart, isManga, charts]);
+  }, [
+    debounced,
+    hasMultiAxisFilter,
+    selectedGenres,
+    selectedTags,
+    filterFormat,
+    filterCountry,
+    selectedSeason,
+    filterMinScore,
+    filterYearMin,
+    filterYearMax,
+    chart,
+    isManga,
+    charts,
+  ]);
 
   const hasActiveFilter = Boolean(
-    debounced.trim() || selectedGenre || selectedTag || selectedSeason || chart !== 'mal_home'
+    debounced.trim() || hasMultiAxisFilter || chart !== 'mal_home'
   );
 
   const clearAllFilters = () => {
     setChart('mal_home');
-    setSelectedGenre(null);
-    setSelectedTag(null);
+    setSelectedGenres([]);
+    setSelectedTags([]);
     setSelectedSeason(null);
+    setFilterFormat('');
+    setFilterStatus('');
+    setFilterCountry('');
+    setFilterYearMin(0);
+    setFilterYearMax(0);
+    setFilterMinScore(0);
+    setFilterSort('POPULARITY_DESC');
+    setHideMyList(false);
   };
 
   const quickDirectoryItems =
@@ -521,19 +628,13 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
           {charts.map((c) => {
             const isSelected =
-              !debounced.trim() &&
-              !selectedGenre &&
-              !selectedTag &&
-              !selectedSeason &&
-              chart === c.id;
+              !debounced.trim() && !hasMultiAxisFilter && chart === c.id;
             return (
               <button
                 key={c.id}
                 type="button"
                 onClick={() => {
-                  setSelectedGenre(null);
-                  setSelectedTag(null);
-                  setSelectedSeason(null);
+                  clearAllFilters();
                   setChart(c.id);
                 }}
                 className={`shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition ${
@@ -548,8 +649,46 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           })}
         </div>
 
-        {/* Row 2: MAL Directory Quick Switcher (Genres / Themes / Demographics + Full Directory Toggle) */}
+        {/* Row 2: MAL Directory + Multi-Axis Advanced Filter Trigger */}
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+          <button
+            type="button"
+            onClick={() => {
+              setAdvancedOpen((v) => !v);
+              setDirectoryExpanded(false);
+            }}
+            className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[11.5px] font-bold transition ${
+              advancedOpen || multiAxisCount > 0
+                ? 'border-[#FF0000] bg-[#FF0000]/15 text-white'
+                : 'border-white/[0.12] bg-[#222222] text-white hover:bg-[#303030]'
+            }`}
+          >
+            <SlidersHorizontal className="h-3 w-3 text-[#FF0000]" />
+            <span>Filters</span>
+            {multiAxisCount > 0 && (
+              <span className="rounded-full bg-[#FF0000] px-1.5 py-0.2 text-[9.5px] font-black text-white">
+                {multiAxisCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setDirectoryExpanded((v) => !v);
+              setAdvancedOpen(false);
+            }}
+            className="flex shrink-0 items-center gap-1 rounded-full border border-white/[0.12] bg-[#222222] px-3 py-1 text-[11.5px] font-semibold text-white transition hover:bg-[#303030]"
+          >
+            <Filter className="h-3 w-3 text-[#3EA6FF]" />
+            <span>MAL Directory</span>
+            {directoryExpanded ? (
+              <ChevronUp className="h-3 w-3" />
+            ) : (
+              <ChevronDown className="h-3 w-3" />
+            )}
+          </button>
+
           <div className="flex shrink-0 items-center rounded-lg border border-white/[0.1] bg-[#181818] p-0.5 text-[11px] font-bold">
             {(['genres', 'themes', 'demographics'] as DirectoryGroup[]).map((grp) => (
               <button
@@ -565,37 +704,19 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setDirectoryExpanded((v) => !v)}
-            className="flex shrink-0 items-center gap-1 rounded-full border border-white/[0.12] bg-[#222222] px-3 py-1 text-[11.5px] font-semibold text-white transition hover:bg-[#303030]"
-          >
-            <Filter className="h-3 w-3 text-[#3EA6FF]" />
-            <span>MAL Directory</span>
-            {directoryExpanded ? (
-              <ChevronUp className="h-3 w-3" />
-            ) : (
-              <ChevronDown className="h-3 w-3" />
-            )}
-          </button>
-
           {quickDirectoryItems.map((entry) => {
             const isGenre = dirGroup === 'genres';
-            const active = isGenre ? selectedGenre === entry : selectedTag === entry;
+            const active = isGenre
+              ? selectedGenres.includes(entry)
+              : selectedTags.includes(entry);
             return (
               <button
                 key={entry}
                 type="button"
                 onClick={() => {
-                  setSelectedSeason(null);
                   setChart('mal_home');
-                  if (isGenre) {
-                    setSelectedTag(null);
-                    setSelectedGenre(active ? null : entry);
-                  } else {
-                    setSelectedGenre(null);
-                    setSelectedTag(active ? null : entry);
-                  }
+                  if (isGenre) toggleGenre(entry);
+                  else toggleTag(entry);
                 }}
                 className={`shrink-0 rounded-full px-3 py-1 text-[11.5px] font-medium transition ${
                   active
@@ -610,7 +731,181 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         </div>
       </div>
 
-      {/* Expandable Full MAL Homepage Catalog Directory Matrix (Genres + Themes + Demographics + Seasons) */}
+      {/* Multi-Axis Advanced Filter Engine (Genres + Format + Country + Year + Score + Sort + Exclude List) */}
+      {advancedOpen && (
+        <section className="mx-4 space-y-4 rounded-2xl border border-white/[0.12] bg-[#161616] p-4 sm:mx-6 sm:p-5 lg:mx-8">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
+            <div>
+              <h2 className="flex items-center gap-2 text-[14px] font-bold text-white">
+                <SlidersHorizontal className="h-4 w-4 text-[#FF0000]" />
+                Multi-Axis Advanced Filter
+              </h2>
+              <p className="text-[11px] text-[#AAAAAA]">
+                Combine multiple genres, themes, formats, release years, minimum rating, and list exclusions simultaneously.
+              </p>
+            </div>
+            {hasActiveFilter && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold text-white hover:bg-white/20"
+              >
+                <X className="h-3 w-3" />
+                Reset All ({multiAxisCount})
+              </button>
+            )}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            <div>
+              <label className="mb-1 block text-[10.5px] font-bold uppercase text-[#AAAAAA]">Sort By</label>
+              <select
+                value={filterSort}
+                onChange={(e) => setFilterSort(e.target.value)}
+                className="h-9 w-full rounded-lg border border-white/15 bg-[#0F0F0F] px-2.5 text-[12px] text-white outline-none focus:border-[#3EA6FF]"
+              >
+                <option value="POPULARITY_DESC">Most Popular</option>
+                <option value="SCORE_DESC">Highest Score</option>
+                <option value="TRENDING_DESC">Trending</option>
+                <option value="FAVOURITES_DESC">Most Favorited</option>
+                <option value="START_DATE_DESC">Newest First</option>
+                <option value="TITLE_ENGLISH">Title A–Z</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10.5px] font-bold uppercase text-[#AAAAAA]">Format</label>
+              <select
+                value={filterFormat}
+                onChange={(e) => setFilterFormat(e.target.value)}
+                className="h-9 w-full rounded-lg border border-white/15 bg-[#0F0F0F] px-2.5 text-[12px] text-white outline-none focus:border-[#3EA6FF]"
+              >
+                <option value="">Any Format</option>
+                {isManga ? (
+                  <>
+                    <option value="MANGA">Manga</option>
+                    <option value="ONE_SHOT">One Shot</option>
+                    <option value="NOVEL">Light Novel</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="TV">TV Series</option>
+                    <option value="MOVIE">Movie</option>
+                    <option value="OVA">OVA</option>
+                    <option value="ONA">ONA</option>
+                    <option value="SPECIAL">Special</option>
+                  </>
+                )}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10.5px] font-bold uppercase text-[#AAAAAA]">Status</label>
+              <select
+                value={filterStatus}
+                onChange={(e) =>
+                  setFilterStatus(
+                    e.target.value as '' | 'RELEASING' | 'FINISHED' | 'NOT_YET_RELEASED' | 'HIATUS'
+                  )
+                }
+                className="h-9 w-full rounded-lg border border-white/15 bg-[#0F0F0F] px-2.5 text-[12px] text-white outline-none focus:border-[#3EA6FF]"
+              >
+                <option value="">Any Status</option>
+                <option value="RELEASING">{isManga ? 'Publishing' : 'Airing'}</option>
+                <option value="FINISHED">Finished</option>
+                <option value="NOT_YET_RELEASED">Upcoming</option>
+                <option value="HIATUS">On Hiatus</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10.5px] font-bold uppercase text-[#AAAAAA]">Origin</label>
+              <select
+                value={filterCountry}
+                onChange={(e) => setFilterCountry(e.target.value as '' | 'JP' | 'KR' | 'CN')}
+                className="h-9 w-full rounded-lg border border-white/15 bg-[#0F0F0F] px-2.5 text-[12px] text-white outline-none focus:border-[#3EA6FF]"
+              >
+                <option value="">Any Country</option>
+                <option value="JP">Japan (JP)</option>
+                <option value="KR">South Korea (KR)</option>
+                <option value="CN">China (CN)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10.5px] font-bold uppercase text-[#AAAAAA]">Min Score</label>
+              <select
+                value={filterMinScore}
+                onChange={(e) => setFilterMinScore(Number(e.target.value))}
+                className="h-9 w-full rounded-lg border border-white/15 bg-[#0F0F0F] px-2.5 text-[12px] text-white outline-none focus:border-[#3EA6FF]"
+              >
+                <option value={0}>Any Rating</option>
+                <option value={6.5}>6.5+ Good</option>
+                <option value={7.0}>7.0+ Solid</option>
+                <option value={7.5}>7.5+ Great</option>
+                <option value={8.0}>8.0+ Very Great</option>
+                <option value={8.5}>8.5+ Masterpiece</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[10.5px] font-bold uppercase text-[#AAAAAA]">Year Range</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1970}
+                  max={2027}
+                  placeholder="From"
+                  value={filterYearMin || ''}
+                  onChange={(e) => setFilterYearMin(Number(e.target.value) || 0)}
+                  className="h-9 w-1/2 rounded-lg border border-white/15 bg-[#0F0F0F] px-2 text-[12px] text-white outline-none"
+                />
+                <input
+                  type="number"
+                  min={1970}
+                  max={2027}
+                  placeholder="To"
+                  value={filterYearMax || ''}
+                  onChange={(e) => setFilterYearMax(Number(e.target.value) || 0)}
+                  className="h-9 w-1/2 rounded-lg border border-white/15 bg-[#0F0F0F] px-2 text-[12px] text-white outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-3">
+            <div className="flex flex-wrap gap-1.5">
+              {genres.map((g) => {
+                const on = selectedGenres.includes(g);
+                return (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => toggleGenre(g)}
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                      on ? 'bg-[#FF0000] text-white' : 'bg-[#242424] text-neutral-300 hover:bg-[#323232]'
+                    }`}
+                  >
+                    {g}
+                  </button>
+                );
+              })}
+            </div>
+
+            <label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full bg-[#242424] px-3 py-1.5 text-[11.5px] font-semibold text-white">
+              <input
+                type="checkbox"
+                checked={hideMyList}
+                onChange={(e) => setHideMyList(e.target.checked)}
+                className="accent-[#FF0000]"
+              />
+              Hide titles in My List
+            </label>
+          </div>
+        </section>
+      )}
+
+      {/* Expandable Full MAL Homepage Catalog Directory Matrix */}
       {directoryExpanded && (
         <section className="mx-4 rounded-2xl border border-white/[0.1] bg-[#161616] p-4 sm:mx-6 sm:p-5 lg:mx-8">
           <div className="mb-4 flex items-center justify-between border-b border-white/[0.08] pb-3">
@@ -633,20 +928,16 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           <div className="grid gap-5 md:grid-cols-3">
             <div>
               <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#AAAAAA]">
-                Genres
+                Genres (multi-select)
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {genres.map((g) => (
                   <button
                     key={g}
                     type="button"
-                    onClick={() => {
-                      setSelectedTag(null);
-                      setSelectedSeason(null);
-                      setSelectedGenre(selectedGenre === g ? null : g);
-                    }}
+                    onClick={() => toggleGenre(g)}
                     className={`rounded-lg px-2.5 py-1 text-[11.5px] font-medium transition ${
-                      selectedGenre === g
+                      selectedGenres.includes(g)
                         ? 'bg-[#FF0000] text-white font-bold'
                         : 'bg-[#242424] text-neutral-200 hover:bg-[#323232]'
                     }`}
@@ -659,20 +950,16 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
             <div>
               <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#AAAAAA]">
-                Themes
+                Themes (multi-select)
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {MAL_THEMES.map((t) => (
                   <button
                     key={t}
                     type="button"
-                    onClick={() => {
-                      setSelectedGenre(null);
-                      setSelectedSeason(null);
-                      setSelectedTag(selectedTag === t ? null : t);
-                    }}
+                    onClick={() => toggleTag(t)}
                     className={`rounded-lg px-2.5 py-1 text-[11.5px] font-medium transition ${
-                      selectedTag === t
+                      selectedTags.includes(t)
                         ? 'bg-[#FF0000] text-white font-bold'
                         : 'bg-[#242424] text-neutral-200 hover:bg-[#323232]'
                     }`}
@@ -693,13 +980,9 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                     <button
                       key={d}
                       type="button"
-                      onClick={() => {
-                        setSelectedGenre(null);
-                        setSelectedSeason(null);
-                        setSelectedTag(selectedTag === d ? null : d);
-                      }}
+                      onClick={() => toggleTag(d)}
                       className={`rounded-lg px-2.5 py-1 text-[11.5px] font-medium transition ${
-                        selectedTag === d
+                        selectedTags.includes(d)
                           ? 'bg-[#FF0000] text-white font-bold'
                           : 'bg-[#242424] text-neutral-200 hover:bg-[#323232]'
                       }`}
@@ -725,11 +1008,9 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                           <button
                             key={`${yr}-${sn}`}
                             type="button"
-                            onClick={() => {
-                              setSelectedGenre(null);
-                              setSelectedTag(null);
-                              setSelectedSeason({ season: sn, year: yr });
-                            }}
+                            onClick={() =>
+                              setSelectedSeason(active ? null : { season: sn, year: yr })
+                            }
                             className={`rounded-lg px-1.5 py-1 text-[10.5px] font-semibold transition ${
                               active
                                 ? 'bg-[#3EA6FF] text-black font-bold'
@@ -769,8 +1050,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                     key={sn}
                     type="button"
                     onClick={() => {
-                      setSelectedGenre(null);
-                      setSelectedTag(null);
+                      setSelectedGenres([]);
+                      setSelectedTags([]);
                       setSelectedSeason({ season: sn, year: defaultSeason.year });
                     }}
                     className={`rounded-full px-3 py-1 text-[11.5px] font-semibold transition ${
@@ -802,9 +1083,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedGenre(null);
-                        setSelectedTag(null);
-                        setSelectedSeason(null);
+                        clearAllFilters();
                         setChart(shelf.chartKey);
                       }}
                       className="rounded-full bg-[#272727] px-3 py-1 text-[11.5px] font-bold text-[#3EA6FF] transition hover:bg-[#383838]"

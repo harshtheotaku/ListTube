@@ -20,8 +20,22 @@ const proxyConfig = {
 };
 
 export default defineConfig({
-  base: process.env.GITHUB_PAGES === 'true' ? './' : '/',
+  base: process.env.GITHUB_PAGES === 'true' ? '/ListTube/' : '/',
   plugins: [react(), tailwindcss()],
+  build: {
+    rolldownOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/@supabase/')) return 'vendor-supabase';
+          if (id.includes('node_modules/lucide-react')) return 'vendor-icons';
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
+            return 'vendor-react';
+          }
+          return undefined;
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     host: true,

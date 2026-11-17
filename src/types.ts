@@ -1,6 +1,12 @@
 export type MediaType = 'ANIME' | 'MANGA';
 export type MediaSource = 'anilist' | 'mal';
 
+export type ScoreFormat =
+  | 'POINT_10_DECIMAL'
+  | 'POINT_10'
+  | 'POINT_100'
+  | 'POINT_5';
+
 export interface StreamingLink {
   site: string;
   url: string;
@@ -15,6 +21,59 @@ export interface RelatedTitle {
   relation?: string;
   rating?: number;
   mediaType?: MediaType;
+}
+
+export interface CharacterCredit {
+  id: number;
+  name: string;
+  nativeName?: string;
+  image: string;
+  role: string;
+  description?: string;
+  siteUrl?: string;
+  voiceActor?: {
+    id?: number;
+    name: string;
+    image?: string;
+    language?: string;
+  };
+  englishVoiceActor?: {
+    id?: number;
+    name: string;
+    image?: string;
+  };
+}
+
+export interface StaffCredit {
+  id: number;
+  name: string;
+  nativeName?: string;
+  image?: string;
+  role: string;
+}
+
+export interface ThemeSong {
+  number: number;
+  title: string;
+  artists?: string;
+  episodes?: string;
+}
+
+export interface ScoreDistBucket {
+  score: number;
+  amount: number;
+}
+
+export interface StatusDistBucket {
+  status: string;
+  amount: number;
+}
+
+export interface FavoriteCharacterItem {
+  id: string | number;
+  name: string;
+  image: string;
+  mediaTitle?: string;
 }
 
 export interface Anime {
@@ -52,6 +111,12 @@ export interface Anime {
   nextEpisode?: { number: number; airingAt: number };
   streaming: StreamingLink[];
   similar: RelatedTitle[];
+  characters?: CharacterCredit[];
+  staff?: StaffCredit[];
+  openings?: ThemeSong[];
+  endings?: ThemeSong[];
+  scoreStats?: ScoreDistBucket[];
+  statusStats?: StatusDistBucket[];
   fetchedAt: number;
   /** Cached records referenced by the user's list must survive storage trimming. */
   pinned?: boolean;
@@ -63,8 +128,16 @@ export interface ListEntry {
   animeId: string;
   mediaType?: MediaType;
   status: ListStatus;
+  /** Canonical 0.5..10 decimal score (e.g. 8.5 = 85/100 = 4.25/5★). */
   score?: number;
   progress?: number;
+  progressVolumes?: number;
+  repeat?: number;
+  startedAt?: string;
+  completedAt?: string;
+  notes?: string;
+  isPrivate?: boolean;
+  customLists?: string[];
   addedAt: number;
   updatedAt: number;
 }
@@ -77,7 +150,8 @@ export type FeedbackType =
   | 'complete'
   | 'hold'
   | 'drop'
-  | 'not_interested';
+  | 'not_interested'
+  | 'like';
 
 export interface FeedbackEvent {
   animeId: string;
@@ -91,10 +165,13 @@ export interface TrackerAccount {
   username: string;
   connectedAt: number;
   imported: number;
+  oauthConnected?: boolean;
+  avatar?: string;
 }
 
 export interface LibraryState {
   entries: Record<string, ListEntry>;
+  likedIds: string[];
   notInterested: string[];
   events: FeedbackEvent[];
   trackers: TrackerAccount[];
@@ -111,6 +188,8 @@ export interface ScoredAnime {
 
 export interface AppSettings {
   autoplayTrailer: boolean;
+  scoreFormat: ScoreFormat;
+  showCommunityLinks: boolean;
 }
 
 export interface ScheduleItem {
@@ -130,6 +209,78 @@ export interface NewsItem {
   image?: string;
   animeTitle?: string;
   sourceName: string;
+}
+
+export type ReviewVerdict = 'Recommended' | 'Mixed Feelings' | 'Not Recommended';
+
+export interface UserReview {
+  id: string;
+  animeId: string;
+  mediaType: MediaType;
+  userId: string;
+  authorName: string;
+  authorHandle: string;
+  authorAvatar: string;
+  headline?: string;
+  body: string;
+  overallScore?: number;
+  storyScore?: number;
+  artScore?: number;
+  soundScore?: number;
+  enjoymentScore?: number;
+  verdict: ReviewVerdict;
+  isSpoiler: boolean;
+  helpfulCount: number;
+  votedByMe: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type ActivityKind = 'status' | 'progress' | 'score' | 'review' | 'post' | 'favorite';
+
+export interface ActivityReply {
+  id: string;
+  activityId: string;
+  userId: string;
+  authorName: string;
+  authorHandle: string;
+  authorAvatar: string;
+  body: string;
+  createdAt: number;
+}
+
+export interface ActivityItem {
+  id: string;
+  userId: string;
+  authorName: string;
+  authorHandle: string;
+  authorAvatar: string;
+  kind: ActivityKind;
+  animeId?: string;
+  animeTitle?: string;
+  animeCover?: string;
+  mediaType?: MediaType;
+  statusText: string;
+  progress?: number;
+  score?: number;
+  likeCount: number;
+  likedByMe: boolean;
+  replies: ActivityReply[];
+  createdAt: number;
+}
+
+export interface PublicUserSummary {
+  id: string;
+  displayName: string;
+  handle: string;
+  avatarUrl: string;
+  bannerUrl?: string;
+  bio?: string;
+  location?: string;
+  favoriteAnimeIds: string[];
+  favoriteMangaIds: string[];
+  favoriteCharactersData: FavoriteCharacterItem[];
+  updatedAt: string;
 }
 
 export const LIST_STATUS_LABEL: Record<ListStatus, string> = {

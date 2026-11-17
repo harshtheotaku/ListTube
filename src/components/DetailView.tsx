@@ -1,41 +1,59 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
+  BarChart3,
   Bell,
   BookOpen,
+  Calendar,
   Check,
   ChevronDown,
+  ChevronUp,
   ExternalLink,
-  Film,
   Heart,
+  Lock,
   Minus,
+  Music,
   Play,
   Plus,
+  Repeat,
   Share2,
   Sparkles,
   Star,
   ThumbsDown,
   ThumbsUp,
   Tv,
+  Users,
 } from 'lucide-react';
 import {
   Anime,
+  CharacterCredit,
   LibraryState,
   ListStatus,
   LIST_STATUS_ORDER,
   ScoredAnime,
+  ThemeSong,
   mangaOriginLabel,
   statusLabel,
 } from '../types';
 import { fetchDetail, pickSingleEnglishLink } from '../services/anilist';
-import { fetchMALDetail } from '../services/jikan';
+import { fetchAnimeThemes, fetchMALDetail } from '../services/jikan';
 import { animeStore } from '../services/animeStore';
 import { library } from '../services/library';
 import { getSimilar } from '../services/recommender';
 import { franchiseNameOf } from '../services/franchise';
+import {
+  canonical10ToDisplayValue,
+  formatUserScore,
+  inputToCanonical10,
+  SCORE_FORMATS,
+} from '../services/scoring';
 import { useSettings } from '../services/settings';
 import { profileStore, useProfile } from '../services/profile';
-import { resolveExternalLinksEdge, ResolvedReaderLink } from '../services/supabase';
+import {
+  buildSharePreviewUrl,
+  resolveExternalLinksEdge,
+  ResolvedReaderLink,
+} from '../services/supabase';
 import { CommentsSection } from './CommentsSection';
 import { toast } from './Toast';
 import { CardSkeleton } from './Skeleton';
@@ -46,9 +64,12 @@ interface DetailViewProps {
   onOpenId: (id: string) => void;
   onOpenChannel: (anime: Anime) => void;
   onEditProfile?: () => void;
+  onOpenUser?: (userIdOrHandle: string) => void;
   onClose: () => void;
   onQuickAdd: (anime: Anime) => void;
 }
+
+type DetailSectionTab = 'overview' | 'characters' | 'staff' | 'stats';
 
 function countdown(timestamp: number): string {
   const diff = timestamp * 1000 - Date.now();
@@ -66,12 +87,21 @@ function formatSubscribers(popularity?: number): string {
   return `${popularity} fans`;
 }
 
+const STATUS_PRETTY: Record<string, string> = {
+  CURRENT: 'Watching / Reading',
+  COMPLETED: 'Completed',
+  PLANNING: 'Planning',
+  PAUSED: 'On Hold',
+  DROPPED: 'Dropped',
+};
+
 export const DetailView: React.FC<DetailViewProps> = ({
   animeId,
   libraryState,
   onOpenId,
   onOpenChannel,
   onEditProfile,
+  onOpenUser,
   onClose,
 }) => {
   const settings = useSettings();
@@ -85,17 +115,27 @@ export const DetailView: React.FC<DetailViewProps> = ({
   const [isTrailerPlaying, setIsTrailerPlaying] = useState(settings.autoplayTrailer);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [listPickerOpen, setListPickerOpen] = useState(false);
-  const [isLiked, setIsLiked] = useState(false);
+  const [advancedTrackOpen, setAdvancedTrackOpen] = useState(false);
+  const [detailTab, setDetailTab] = useState<DetailSectionTab>('overview');
+  const [vaLang, setVaLang] = useState<'JP' | 'EN'>('JP');
+  const [selectedCharacter, setSelectedCharacter] = useState<CharacterCredit | null>(null);
+  const [themes, setThemes] = useState<{ openings: ThemeSong[]; endings: ThemeSong[] }>({
+    openings: [],
+    endings: [],
+  });
   const [externalLinks, setExternalLinks] = useState<ResolvedReaderLink[]>([]);
   const profile = useProfile();
 
   const entry = libraryState.entries[animeId];
+  const isLiked = (libraryState.likedIds ?? []).includes(animeId);
 
-  // Reset trailer playback & menus when switching anime
   useEffect(() => {
     setIsTrailerPlaying(settings.autoplayTrailer);
     setListPickerOpen(false);
+    setAdvancedTrackOpen(false);
     setIsDescriptionExpanded(false);
+    setDetailTab('overview');
+    setSelectedCharacter(null);
   }, [animeId, settings.autoplayTrailer]);
 
   useEffect(() => {
@@ -105,7 +145,11 @@ export const DetailView: React.FC<DetailViewProps> = ({
 
     const isManga = animeId.includes('manga');
     const numeric = Number(animeId.split(':')[1]);
-    const needsFetch = !cached || !cached.description || cached.similar.length === 0;
+    const needsFetch =
+      !cached ||
+      !cached.description ||
+      cached.similar.length === 0 ||
+      (!animeId.startsWith('mal') && cached.characters === undefined);
 
     if (!needsFetch) {
       setLoading(false);
@@ -133,6 +177,20 @@ export const DetailView: React.FC<DetailViewProps> = ({
       cancelled = true;
     };
   }, [animeId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!anime?.malId || anime.mediaType === 'MANGA') {
+      setThemes({ openings: [], endings: [] });
+      return;
+    }
+    void fetchAnimeThemes(anime.malId).then((res) => {
+      if (!cancelled) setThemes(res);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [anime?.malId, anime?.mediaType]);
 
   useEffect(() => {
     library.logOpen(animeId);
@@ -258,12 +316,14 @@ export const DetailView: React.FC<DetailViewProps> = ({
 
   const isManga = anime.mediaType === 'MANGA';
   const isSubscribed = Boolean(entry);
-  const total = isManga
-    ? anime.chapters ?? 0
-    : anime.episodes ?? (anime.nextEpisode ? Math.max(1, anime.nextEpisode.number - 1) : 0);
+  const total = isManga ? anime.chapters ?? 0 : anime.episodes ?? 0;
   const progress = entry?.progress ?? 0;
+  const volTotal = anime.volumes ?? 0;
+  const volProgress = entry?.progressVolumes ?? 0;
   const studioName = anime.studios[0] || (isManga ? 'Official Manga Publication' : 'Official Studio');
   const channelName = franchiseNameOf(anime.title);
+  const scoreMeta = SCORE_FORMATS.find((f) => f.id === settings.scoreFormat) ?? SCORE_FORMATS[0];
+  const displayScoreVal = canonical10ToDisplayValue(entry?.score, settings.scoreFormat);
 
   const handleChooseList = (status: ListStatus) => {
     library.setStatus(anime, status);
@@ -272,17 +332,18 @@ export const DetailView: React.FC<DetailViewProps> = ({
   };
 
   const handleShare = () => {
+    const shareUrl = buildSharePreviewUrl(anime.id);
     if (navigator.share) {
       navigator
         .share({
           title: anime.title,
           text: `Check out ${anime.title} on ListTube!`,
-          url: window.location.href,
+          url: shareUrl,
         })
         .catch(() => {});
     } else {
-      navigator.clipboard.writeText(window.location.href);
-      toast('Link copied to clipboard!');
+      navigator.clipboard?.writeText(shareUrl);
+      toast('Rich OpenGraph share link copied!');
     }
   };
 
@@ -290,6 +351,13 @@ export const DetailView: React.FC<DetailViewProps> = ({
     anime.hasOfficialBanner && anime.banner && anime.banner !== anime.cover
       ? anime.banner
       : null;
+
+  const characters = anime.characters ?? [];
+  const staff = anime.staff ?? [];
+  const scoreStats = anime.scoreStats ?? [];
+  const statusStats = anime.statusStats ?? [];
+  const maxScoreBucket = Math.max(1, ...scoreStats.map((s) => s.amount));
+  const totalStatusUsers = Math.max(1, statusStats.reduce((s, x) => s + x.amount, 0));
 
   return (
     <div className="min-h-screen bg-[#0F0F0F] pb-24 text-white lg:pb-16">
@@ -311,9 +379,9 @@ export const DetailView: React.FC<DetailViewProps> = ({
 
       <div className="mx-auto max-w-[1380px] px-4 pt-4 sm:px-6 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_410px]">
-          {/* Left Column: 16:9 Trailer / Artwork Hero, Title + Inline Description, Channel Row, Official Links */}
+          {/* Left Column */}
           <div className="min-w-0 space-y-4">
-            {/* 16:9 Hero: Trailer only plays on user click OR when Auto-Play Trailers setting is ON */}
+            {/* 16:9 Hero */}
             <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-2xl">
               {anime.trailerYoutubeId && isTrailerPlaying ? (
                 <iframe
@@ -350,7 +418,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
                   <div className="absolute inset-0 z-[2] flex flex-col items-center justify-center bg-gradient-to-t from-black/75 via-black/25 to-black/20 p-4">
                     {isManga ? (
                       <div className="flex flex-col items-center gap-2 text-center">
-                        <span className="flex items-center gap-1.5 rounded-full bg-black/75 px-4 py-2 text-xs font-bold text-white backdrop-blur-md border border-white/15">
+                        <span className="flex items-center gap-1.5 rounded-full border border-white/15 bg-black/75 px-4 py-2 text-xs font-bold text-white backdrop-blur-md">
                           <BookOpen className="h-4 w-4 text-[#FF0000]" />
                           Official Manga Overview
                         </span>
@@ -393,7 +461,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
               )}
             </div>
 
-            {/* Channel Row: Anime Franchise Avatar, Name, Subscribers & Subscribe 5-List Button */}
+            {/* Channel Row + Persistent Actions */}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <button
@@ -422,7 +490,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
                   </div>
                 </button>
 
-                {/* Subscribe Button (Tapping opens the 5 Lists picker!) */}
+                {/* Subscribe 5-List Button */}
                 <div className="relative ml-2">
                   {isSubscribed ? (
                     <button
@@ -445,7 +513,6 @@ export const DetailView: React.FC<DetailViewProps> = ({
                     </button>
                   )}
 
-                  {/* 5-List Subscription Dropdown */}
                   {listPickerOpen && (
                     <div className="absolute left-0 top-12 z-50 w-56 rounded-2xl border border-white/[0.12] bg-[#212121] p-2 shadow-2xl">
                       <p className="px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-[#AAAAAA]">
@@ -487,7 +554,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
                 </div>
               </div>
 
-              {/* Right Action Pills: All Seasons, Like, Share, Not for me */}
+              {/* Right Action Pills: All Seasons, Persistent Like, Favorite, Share, Not for me */}
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -501,12 +568,12 @@ export const DetailView: React.FC<DetailViewProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setIsLiked(!isLiked);
-                    toast(isLiked ? 'Removed like' : 'Liked!');
+                    const nowLiked = library.toggleLike(anime);
+                    toast(nowLiked ? 'Saved to Liked Titles!' : 'Removed from Liked Titles');
                   }}
                   className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[12.5px] font-semibold transition ${
                     isLiked
-                      ? 'bg-[#FF0000]/20 text-white border border-[#FF0000]/40'
+                      ? 'border border-[#FF0000]/40 bg-[#FF0000]/20 text-white'
                       : 'bg-[#272727] text-white hover:bg-[#3F3F3F]'
                   }`}
                 >
@@ -567,235 +634,698 @@ export const DetailView: React.FC<DetailViewProps> = ({
               </div>
             </div>
 
-            {/* YouTube-Style Inline Description Box right below Title & Channel */}
-            <div
-              onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
-              className="cursor-pointer rounded-2xl bg-[#272727] p-4 transition hover:bg-[#2F2F2F]"
-            >
-              <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[13px] font-bold text-white">
-                {anime.score ? (
-                  <span className="flex items-center gap-1 text-amber-300">
-                    <Star className="h-3.5 w-3.5 fill-current" />
-                    {anime.score.toFixed(1)}/10
-                  </span>
-                ) : null}
-                <span>{meta}</span>
-                <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-medium text-[#AAAAAA]">
-                  {isManga ? studioName : `Studio: ${studioName}`}
-                </span>
-                {anime.status && (
-                  <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-neutral-200">
-                    {anime.status}
-                  </span>
-                )}
-                {anime.nextEpisode && (
-                  <span className="rounded bg-[#FF0000]/20 px-1.5 py-0.5 text-[11px] font-semibold text-rose-300">
-                    Ep {anime.nextEpisode.number} in {countdown(anime.nextEpisode.airingAt)}
-                  </span>
-                )}
-              </div>
-
-              {loading && !anime.description ? (
-                <div className="space-y-2 pt-1">
-                  <div className="h-3 w-full animate-pulse rounded bg-white/10" />
-                  <div className="h-3 w-4/5 animate-pulse rounded bg-white/10" />
-                </div>
-              ) : (
-                <p
-                  className={`whitespace-pre-line text-[13.5px] leading-relaxed text-[#F1F1F1] ${
-                    isDescriptionExpanded ? '' : 'line-clamp-2'
-                  }`}
-                >
-                  {anime.description || 'No synopsis available for this title yet.'}
-                </p>
-              )}
-
-              <p className="mt-1.5 text-[13px] font-bold text-white">
-                {isDescriptionExpanded ? 'Show less' : '...more'}
-              </p>
-
-              {isDescriptionExpanded && (
-                <div className="mt-4 flex flex-wrap gap-1.5 border-t border-white/10 pt-3">
-                  {anime.genres.map((genre) => (
-                    <span
-                      key={genre}
-                      className="rounded-lg bg-black/40 px-2.5 py-1 text-[11.5px] font-medium text-neutral-200"
-                    >
-                      {genre}
-                    </span>
-                  ))}
-                  {anime.tags.slice(0, 8).map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-lg bg-[#FF0000]/15 px-2.5 py-1 text-[11.5px] font-medium text-rose-200"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              )}
+            {/* Encyclopedia Section Switcher (MAL / AniList Parity!) */}
+            <div className="flex items-center gap-2 overflow-x-auto border-b border-white/[0.08] pb-2 no-scrollbar">
+              {([
+                { id: 'overview', label: 'Overview & Threads', icon: BookOpen },
+                { id: 'characters', label: `Characters & Cast (${characters.length})`, icon: Users },
+                {
+                  id: 'staff',
+                  label: isManga
+                    ? `Staff & Authors (${staff.length})`
+                    : `Staff & OP/ED (${staff.length + themes.openings.length + themes.endings.length})`,
+                  icon: Music,
+                },
+                { id: 'stats', label: 'Score Stats', icon: BarChart3 },
+              ] as { id: DetailSectionTab; label: string; icon: React.ElementType }[]).map((tab) => {
+                const Icon = tab.icon;
+                const active = detailTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setDetailTab(tab.id)}
+                    className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
+                      active
+                        ? 'bg-[#F1F1F1] text-[#0F0F0F]'
+                        : 'bg-[#222222] text-[#CCCCCC] hover:bg-[#303030] hover:text-white'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Subscribed Episode/Chapter Tracker & Rating Bar */}
+            {/* SUBSCRIBED FULL TRACKER BAR (Always renders progress stepper even if total===0!) */}
             {isSubscribed && (
               <div className="space-y-3 rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
-                {total > 0 && (
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="text-[12px] font-bold text-[#AAAAAA]">
-                      {isManga ? 'Chapters:' : 'Episodes:'}
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-[12px] font-bold text-[#AAAAAA]">
+                    {isManga ? 'Chapters:' : 'Episodes:'}
+                  </span>
+                  <div className="flex items-center gap-1 rounded-full bg-[#272727] px-2 py-1">
+                    <button
+                      type="button"
+                      aria-label="Decrease progress"
+                      onClick={() => library.setProgress(anime.id, Math.max(0, progress - 1))}
+                      className="p-1 text-[#AAAAAA] hover:text-white"
+                    >
+                      <Minus className="h-3.5 w-3.5" />
+                    </button>
+                    <span className="min-w-[60px] text-center text-[12px] font-bold text-white">
+                      {total > 0 ? `${progress}/${total}` : `${progress} ${isManga ? 'ch' : 'ep'}`}
                     </span>
-                    <div className="flex items-center gap-1 rounded-full bg-[#272727] px-2 py-1">
-                      <button
-                        type="button"
-                        aria-label="Decrease progress"
-                        onClick={() => library.setProgress(anime.id, Math.max(0, progress - 1))}
-                        className="p-1 text-[#AAAAAA] hover:text-white"
-                      >
-                        <Minus className="h-3.5 w-3.5" />
-                      </button>
-                      <span className="min-w-[54px] text-center text-[12px] font-bold text-white">
-                        {progress}/{total}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="Increase progress"
-                        onClick={() => library.setProgress(anime.id, Math.min(total, progress + 1))}
-                        className="p-1 text-[#AAAAAA] hover:text-white"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      aria-label="Increase progress"
+                      onClick={() => library.setProgress(anime.id, progress + 1)}
+                      className="p-1 text-[#AAAAAA] hover:text-white"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  {total > 0 ? (
                     <div className="h-2 min-w-[120px] flex-1 overflow-hidden rounded-full bg-white/10">
                       <div
                         className="h-full rounded-full bg-[#FF0000]"
                         style={{ width: `${Math.min(100, (progress / total) * 100)}%` }}
                       />
                     </div>
+                  ) : (
+                    <span className="text-[11px] font-semibold text-emerald-400">
+                      Ongoing / Unknown Total
+                    </span>
+                  )}
+
+                  {isManga && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11.5px] font-semibold text-[#AAAAAA]">Vols:</span>
+                      <div className="flex items-center gap-1 rounded-full bg-[#272727] px-2 py-0.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            library.updateEntryDetails(anime.id, {
+                              progressVolumes: Math.max(0, volProgress - 1),
+                            })
+                          }
+                          className="p-0.5 text-[#AAAAAA] hover:text-white"
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <span className="min-w-[36px] text-center text-[11.5px] font-bold text-white">
+                          {volTotal > 0 ? `${volProgress}/${volTotal}` : volProgress}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            library.updateEntryDetails(anime.id, {
+                              progressVolumes: volProgress + 1,
+                            })
+                          }
+                          className="p-0.5 text-[#AAAAAA] hover:text-white"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Decimal / Multi-Scale Score Picker */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[12px] font-semibold text-[#AAAAAA]">Your rating:</span>
+                    {settings.scoreFormat === 'POINT_100' ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={displayScoreVal ?? 0}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            library.setScore(
+                              anime.id,
+                              val > 0 ? inputToCanonical10(val, 'POINT_100') : undefined
+                            );
+                          }}
+                          className="w-36 accent-amber-400"
+                        />
+                        <span className="text-[12.5px] font-bold text-amber-300">
+                          {displayScoreVal ? `${displayScoreVal}/100` : 'Unrated'}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-1">
+                        {Array.from(
+                          { length: settings.scoreFormat === 'POINT_5' ? 5 : 10 },
+                          (_, index) => index + 1
+                        ).map((value) => {
+                          const active = (displayScoreVal ?? 0) >= value;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              aria-label={`Rate ${value}`}
+                              onClick={() => {
+                                const canonical = inputToCanonical10(value, settings.scoreFormat);
+                                library.setScore(anime.id, canonical);
+                                toast(`Rated ${formatUserScore(canonical, settings.scoreFormat)}`);
+                              }}
+                              className="p-0.5"
+                            >
+                              <Star
+                                className={`h-4 w-4 transition ${
+                                  active
+                                    ? 'fill-amber-300 text-amber-300'
+                                    : 'text-neutral-600 hover:text-neutral-300'
+                                }`}
+                              />
+                            </button>
+                          );
+                        })}
+                        {settings.scoreFormat === 'POINT_10_DECIMAL' && (
+                          <input
+                            type="number"
+                            min={0}
+                            max={10}
+                            step={0.5}
+                            value={displayScoreVal ?? ''}
+                            placeholder="8.5"
+                            onChange={(e) => {
+                              const raw = Number(e.target.value);
+                              if (!e.target.value) {
+                                library.setScore(anime.id, undefined);
+                              } else {
+                                library.setScore(
+                                  anime.id,
+                                  inputToCanonical10(raw, 'POINT_10_DECIMAL')
+                                );
+                              }
+                            }}
+                            className="ml-2 h-7 w-16 rounded-lg border border-white/15 bg-[#121212] px-2 text-[12px] font-bold text-amber-300 outline-none focus:border-amber-300"
+                          />
+                        )}
+                      </div>
+                    )}
+                    {entry?.score ? (
+                      <span className="text-[11.5px] font-bold text-amber-300">
+                        ({formatUserScore(entry.score, settings.scoreFormat)} · {scoreMeta.shortLabel})
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setAdvancedTrackOpen((v) => !v)}
+                    className="flex items-center gap-1 rounded-full bg-[#272727] px-3 py-1 text-[11px] font-semibold text-[#CCCCCC] hover:bg-[#383838] hover:text-white"
+                  >
+                    <Calendar className="h-3 w-3 text-[#3EA6FF]" />
+                    <span>Dates, Rewatches &amp; Notes</span>
+                    {advancedTrackOpen ? (
+                      <ChevronUp className="h-3 w-3" />
+                    ) : (
+                      <ChevronDown className="h-3 w-3" />
+                    )}
+                  </button>
+                </div>
+
+                {/* Dates, Rewatches, Notes, Privacy Panel */}
+                {advancedTrackOpen && (
+                  <div className="grid gap-3 border-t border-white/[0.08] pt-3 sm:grid-cols-3">
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase text-[#AAAAAA]">
+                        Start Date
+                      </label>
+                      <input
+                        type="date"
+                        value={entry?.startedAt ?? ''}
+                        onChange={(e) =>
+                          library.updateEntryDetails(anime.id, { startedAt: e.target.value || undefined })
+                        }
+                        className="h-8 w-full rounded-lg border border-white/15 bg-[#121212] px-2 text-[12px] text-white outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase text-[#AAAAAA]">
+                        Finish Date
+                      </label>
+                      <input
+                        type="date"
+                        value={entry?.completedAt ?? ''}
+                        onChange={(e) =>
+                          library.updateEntryDetails(anime.id, { completedAt: e.target.value || undefined })
+                        }
+                        className="h-8 w-full rounded-lg border border-white/15 bg-[#121212] px-2 text-[12px] text-white outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase text-[#AAAAAA]">
+                        <Repeat className="h-3 w-3 text-[#3EA6FF]" />
+                        {isManga ? 'Rereads' : 'Rewatches'}
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={999}
+                        value={entry?.repeat ?? 0}
+                        onChange={(e) =>
+                          library.updateEntryDetails(anime.id, { repeat: Number(e.target.value) || 0 })
+                        }
+                        className="h-8 w-full rounded-lg border border-white/15 bg-[#121212] px-2 text-[12px] text-white outline-none"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-[10px] font-bold uppercase text-[#AAAAAA]">
+                        Personal Notes
+                      </label>
+                      <input
+                        value={entry?.notes ?? ''}
+                        onChange={(e) =>
+                          library.updateEntryDetails(anime.id, { notes: e.target.value })
+                        }
+                        placeholder="Private list notes synced to AniList / MAL…"
+                        className="h-8 w-full rounded-lg border border-white/15 bg-[#121212] px-2.5 text-[12px] text-white outline-none"
+                      />
+                    </div>
+
+                    <div className="flex items-end">
+                      <label className="flex h-8 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-white/10 bg-[#242424] px-2.5 text-[11.5px] font-semibold text-white">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(entry?.isPrivate)}
+                          onChange={(e) =>
+                            library.updateEntryDetails(anime.id, { isPrivate: e.target.checked })
+                          }
+                          className="accent-[#FF0000]"
+                        />
+                        <Lock className="h-3 w-3 text-[#AAAAAA]" />
+                        Private Entry
+                      </label>
+                    </div>
                   </div>
                 )}
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[12px] font-semibold text-[#AAAAAA]">Your rating:</span>
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => {
-                      const active = (entry?.score ?? 0) >= value;
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          aria-label={`Rate ${value} out of 10`}
-                          onClick={() => {
-                            library.setScore(anime.id, value);
-                            toast(`Rated ${value}/10`);
-                          }}
-                          className="p-0.5"
-                        >
-                          <Star
-                            className={`h-4 w-4 transition ${
-                              active ? 'fill-amber-300 text-amber-300' : 'text-neutral-600 hover:text-neutral-300'
-                            }`}
-                          />
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {entry?.score ? (
-                    <span className="ml-1 text-[12px] font-bold text-amber-300">{entry.score}/10</span>
-                  ) : null}
-                </div>
               </div>
             )}
 
-            {/* Single Official English Streaming / Reading Link + Community Sites */}
-            {(() => {
-              const officialEnglishLinks = pickSingleEnglishLink(anime.streaming, anime.mediaType);
-              const q = encodeURIComponent(anime.title);
-              const communityLinks: ResolvedReaderLink[] =
-                externalLinks.length > 0
-                  ? externalLinks
-                  : isManga
-                  ? [
-                      { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false },
-                      { site: 'Kagane', key: 'kagane', url: `https://kagane.org/search?q=${q}`, isDirect: false },
-                    ]
-                  : [
-                      { site: 'Re Anime', key: 'reanime', url: `https://reanime.cc/?s=${q}`, isDirect: false },
-                      { site: 'KotoPlay', key: 'kotoplay', url: `https://kotoplay.to/search?keyword=${q}`, isDirect: false },
-                      { site: 'AnimePahe', key: 'animepahe', url: 'https://animepahe.pw/', isDirect: false },
-                    ];
+            {/* DETAIL TAB: OVERVIEW & THREADS */}
+            {detailTab === 'overview' && (
+              <>
+                <div
+                  onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                  className="cursor-pointer rounded-2xl bg-[#272727] p-4 transition hover:bg-[#2F2F2F]"
+                >
+                  <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[13px] font-bold text-white">
+                    {anime.score ? (
+                      <span className="flex items-center gap-1 text-amber-300">
+                        <Star className="h-3.5 w-3.5 fill-current" />
+                        {anime.score.toFixed(1)}/10
+                      </span>
+                    ) : null}
+                    <span>{meta}</span>
+                    <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-medium text-[#AAAAAA]">
+                      {isManga ? studioName : `Studio: ${studioName}`}
+                    </span>
+                    {anime.status && (
+                      <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-neutral-200">
+                        {anime.status}
+                      </span>
+                    )}
+                    {anime.nextEpisode && (
+                      <span className="rounded bg-[#FF0000]/20 px-1.5 py-0.5 text-[11px] font-semibold text-rose-300">
+                        Ep {anime.nextEpisode.number} in {countdown(anime.nextEpisode.airingAt)}
+                      </span>
+                    )}
+                  </div>
 
-              if (officialEnglishLinks.length === 0 && communityLinks.length === 0) return null;
-
-              return (
-                <div className="space-y-4 rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
-                  {officialEnglishLinks.length > 0 && (
-                    <div>
-                      <h3 className="mb-2.5 flex items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-white">
-                        <Tv className="h-4 w-4 text-[#FF0000]" />
-                        Official {isManga ? 'English Reading Site' : 'English Streaming Site'}
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {officialEnglishLinks.slice(0, 1).map((link) => (
-                          <a
-                            key={link.url}
-                            href={link.url}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            className="flex items-center gap-1.5 rounded-xl bg-[#272727] px-3.5 py-2 text-[12px] font-bold text-white transition hover:bg-[#383838]"
-                          >
-                            <span>{link.site}</span>
-                            <ExternalLink className="h-3.5 w-3.5 text-[#FF0000]" />
-                          </a>
-                        ))}
-                      </div>
-                      <p className="mt-2 text-[11.5px] font-medium text-[#AAAAAA]">
-                        {isManga
-                          ? 'In case you read manga Legally🏴‍☠️'
-                          : 'In case you watch anime Legally🏴‍☠️'}
-                      </p>
+                  {loading && !anime.description ? (
+                    <div className="space-y-2 pt-1">
+                      <div className="h-3 w-full animate-pulse rounded bg-white/10" />
+                      <div className="h-3 w-4/5 animate-pulse rounded bg-white/10" />
                     </div>
+                  ) : (
+                    <p
+                      className={`whitespace-pre-line text-[13.5px] leading-relaxed text-[#F1F1F1] ${
+                        isDescriptionExpanded ? '' : 'line-clamp-2'
+                      }`}
+                    >
+                      {anime.description || 'No synopsis available for this title yet.'}
+                    </p>
                   )}
 
-                  {communityLinks.length > 0 && (
-                    <div className={officialEnglishLinks.length > 0 ? 'border-t border-white/[0.08] pt-3.5' : ''}>
-                      <h3 className="mb-2.5 flex items-center gap-2 text-[12.5px] font-bold uppercase tracking-wider text-[#CCCCCC]">
-                        {isManga ? (
-                          <BookOpen className="h-4 w-4 text-[#FF0000]" />
-                        ) : (
-                          <Play className="h-4 w-4 text-[#FF0000]" />
-                        )}
-                        {isManga ? 'Read Manga On' : 'Watch Anime On'}
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {communityLinks.map((site) => (
-                          <a
-                            key={site.key}
-                            href={site.url}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            className="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-[#222222] px-3.5 py-2 text-[12px] font-bold text-white transition hover:border-white/25 hover:bg-[#303030]"
-                          >
-                            <span>{site.site}</span>
-                            {site.isDirect && (
-                              <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase tracking-wider text-emerald-300">
-                                Direct
-                              </span>
-                            )}
-                            <ExternalLink className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                          </a>
-                        ))}
-                      </div>
+                  <p className="mt-1.5 text-[13px] font-bold text-white">
+                    {isDescriptionExpanded ? 'Show less' : '...more'}
+                  </p>
+
+                  {isDescriptionExpanded && (
+                    <div className="mt-4 flex flex-wrap gap-1.5 border-t border-white/10 pt-3">
+                      {anime.genres.map((genre) => (
+                        <span
+                          key={genre}
+                          className="rounded-lg bg-black/40 px-2.5 py-1 text-[11.5px] font-medium text-neutral-200"
+                        >
+                          {genre}
+                        </span>
+                      ))}
+                      {anime.tags.slice(0, 8).map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-lg bg-[#FF0000]/15 px-2.5 py-1 text-[11.5px] font-medium text-rose-200"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
                     </div>
                   )}
                 </div>
-              );
-            })()}
 
-            {/* YouTube-Style Persistent Comments + Full Pinned Spoiler-Free MAL Review */}
-            <CommentsSection anime={anime} onEditProfile={onEditProfile} />
+                {/* Official English Platform + Optional Community Sites */}
+                {(() => {
+                  const officialEnglishLinks = pickSingleEnglishLink(anime.streaming, anime.mediaType);
+                  const q = encodeURIComponent(anime.title);
+                  const communityLinks: ResolvedReaderLink[] = settings.showCommunityLinks
+                    ? externalLinks.length > 0
+                      ? externalLinks
+                      : isManga
+                      ? [
+                          { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false },
+                          { site: 'Kagane', key: 'kagane', url: `https://kagane.org/search?q=${q}`, isDirect: false },
+                        ]
+                      : [
+                          { site: 'Re Anime', key: 'reanime', url: `https://reanime.cc/?s=${q}`, isDirect: false },
+                          { site: 'KotoPlay', key: 'kotoplay', url: `https://kotoplay.to/search?keyword=${q}`, isDirect: false },
+                          { site: 'AnimePahe', key: 'animepahe', url: 'https://animepahe.pw/', isDirect: false },
+                        ]
+                    : [];
+
+                  if (officialEnglishLinks.length === 0 && communityLinks.length === 0) return null;
+
+                  return (
+                    <div className="space-y-4 rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
+                      {officialEnglishLinks.length > 0 && (
+                        <div>
+                          <h3 className="mb-2.5 flex items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-white">
+                            <Tv className="h-4 w-4 text-[#FF0000]" />
+                            Official {isManga ? 'English Reading Platform' : 'English Streaming Platform'}
+                          </h3>
+                          <div className="flex flex-wrap gap-2">
+                            {officialEnglishLinks.slice(0, 1).map((link) => (
+                              <a
+                                key={link.url}
+                                href={link.url}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                                className="flex items-center gap-1.5 rounded-xl bg-[#272727] px-3.5 py-2 text-[12px] font-bold text-white transition hover:bg-[#383838]"
+                              >
+                                <span>{link.site}</span>
+                                <ExternalLink className="h-3.5 w-3.5 text-[#FF0000]" />
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {communityLinks.length > 0 && (
+                        <div className={officialEnglishLinks.length > 0 ? 'border-t border-white/[0.08] pt-3.5' : ''}>
+                          <h3 className="mb-2.5 flex items-center gap-2 text-[12.5px] font-bold uppercase tracking-wider text-[#CCCCCC]">
+                            {isManga ? (
+                              <BookOpen className="h-4 w-4 text-[#FF0000]" />
+                            ) : (
+                              <Play className="h-4 w-4 text-[#FF0000]" />
+                            )}
+                            {isManga ? 'Read Manga On' : 'Watch Anime On'}
+                          </h3>
+                          <div className="flex flex-wrap gap-2">
+                            {communityLinks.map((site) => (
+                              <a
+                                key={site.key}
+                                href={site.url}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                                className="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-[#222222] px-3.5 py-2 text-[12px] font-bold text-white transition hover:border-white/25 hover:bg-[#303030]"
+                              >
+                                <span>{site.site}</span>
+                                {site.isDirect && (
+                                  <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase tracking-wider text-emerald-300">
+                                    Direct
+                                  </span>
+                                )}
+                                <ExternalLink className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                <CommentsSection
+                  anime={anime}
+                  onEditProfile={onEditProfile}
+                  onOpenUser={onOpenUser}
+                />
+              </>
+            )}
+
+            {/* DETAIL TAB: CHARACTERS & VOICE ACTORS */}
+            {detailTab === 'characters' && (
+              <div className="space-y-4">
+                {!isManga && (
+                  <div className="flex items-center justify-between">
+                    <p className="text-[12px] text-[#AAAAAA]">
+                      Click any character to view details or pin to your Channel Favorites.
+                    </p>
+                    <div className="flex rounded-full border border-white/10 bg-[#181818] p-0.5 text-[11px] font-bold">
+                      {(['JP', 'EN'] as const).map((lang) => (
+                        <button
+                          key={lang}
+                          type="button"
+                          onClick={() => setVaLang(lang)}
+                          className={`rounded-full px-3 py-1 transition ${
+                            vaLang === lang ? 'bg-[#FF0000] text-white' : 'text-[#AAAAAA]'
+                          }`}
+                        >
+                          {lang === 'JP' ? 'Japanese VA' : 'English VA'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {characters.length === 0 ? (
+                  <p className="rounded-2xl border border-white/[0.08] bg-[#181818] p-6 text-center text-[13px] text-[#AAAAAA]">
+                    {loading ? 'Loading character cast…' : 'No character credits returned yet.'}
+                  </p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {characters.map((ch) => {
+                      const va = vaLang === 'EN' && ch.englishVoiceActor ? ch.englishVoiceActor : ch.voiceActor;
+                      return (
+                        <div
+                          key={ch.id}
+                          onClick={() => setSelectedCharacter(ch)}
+                          className="flex cursor-pointer items-center justify-between gap-2 rounded-2xl border border-white/[0.08] bg-[#181818] p-2.5 transition hover:border-white/20 hover:bg-[#222222]"
+                        >
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <img
+                              src={ch.image || anime.cover}
+                              alt={ch.name}
+                              className="h-14 w-11 shrink-0 rounded-lg object-cover bg-black"
+                            />
+                            <div className="min-w-0">
+                              <p className="truncate text-[13px] font-bold text-white">{ch.name}</p>
+                              <p className="text-[10.5px] font-semibold uppercase tracking-wide text-[#3EA6FF]">
+                                {ch.role}
+                              </p>
+                            </div>
+                          </div>
+
+                          {!isManga && va && (
+                            <div className="flex shrink-0 items-center gap-2 text-right">
+                              <div className="min-w-0 max-w-[110px]">
+                                <p className="truncate text-[12px] font-semibold text-neutral-200">
+                                  {va.name}
+                                </p>
+                                <p className="text-[10px] text-[#AAAAAA]">
+                                  {vaLang === 'EN' && ch.englishVoiceActor ? 'English' : 'Japanese'}
+                                </p>
+                              </div>
+                              {va.image && (
+                                <img
+                                  src={va.image}
+                                  alt={va.name}
+                                  className="h-12 w-10 shrink-0 rounded-lg object-cover bg-black"
+                                />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* DETAIL TAB: STAFF & OPENING/ENDING THEMES */}
+            {detailTab === 'staff' && (
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
+                  <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wider text-white">
+                    {isManga ? 'Creators & Authors' : 'Production Staff'}
+                  </h3>
+                  {staff.length === 0 ? (
+                    <p className="text-[12px] text-[#AAAAAA]">No detailed staff credits indexed for this entry.</p>
+                  ) : (
+                    <div className="grid gap-2.5 sm:grid-cols-2">
+                      {staff.map((person, idx) => (
+                        <div
+                          key={`${person.id}-${idx}`}
+                          className="flex items-center gap-3 rounded-xl bg-[#222222] p-2.5"
+                        >
+                          {person.image ? (
+                            <img
+                              src={person.image}
+                              alt={person.name}
+                              className="h-11 w-9 shrink-0 rounded-lg object-cover bg-black"
+                            />
+                          ) : (
+                            <div className="flex h-11 w-9 shrink-0 items-center justify-center rounded-lg bg-[#2E2E2E] text-xs font-bold">
+                              {person.name.slice(0, 1)}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate text-[13px] font-bold text-white">{person.name}</p>
+                            <p className="truncate text-[11px] text-[#AAAAAA]">{person.role}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {!isManga && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
+                      <h3 className="mb-3 flex items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-white">
+                        <Music className="h-4 w-4 text-[#FF0000]" />
+                        Opening Themes ({themes.openings.length})
+                      </h3>
+                      {themes.openings.length === 0 ? (
+                        <p className="text-[12px] text-[#AAAAAA]">No OP songs listed.</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {themes.openings.map((op) => (
+                            <li key={`op-${op.number}-${op.title}`} className="rounded-xl bg-[#222222] p-2.5 text-[12px]">
+                              <p className="font-bold text-white">
+                                OP {op.number}: {op.title}
+                              </p>
+                              {(op.artists || op.episodes) && (
+                                <p className="mt-0.5 text-[11px] text-[#AAAAAA]">
+                                  {[op.artists, op.episodes ? `eps ${op.episodes}` : null]
+                                    .filter(Boolean)
+                                    .join(' · ')}
+                                </p>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
+                      <h3 className="mb-3 flex items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-white">
+                        <Music className="h-4 w-4 text-[#3EA6FF]" />
+                        Ending Themes ({themes.endings.length})
+                      </h3>
+                      {themes.endings.length === 0 ? (
+                        <p className="text-[12px] text-[#AAAAAA]">No ED songs listed.</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {themes.endings.map((ed) => (
+                            <li key={`ed-${ed.number}-${ed.title}`} className="rounded-xl bg-[#222222] p-2.5 text-[12px]">
+                              <p className="font-bold text-white">
+                                ED {ed.number}: {ed.title}
+                              </p>
+                              {(ed.artists || ed.episodes) && (
+                                <p className="mt-0.5 text-[11px] text-[#AAAAAA]">
+                                  {[ed.artists, ed.episodes ? `eps ${ed.episodes}` : null]
+                                    .filter(Boolean)
+                                    .join(' · ')}
+                                </p>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* DETAIL TAB: PER-SHOW COMMUNITY SCORE & STATUS HISTOGRAMS */}
+            {detailTab === 'stats' && (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
+                  <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wider text-white">
+                    Community Score Distribution
+                  </h3>
+                  {scoreStats.length === 0 ? (
+                    <p className="text-[12px] text-[#AAAAAA]">No score distribution returned for this title.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {[...scoreStats]
+                        .sort((a, b) => b.score - a.score)
+                        .map((bucket) => (
+                          <div key={bucket.score} className="flex items-center gap-3 text-[12px]">
+                            <span className="w-10 font-mono font-bold text-amber-300">
+                              {(bucket.score / 10).toFixed(0)}★
+                            </span>
+                            <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/[0.08]">
+                              <div
+                                className="h-full rounded-full bg-amber-400"
+                                style={{ width: `${(bucket.amount / maxScoreBucket) * 100}%` }}
+                              />
+                            </div>
+                            <span className="w-16 text-right font-mono text-[11px] text-[#AAAAAA]">
+                              {bucket.amount.toLocaleString()}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
+                  <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wider text-white">
+                    Community List Status Breakdown
+                  </h3>
+                  {statusStats.length === 0 ? (
+                    <p className="text-[12px] text-[#AAAAAA]">No list status counts returned.</p>
+                  ) : (
+                    <div className="grid gap-2.5 sm:grid-cols-2">
+                      {statusStats.map((st) => {
+                        const pct = Math.round((st.amount / totalStatusUsers) * 100);
+                        return (
+                          <div key={st.status} className="rounded-xl bg-[#222222] p-3">
+                            <div className="flex items-center justify-between text-[12px] font-bold">
+                              <span className="text-white">{STATUS_PRETTY[st.status] ?? st.status}</span>
+                              <span className="text-[#3EA6FF]">{st.amount.toLocaleString()} ({pct}%)</span>
+                            </div>
+                            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                              <div
+                                className="h-full rounded-full bg-[#3EA6FF]"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Right Column: "Up Next & Recommendations" (Real MAL / AniList / Community Recs!) */}
+          {/* Right Column: Up Next & Similar */}
           <div className="min-w-0 space-y-3">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
               <h2 className="flex items-center gap-2 text-[16px] font-bold text-white">
@@ -893,6 +1423,95 @@ export const DetailView: React.FC<DetailViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Character Modal (Full Bio + 1-Click Favorite Pin) */}
+      {selectedCharacter && (
+        <div
+          className="fixed inset-0 z-[75] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedCharacter(null);
+          }}
+        >
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-3xl border border-white/[0.12] bg-[#1F1F1F] p-5 text-white shadow-2xl">
+            <div className="flex items-start gap-4">
+              <img
+                src={selectedCharacter.image || anime.cover}
+                alt={selectedCharacter.name}
+                className="h-28 w-20 shrink-0 rounded-xl object-cover bg-black"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-[18px] font-black text-white">{selectedCharacter.name}</p>
+                {selectedCharacter.nativeName && (
+                  <p className="text-[12px] text-[#AAAAAA]">{selectedCharacter.nativeName}</p>
+                )}
+                <p className="mt-1 text-[11px] font-bold uppercase text-[#3EA6FF]">
+                  {selectedCharacter.role} · {anime.title}
+                </p>
+
+                {(() => {
+                  const isCharFav = (profile.favoriteCharactersData ?? []).some(
+                    (c) => String(c.id) === String(selectedCharacter.id)
+                  );
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const added = profileStore.toggleFavoriteCharacterItem({
+                          id: selectedCharacter.id,
+                          name: selectedCharacter.name,
+                          image: selectedCharacter.image || anime.cover,
+                          mediaTitle: anime.title,
+                        });
+                        toast(
+                          added
+                            ? `${selectedCharacter.name} pinned to Channel Favorites ★`
+                            : `Removed ${selectedCharacter.name} from Favorites`
+                        );
+                      }}
+                      className={`mt-3 flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11.5px] font-bold transition ${
+                        isCharFav
+                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                          : 'bg-[#FF0000] text-white hover:bg-[#CC0000]'
+                      }`}
+                    >
+                      <Heart className={`h-3.5 w-3.5 ${isCharFav ? 'fill-current' : ''}`} />
+                      <span>{isCharFav ? 'Favorited' : 'Pin Favorite Character'}</span>
+                    </button>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {selectedCharacter.description && (
+              <p className="mt-4 whitespace-pre-line text-[12.5px] leading-relaxed text-[#E5E5E5]">
+                {selectedCharacter.description}
+              </p>
+            )}
+
+            <div className="mt-4 flex items-center justify-between border-t border-white/[0.08] pt-3">
+              {selectedCharacter.siteUrl ? (
+                <a
+                  href={selectedCharacter.siteUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="flex items-center gap-1 text-[12px] font-bold text-[#3EA6FF] hover:underline"
+                >
+                  AniList Profile <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : (
+                <span />
+              )}
+              <button
+                type="button"
+                onClick={() => setSelectedCharacter(null)}
+                className="rounded-full bg-white px-4 py-1.5 text-[12px] font-bold text-black"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

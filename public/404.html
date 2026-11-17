@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ListTube</title>
+    <script>
+      (function () {
+        var l = window.location;
+        var base = l.pathname.indexOf('/ListTube/') === 0 || l.pathname === '/ListTube' ? '/ListTube' : '';
+        var route = l.pathname.slice(base.length) || '/';
+        var target = base + '/?p=' + encodeURIComponent(route) + (l.search ? '&' + l.search.slice(1) : '') + l.hash;
+        l.replace(target);
+      })();
+    </script>
+  </head>
+  <body style="background:#0F0F0F;color:#fff;font-family:sans-serif;"></body>
+</html>

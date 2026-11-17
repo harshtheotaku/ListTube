@@ -2,11 +2,12 @@ import { Anime, ListStatus, MediaType, TrackerAccount } from '../types';
 import { fetchAniListViewer, fetchByMalIds, mapMedia } from './anilist';
 import { importMALList, ImportedEntry } from './jikan';
 import { resolveMalUrl } from './platform';
+import { fromFuzzyDate } from './scoring';
 
 const ENDPOINT = 'https://graphql.anilist.co';
 
 /**
- * Lightweight list query for fast import (< 2s even for 400+ entries).
+ * Rich list query importing scores, volumes, rewatches, dates, and notes.
  */
 const LIST_QUERY = `
   query Profile($name: String, $type: MediaType) {
@@ -16,8 +17,13 @@ const LIST_QUERY = `
         status
         entries {
           status
-          score(format: POINT_10)
+          score(format: POINT_100)
           progress
+          progressVolumes
+          repeat
+          startedAt { year month day }
+          completedAt { year month day }
+          notes
           media {
             id
             idMal
@@ -67,6 +73,11 @@ interface AniListEntry {
   status?: string;
   score?: number;
   progress?: number;
+  progressVolumes?: number;
+  repeat?: number;
+  startedAt?: { year?: number | null; month?: number | null; day?: number | null } | null;
+  completedAt?: { year?: number | null; month?: number | null; day?: number | null } | null;
+  notes?: string | null;
   media?: Parameters<typeof mapMedia>[0];
 }
 
@@ -139,8 +150,16 @@ export async function importAniList(rawUsername: string, token?: string): Promis
           out.push({
             anime,
             status: ANILIST_STATUS[row.status ?? ''] ?? 'planned',
-            score: row.score && row.score > 0 ? Math.min(10, Math.round(row.score)) : undefined,
+            score:
+              row.score && row.score > 0
+                ? Math.round(Math.min(10, row.score / 10) * 10) / 10
+                : undefined,
             progress: row.progress || undefined,
+            progressVolumes: row.progressVolumes || undefined,
+            repeat: row.repeat || undefined,
+            startedAt: fromFuzzyDate(row.startedAt),
+            completedAt: fromFuzzyDate(row.completedAt),
+            notes: row.notes || undefined,
           });
         }
       }
@@ -180,9 +199,83 @@ export async function importAniList(rawUsername: string, token?: string): Promis
 
 export async function importAniListWithToken(token: string): Promise<TrackerImport> {
   const cleanToken = token.trim().replace(/^Bearer\s+/i, '');
-  if (!cleanToken) throw new Error('Paste your AniList access token.');
+  if (!cleanToken) throw new Error('Connect or paste a valid AniList access token.');
   const viewer = await fetchAniListViewer(cleanToken);
-  return importAniList(viewer.name, cleanToken);
+  const res = await importAniList(viewer.name, cleanToken);
+  res.account.oauthConnected = true;
+  if (viewer.avatar) res.account.avatar = viewer.avatar;
+  return res;
+}
+
+const MAL_PKCE_STORAGE = 'listtube.mal.pkce.v1';
+
+export function generatePkceVerifier(len = 64): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => alphabet[b % alphabet.length])
+    .join('');
+}
+
+export function storeMalPkceSession(verifier: string, state: string, clientId?: string): void {
+  try {
+    localStorage.setItem(
+      MAL_PKCE_STORAGE,
+      JSON.stringify({ verifier, state, clientId, createdAt: Date.now() })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readAndClearMalPkceSession(): {
+  verifier: string;
+  state: string;
+  clientId?: string;
+} | null {
+  try {
+    const raw = localStorage.getItem(MAL_PKCE_STORAGE);
+    localStorage.removeItem(MAL_PKCE_STORAGE);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { verifier?: string; state?: string; clientId?: string };
+    if (!parsed.verifier || !parsed.state) return null;
+    return { verifier: parsed.verifier, state: parsed.state, clientId: parsed.clientId };
+  } catch {
+    return null;
+  }
+}
+
+export function buildAniListAuthorizeUrl(params: {
+  clientId: string;
+  redirectUri: string;
+  useImplicit?: boolean;
+  state?: string;
+}): string {
+  const qp = new URLSearchParams({
+    client_id: params.clientId.trim(),
+    redirect_uri: params.redirectUri,
+    response_type: params.useImplicit ? 'token' : 'code',
+  });
+  if (!params.useImplicit && params.state) qp.set('state', params.state);
+  return `https://anilist.co/api/v2/oauth/authorize?${qp.toString()}`;
+}
+
+export function buildMalAuthorizeUrl(params: {
+  clientId: string;
+  redirectUri: string;
+  codeChallenge: string;
+  state: string;
+}): string {
+  const qp = new URLSearchParams({
+    response_type: 'code',
+    client_id: params.clientId.trim(),
+    code_challenge: params.codeChallenge,
+    code_challenge_method: 'plain',
+    redirect_uri: params.redirectUri,
+    state: params.state,
+  });
+  return `https://myanimelist.net/v1/oauth2/authorize?${qp.toString()}`;
 }
 
 interface MalLoadJsonRow {

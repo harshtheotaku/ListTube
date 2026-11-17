@@ -7,21 +7,20 @@ import {
   Cloud,
   CloudOff,
   Compass,
-  Copy,
   Download,
   Film,
   Heart,
-  KeyRound,
   Loader2,
   MapPin,
   Newspaper,
   Pencil,
   RefreshCw,
   Settings,
+  ShieldCheck,
   Sparkles,
   Star,
   Trash2,
-  Unlink,
+  Users,
 } from 'lucide-react';
 import { LibraryState, ListEntry, MediaType, statusLabel } from '../types';
 import { animeStore } from '../services/animeStore';
@@ -29,6 +28,8 @@ import { buildTasteProfile } from '../services/recommender';
 import { library } from '../services/library';
 import { BUILT_IN_AVATARS, useProfile } from '../services/profile';
 import { cloudSync, useCloudSync } from '../services/cloudSync';
+import { formatUserScore } from '../services/scoring';
+import { useSettings } from '../services/settings';
 import { toast } from './Toast';
 
 interface YouViewProps {
@@ -41,6 +42,7 @@ interface YouViewProps {
   onOpenSchedule: () => void;
   onOpenNews: () => void;
   onExplore: () => void;
+  onOpenFeed?: () => void;
   onOpenAnime?: (animeId: string) => void;
 }
 
@@ -181,12 +183,13 @@ export const YouView: React.FC<YouViewProps> = ({
   onOpenSchedule,
   onOpenNews,
   onExplore,
+  onOpenFeed,
   onOpenAnime,
 }) => {
+  const settings = useSettings();
   const [channelTab, setChannelTab] = useState<ChannelTab>('overview');
   const [confirmClear, setConfirmClear] = useState(false);
-  const [codeInput, setCodeInput] = useState('');
-  const [cloudBusy, setCloudBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const isManga = mediaType === 'MANGA';
 
   const animeStats = useMemo(() => computeMalStats(libraryState.entries, 'ANIME'), [libraryState.entries]);
@@ -238,12 +241,30 @@ export const YouView: React.FC<YouViewProps> = ({
         .filter((a): a is NonNullable<typeof a> => Boolean(a)),
     [profileData.favoriteMangaIds]
   );
-  const favChars = useMemo(
+  const favChars = useMemo(() => {
+    const fromData = (profileData.favoriteCharactersData ?? []).map((c) => ({
+      id: String(c.id),
+      name: c.name,
+      series: c.mediaTitle || 'Character',
+      url: c.image,
+    }));
+    const fromPresets = (profileData.favoriteCharacters ?? [])
+      .map((id) => BUILT_IN_AVATARS.find((c) => c.id === id))
+      .filter((c): c is NonNullable<typeof c> => Boolean(c));
+    const seen = new Set<string>();
+    return [...fromData, ...fromPresets].filter((item) => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  }, [profileData.favoriteCharacters, profileData.favoriteCharactersData]);
+
+  const likedItems = useMemo(
     () =>
-      (profileData.favoriteCharacters ?? [])
-        .map((id) => BUILT_IN_AVATARS.find((c) => c.id === id))
-        .filter((c): c is NonNullable<typeof c> => Boolean(c)),
-    [profileData.favoriteCharacters]
+      (libraryState.likedIds ?? [])
+        .map((id) => animeStore.get(id))
+        .filter((a): a is NonNullable<typeof a> => Boolean(a)),
+    [libraryState.likedIds]
   );
 
   const exportData = () => {
@@ -257,45 +278,13 @@ export const YouView: React.FC<YouViewProps> = ({
     toast('Exported list backup to JSON');
   };
 
-  const handleCreateSyncCode = async () => {
-    setCloudBusy(true);
+  const handleGoogleLogin = async () => {
+    setGoogleBusy(true);
     try {
-      const code = await cloudSync.createSyncCode();
-      try {
-        await navigator.clipboard?.writeText(code);
-        toast(`Cloud Sync Code created & copied: ${code}`);
-      } catch {
-        toast(`Cloud Sync Code created: ${code}`);
-      }
+      await cloudSync.signInWithGoogle();
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Could not create sync code');
-    } finally {
-      setCloudBusy(false);
-    }
-  };
-
-  const handleLinkSyncCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!codeInput.trim()) return;
-    setCloudBusy(true);
-    try {
-      await cloudSync.linkSyncCode(codeInput);
-      setCodeInput('');
-      toast('Devices linked & synced via Cloud Vault!');
-    } catch (err) {
-      toast(err instanceof Error ? err.message : 'Invalid Sync Code');
-    } finally {
-      setCloudBusy(false);
-    }
-  };
-
-  const handleCopyCode = async () => {
-    if (!cloud.syncCode) return;
-    try {
-      await navigator.clipboard?.writeText(cloud.syncCode);
-      toast('Sync Code copied');
-    } catch {
-      toast(cloud.syncCode);
+      toast(err instanceof Error ? err.message : 'Google sign-in failed');
+      setGoogleBusy(false);
     }
   };
 
@@ -505,7 +494,7 @@ export const YouView: React.FC<YouViewProps> = ({
                           {typeof entry.progress === 'number'
                             ? ` · ${entry.progress}${total ? `/${total}` : ''} ${unitLabel}`
                             : ''}
-                          {entry.score ? ` · ★ ${entry.score}` : ''}
+                          {entry.score ? ` · ★ ${formatUserScore(entry.score, settings.scoreFormat)}` : ''}
                         </p>
                         <p className="mt-0.5 text-[10px] text-[#777777]">
                           {formatTimeAgo(entry.updatedAt)}
@@ -573,7 +562,7 @@ export const YouView: React.FC<YouViewProps> = ({
             )}
           </div>
 
-          {/* Multi-Device Cloud Sync Vault & Account Status */}
+          {/* Google Account & Multi-Device Profile Sync */}
           <div className={CARD}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -585,7 +574,7 @@ export const YouView: React.FC<YouViewProps> = ({
                   />
                 )}
                 <p className="text-[12px] font-bold uppercase tracking-wider text-white">
-                  Cloud Sync &amp; Cross-Device Backup
+                  Google Account &amp; Cloud Profile
                 </p>
               </div>
 
@@ -602,97 +591,70 @@ export const YouView: React.FC<YouViewProps> = ({
                   }`}
                 >
                   {cloud.state === 'synced'
-                    ? 'Synced to Cloud'
+                    ? 'Synced with Google'
                     : cloud.state === 'syncing'
                     ? 'Syncing…'
                     : cloud.state === 'error'
                     ? 'Sync Error'
                     : cloud.state === 'offline'
                     ? 'Offline'
-                    : 'Device Only'}
+                    : 'Not Signed In'}
                 </span>
                 {cloud.isLinked && (
                   <button
                     type="button"
-                    disabled={cloudBusy || cloud.state === 'syncing'}
+                    disabled={cloud.state === 'syncing'}
                     onClick={() => void cloudSync.syncNow()}
                     className="flex items-center gap-1 rounded-full bg-[#272727] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[#383838] disabled:opacity-50"
                   >
                     <RefreshCw
                       className={`h-3 w-3 ${cloud.state === 'syncing' ? 'animate-spin' : ''}`}
                     />
-                    Sync
+                    Refresh
                   </button>
                 )}
               </div>
             </div>
 
             <p className="mt-1 text-[11.5px] text-[#AAAAAA]">
-              Sync watchlist, progress, channel banner/favorites, Taste DNA, comments, and custom PFP between Android APK and Web automatically.
+              Connect with Google to keep your watchlist, decimal ratings, likes, reviews, comments, followers, and channel customization across devices.
             </p>
 
-            {cloud.syncCode ? (
+            {cloud.userEmail ? (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/25 bg-[#121212] px-3 py-2.5">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">
-                    Active Vault Code (v{cloud.syncVersion})
-                  </p>
-                  <p className="font-mono text-[14px] font-black tracking-wide text-white">
-                    {cloud.syncCode}
-                  </p>
+                <div className="flex items-center gap-2 min-w-0">
+                  <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" />
+                  <p className="truncate text-[13px] font-bold text-white">{cloud.userEmail}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCopyCode}
-                    className="flex items-center gap-1 rounded-lg bg-[#272727] px-2.5 py-1.5 text-[11.5px] font-bold text-white transition hover:bg-[#383838]"
-                  >
-                    <Copy className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                    Copy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      cloudSync.unlinkSyncCode();
-                      toast('Unlinked Sync Code (local data kept)');
-                    }}
-                    className="flex items-center gap-1 rounded-lg bg-[#272727] px-2.5 py-1.5 text-[11.5px] font-bold text-rose-400 transition hover:bg-[#383838]"
-                  >
-                    <Unlink className="h-3.5 w-3.5" />
-                    Unlink
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                 <button
                   type="button"
-                  disabled={cloudBusy}
-                  onClick={handleCreateSyncCode}
-                  className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#FF0000] px-4 py-2 text-[12px] font-bold text-white transition hover:bg-[#CC0000] disabled:opacity-50"
+                  onClick={() => {
+                    void cloudSync.signOut();
+                    toast('Signed out of Google');
+                  }}
+                  className="text-[11.5px] font-bold text-rose-400 hover:underline"
                 >
-                  {cloudBusy ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <KeyRound className="h-3.5 w-3.5" />
-                  )}
-                  Create Cloud Sync Code
+                  Sign out
                 </button>
-                <form onSubmit={handleLinkSyncCode} className="flex flex-1 gap-2">
-                  <input
-                    value={codeInput}
-                    onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-                    placeholder="Enter code LT-XXXX-XXXX-XXXX"
-                    className="h-9 flex-1 rounded-xl border border-white/[0.12] bg-[#121212] px-3 font-mono text-[16px] text-white placeholder:font-sans placeholder:text-[12px] placeholder:text-[#777777] outline-none focus:border-[#3EA6FF] lg:text-[12px]"
-                  />
-                  <button
-                    type="submit"
-                    disabled={cloudBusy || codeInput.trim().length < 8}
-                    className="rounded-xl bg-[#272727] px-3.5 text-[12px] font-bold text-white transition hover:bg-[#383838] disabled:opacity-40"
-                  >
-                    Link
-                  </button>
-                </form>
+              </div>
+            ) : (
+              <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  disabled={googleBusy}
+                  onClick={handleGoogleLogin}
+                  className="flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-[12.5px] font-bold text-[#111111] transition hover:bg-neutral-200 disabled:opacity-50"
+                >
+                  {googleBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  <span>Continue with Google</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenTrackers}
+                  className="rounded-xl bg-[#272727] px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-[#383838]"
+                >
+                  Connect Username / OAuth
+                </button>
               </div>
             )}
           </div>
@@ -740,11 +702,21 @@ export const YouView: React.FC<YouViewProps> = ({
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-3 gap-2 border-t border-white/[0.08] pt-4">
+            <div className="mt-4 grid grid-cols-4 gap-2 border-t border-white/[0.08] pt-4">
+              {onOpenFeed && (
+                <button
+                  type="button"
+                  onClick={onOpenFeed}
+                  className="flex flex-col items-center gap-1.5 rounded-xl bg-[#272727]/80 px-2 py-3 text-[11.5px] font-semibold text-white transition hover:bg-[#383838]"
+                >
+                  <Users className="h-4 w-4 text-rose-400" />
+                  <span>Community</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onOpenSchedule}
-                className="flex flex-col items-center gap-1.5 rounded-xl bg-[#272727]/80 px-2 py-3 text-[12px] font-semibold text-white transition hover:bg-[#383838]"
+                className="flex flex-col items-center gap-1.5 rounded-xl bg-[#272727]/80 px-2 py-3 text-[11.5px] font-semibold text-white transition hover:bg-[#383838]"
               >
                 <CalendarDays className="h-4 w-4 text-[#FF0000]" />
                 <span>Schedule</span>
@@ -752,7 +724,7 @@ export const YouView: React.FC<YouViewProps> = ({
               <button
                 type="button"
                 onClick={onOpenNews}
-                className="flex flex-col items-center gap-1.5 rounded-xl bg-[#272727]/80 px-2 py-3 text-[12px] font-semibold text-white transition hover:bg-[#383838]"
+                className="flex flex-col items-center gap-1.5 rounded-xl bg-[#272727]/80 px-2 py-3 text-[11.5px] font-semibold text-white transition hover:bg-[#383838]"
               >
                 <Newspaper className="h-4 w-4 text-[#3EA6FF]" />
                 <span>News</span>
@@ -760,7 +732,7 @@ export const YouView: React.FC<YouViewProps> = ({
               <button
                 type="button"
                 onClick={onExplore}
-                className="flex flex-col items-center gap-1.5 rounded-xl bg-[#272727]/80 px-2 py-3 text-[12px] font-semibold text-white transition hover:bg-[#383838]"
+                className="flex flex-col items-center gap-1.5 rounded-xl bg-[#272727]/80 px-2 py-3 text-[11.5px] font-semibold text-white transition hover:bg-[#383838]"
               >
                 <Compass className="h-4 w-4 text-emerald-400" />
                 <span>Explore</span>
@@ -972,7 +944,34 @@ export const YouView: React.FC<YouViewProps> = ({
             </div>
           )}
 
-          {favAnime.length === 0 && favManga.length === 0 && favChars.length === 0 && (
+          {likedItems.length > 0 && (
+            <div className={CARD}>
+              <h2 className="mb-3 text-[13px] font-bold uppercase tracking-wider text-white">
+                Liked Titles ({likedItems.length})
+              </h2>
+              <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+                {likedItems.slice(0, 12).map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => onOpenAnime?.(a.id)}
+                    className="group text-left"
+                  >
+                    <img
+                      src={a.cover}
+                      alt={a.title}
+                      className="aspect-[3/4] w-full rounded-xl border border-white/10 object-cover transition group-hover:scale-[1.03]"
+                    />
+                    <p className="mt-1.5 line-clamp-2 text-[11.5px] font-semibold text-white">
+                      {a.title}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {favAnime.length === 0 && favManga.length === 0 && favChars.length === 0 && likedItems.length === 0 && (
             <div className={`${CARD} py-10 text-center`}>
               <Heart className="mx-auto mb-2.5 h-8 w-8 text-rose-400/50" />
               <p className="text-[14px] font-bold text-white">No Favorites Selected Yet</p>
@@ -999,8 +998,8 @@ export const YouView: React.FC<YouViewProps> = ({
               {profileData.location && <p>Location: {profileData.location}</p>}
               <p>Joined: {joinedLabel}</p>
               <p>
-                Cloud Sync:{' '}
-                {cloud.userEmail || (cloud.syncCode ? `Vault ${cloud.syncCode}` : 'Not linked')}
+                Google Account:{' '}
+                {cloud.userEmail || 'Not signed in'}
               </p>
             </div>
           </div>

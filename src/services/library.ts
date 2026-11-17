@@ -10,6 +10,7 @@ import {
   TrackerAccount,
 } from '../types';
 import { animeStore } from './animeStore';
+import { clampCanonical10 } from './scoring';
 
 const KEY = 'anitube.library.v1';
 const MAX_EVENTS = 500;
@@ -17,6 +18,7 @@ const MAX_EVENTS = 500;
 function emptyState(): LibraryState {
   return {
     entries: {},
+    likedIds: [],
     notInterested: [],
     events: [],
     trackers: [],
@@ -33,6 +35,7 @@ function load(): LibraryState {
     const parsed = JSON.parse(raw) as Partial<LibraryState>;
     return {
       entries: parsed.entries ?? {},
+      likedIds: Array.isArray(parsed.likedIds) ? parsed.likedIds : [],
       notInterested: parsed.notInterested ?? [],
       events: parsed.events ?? [],
       trackers: parsed.trackers ?? [],
@@ -62,13 +65,17 @@ function commit(next: LibraryState): void {
   listeners.forEach((listener) => listener());
 }
 
-function withEvent(next: LibraryState, event: FeedbackEvent): LibraryState {
-  const events = [...next.events, event].slice(-MAX_EVENTS);
+function withEvent(next: LibraryState, ev: FeedbackEvent): LibraryState {
+  const events = [...next.events, ev].slice(-MAX_EVENTS);
   return { ...next, events };
 }
 
 function event(type: FeedbackType, animeId: string, value?: number): FeedbackEvent {
   return { animeId, type, value, at: Date.now() };
+}
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function commitEntry(
@@ -111,6 +118,10 @@ export const library = {
     return Boolean(state.entries[animeId]);
   },
 
+  isLiked(animeId: string): boolean {
+    return state.likedIds.includes(animeId);
+  },
+
   statusOf(animeId: string): ListStatus | undefined {
     return state.entries[animeId]?.status;
   },
@@ -118,15 +129,23 @@ export const library = {
   add(anime: Anime, status: ListStatus = 'planned'): void {
     const existing = state.entries[anime.id];
     if (existing && existing.status === status) return;
+    animeStore.remember(anime);
     animeStore.pin(anime.id);
     const patch: Partial<ListEntry> = { status, mediaType: anime.mediaType ?? 'ANIME' };
-    if (status === 'watching' && !existing?.progress) patch.progress = 1;
+    if (status === 'watching' && !existing?.progress) {
+      patch.progress = 1;
+      if (!existing?.startedAt) patch.startedAt = todayIso();
+    }
+    if (status === 'completed' && !existing?.completedAt) {
+      patch.completedAt = todayIso();
+    }
     let next = commitEntry(state, anime.id, patch);
     next = withEvent(next, event(status === 'dropped' ? 'drop' : 'add', anime.id));
     commit(next);
   },
 
   setStatus(anime: Anime, status: ListStatus): void {
+    animeStore.remember(anime);
     animeStore.pin(anime.id);
     const eventType: FeedbackType =
       status === 'completed'
@@ -143,7 +162,11 @@ export const library = {
     const totalCount = anime.mediaType === 'MANGA' ? anime.chapters : anime.episodes;
     const patch: Partial<ListEntry> = { status, mediaType: anime.mediaType ?? 'ANIME' };
     if (status === 'watching' && !existing?.progress) patch.progress = 1;
-    if (status === 'completed' && totalCount) patch.progress = totalCount;
+    if (status === 'watching' && !existing?.startedAt) patch.startedAt = todayIso();
+    if (status === 'completed') {
+      if (totalCount) patch.progress = totalCount;
+      if (!existing?.completedAt) patch.completedAt = todayIso();
+    }
     const next = commitEntry(state, anime.id, patch, event(eventType, anime.id));
     commit(next);
   },
@@ -156,8 +179,14 @@ export const library = {
     commit(next);
   },
 
-  setScore(animeId: string, score: number): void {
-    let next = commitEntry(state, animeId, { score }, event('rate', animeId, score));
+  setScore(animeId: string, rawScore?: number): void {
+    const normalized = clampCanonical10(rawScore);
+    const next = commitEntry(
+      state,
+      animeId,
+      { score: normalized },
+      event('rate', animeId, normalized)
+    );
     commit(next);
   },
 
@@ -165,23 +194,87 @@ export const library = {
     const entry = state.entries[animeId];
     if (!entry) return;
     const anime = animeStore.get(animeId);
-    const total =
+    const knownTotal =
       anime?.mediaType === 'MANGA'
         ? anime.chapters ?? 0
-        : anime?.episodes ?? (anime?.nextEpisode ? Math.max(1, anime.nextEpisode.number - 1) : 0);
-    const clamped = Math.max(0, progress);
-    const finished = total > 0 && clamped >= total && entry.status === 'watching';
+        : anime?.episodes ?? 0;
+
+    // Never cap or auto-complete when total episodes/chapters are unknown (0 / ongoing series)!
+    const clamped = Math.max(0, Math.floor(progress));
+    const bounded = knownTotal > 0 ? Math.min(knownTotal, clamped) : clamped;
+    const finished = knownTotal > 0 && bounded >= knownTotal && entry.status === 'watching';
 
     let next = commitEntry(
       state,
       animeId,
-      { progress: finished ? total : clamped },
-      event('progress', animeId, clamped)
+      {
+        progress: bounded,
+        ...(entry.startedAt ? {} : { startedAt: todayIso() }),
+      },
+      event('progress', animeId, bounded)
     );
     if (finished) {
-      next = commitEntry(next, animeId, { status: 'completed' }, event('complete', animeId));
+      next = commitEntry(
+        next,
+        animeId,
+        {
+          status: 'completed',
+          completedAt: entry.completedAt ?? todayIso(),
+        },
+        event('complete', animeId)
+      );
     }
     commit(next);
+  },
+
+  updateEntryDetails(
+    animeId: string,
+    patch: Partial<
+      Pick<
+        ListEntry,
+        | 'progressVolumes'
+        | 'repeat'
+        | 'startedAt'
+        | 'completedAt'
+        | 'notes'
+        | 'isPrivate'
+        | 'customLists'
+        | 'score'
+        | 'progress'
+        | 'status'
+      >
+    >
+  ): void {
+    const entry = state.entries[animeId];
+    if (!entry) return;
+    const cleanPatch: Partial<ListEntry> = { ...patch };
+    if ('score' in patch) cleanPatch.score = clampCanonical10(patch.score);
+    if (typeof patch.progressVolumes === 'number') {
+      cleanPatch.progressVolumes = Math.max(0, Math.floor(patch.progressVolumes));
+    }
+    if (typeof patch.repeat === 'number') {
+      cleanPatch.repeat = Math.max(0, Math.floor(patch.repeat));
+    }
+    if (typeof patch.progress === 'number') {
+      cleanPatch.progress = Math.max(0, Math.floor(patch.progress));
+    }
+    const next = commitEntry(state, animeId, cleanPatch);
+    commit(next);
+  },
+
+  toggleLike(anime: Anime): boolean {
+    animeStore.remember(anime);
+    animeStore.pin(anime.id);
+    const exists = state.likedIds.includes(anime.id);
+    const likedIds = exists
+      ? state.likedIds.filter((id) => id !== anime.id)
+      : [anime.id, ...state.likedIds];
+    const next = withEvent(
+      { ...state, likedIds },
+      event('like', anime.id, exists ? 0 : 1)
+    );
+    commit(next);
+    return !exists;
   },
 
   logOpen(animeId: string): void {
@@ -201,20 +294,37 @@ export const library = {
   },
 
   importEntries(
-    items: { anime: Anime; status: ListStatus; score?: number; progress?: number }[],
+    items: {
+      anime: Anime;
+      status: ListStatus;
+      score?: number;
+      progress?: number;
+      progressVolumes?: number;
+      repeat?: number;
+      startedAt?: string;
+      completedAt?: string;
+      notes?: string;
+    }[],
     tracker: TrackerAccount
   ): void {
     const entries = { ...state.entries };
     const now = Date.now();
     for (const item of items) {
       animeStore.pin(item.anime.id);
+      const prev = entries[item.anime.id];
       entries[item.anime.id] = {
+        ...prev,
         animeId: item.anime.id,
         mediaType: item.anime.mediaType ?? 'ANIME',
         status: item.status,
-        score: item.score,
-        progress: item.progress,
-        addedAt: now,
+        score: clampCanonical10(item.score) ?? prev?.score,
+        progress: item.progress ?? prev?.progress,
+        progressVolumes: item.progressVolumes ?? prev?.progressVolumes,
+        repeat: item.repeat ?? prev?.repeat,
+        startedAt: item.startedAt ?? prev?.startedAt,
+        completedAt: item.completedAt ?? prev?.completedAt,
+        notes: item.notes ?? prev?.notes,
+        addedAt: prev?.addedAt ?? now,
         updatedAt: now,
       };
     }
@@ -245,9 +355,10 @@ export const library = {
     commit(emptyState());
   },
 
-  replaceFromCloud(next: LibraryState): void {
+  replaceFromCloud(next: Partial<LibraryState>): void {
     state = {
       entries: next.entries ?? {},
+      likedIds: Array.isArray(next.likedIds) ? next.likedIds : state.likedIds,
       notInterested: next.notInterested ?? [],
       events: next.events ?? [],
       trackers: next.trackers ?? [],

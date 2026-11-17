@@ -273,11 +273,11 @@ export const TopBar: React.FC<TopBarProps> = ({
             <Settings className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
 
-          {/* Non-Intrusive Corner Login / Tracker Connect Button */}
+          {/* Non-Intrusive Corner Account & Username Connect Button */}
           <button
             type="button"
             onClick={onOpenTrackers}
-            aria-label={connected ? `Connected as ${connected.username}` : 'Connect AniList, MAL or Cloud Sync'}
+            aria-label={connected ? `Connected as ${connected.username}` : 'Google Sign-In or Connect Username'}
             className="flex items-center gap-2 rounded-full border border-white/[0.16] bg-[#272727] py-1.5 pl-2 pr-3 text-[12px] font-semibold text-white transition hover:bg-[#383838]"
           >
             <div className="relative">
@@ -288,7 +288,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               />
               {cloud.isLinked && (
                 <span
-                  title={cloud.state === 'synced' ? 'Synced to Cloud' : `Cloud: ${cloud.state}`}
+                  title={cloud.userEmail ? `Google: ${cloud.userEmail}` : cloud.state}
                   className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-[#272727] ${
                     cloud.state === 'syncing'
                       ? 'bg-amber-400'
@@ -304,10 +304,10 @@ export const TopBar: React.FC<TopBarProps> = ({
             ) : cloud.isLinked ? (
               <span className="hidden items-center gap-1 text-emerald-300 sm:inline-flex">
                 <Cloud className="h-3.5 w-3.5" />
-                Cloud
+                Google
               </span>
             ) : (
-              <span className="hidden text-[#3EA6FF] sm:inline">Connect</span>
+              <span className="hidden text-[#3EA6FF] sm:inline">Sign In</span>
             )}
           </button>
           </div>

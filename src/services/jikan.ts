@@ -1,6 +1,7 @@
-import { Anime, MediaType, NewsItem, RelatedTitle, StreamingLink } from '../types';
+import { Anime, MediaType, NewsItem, RelatedTitle, StreamingLink, ThemeSong } from '../types';
 import { pickSingleEnglishLink } from './anilist';
 import { animeStore } from './animeStore';
+import { fetchMalThemesEdge } from './supabase';
 
 const BASE = 'https://api.jikan.moe/v4';
 
@@ -309,6 +310,66 @@ export interface ImportedEntry {
   status: 'watching' | 'completed' | 'planned' | 'on_hold' | 'dropped';
   score?: number;
   progress?: number;
+  progressVolumes?: number;
+  repeat?: number;
+  startedAt?: string;
+  completedAt?: string;
+  notes?: string;
+}
+
+function parseThemeString(raw: string, fallbackIndex: number): ThemeSong {
+  const numMatch = raw.match(/^(?:S\d+\s*)?(\d+):\s*(.+)$/);
+  const number = numMatch ? Number(numMatch[1]) : fallbackIndex + 1;
+  const rest = numMatch ? numMatch[2] : raw;
+  const epMatch = rest.match(/\(eps?\s*([^)]+)\)\s*$/i);
+  const episodes = epMatch?.[1]?.trim();
+  const withoutEps = epMatch ? rest.slice(0, epMatch.index).trim() : rest.trim();
+  const byMatch = withoutEps.match(/^["“]?(.+?)["”]?\s+by\s+(.+)$/i);
+  if (byMatch) {
+    return {
+      number,
+      title: byMatch[1].replace(/^["']|["']$/g, '').trim(),
+      artists: byMatch[2].trim(),
+      episodes,
+    };
+  }
+  return {
+    number,
+    title: withoutEps.replace(/^["']|["']$/g, '').trim(),
+    episodes,
+  };
+}
+
+export async function fetchAnimeThemes(
+  malId?: number
+): Promise<{ openings: ThemeSong[]; endings: ThemeSong[] }> {
+  if (!malId) return { openings: [], endings: [] };
+  return cached(
+    `mal-themes:${malId}`,
+    async () => {
+      // 1. Edge Gateway first (Jikan -> MAL HTML fallback, Postgres L2 cached)
+      const edge = await fetchMalThemesEdge(malId);
+      if (edge.openings.length > 0 || edge.endings.length > 0) {
+        return {
+          openings: edge.openings.map((s, idx) => parseThemeString(s, idx)),
+          endings: edge.endings.map((s, idx) => parseThemeString(s, idx)),
+        };
+      }
+      // 2. Fallback direct Jikan request if Edge returned nothing
+      try {
+        const res = await get<{ data?: { openings?: string[]; endings?: string[] } }>(
+          `/anime/${malId}/themes`
+        );
+        return {
+          openings: (res.data?.openings ?? []).map((s, idx) => parseThemeString(s, idx)),
+          endings: (res.data?.endings ?? []).map((s, idx) => parseThemeString(s, idx)),
+        };
+      } catch {
+        return { openings: [], endings: [] };
+      }
+    },
+    60 * 60 * 1000
+  );
 }
 
 const MAL_STATUS: Record<number, ImportedEntry['status']> = {

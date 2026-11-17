@@ -1,28 +1,36 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Check,
-  Cloud,
-  Copy,
   Download,
+  ExternalLink,
   FileUp,
-  KeyRound,
   Loader2,
   LogOut,
-  Mail,
+  ShieldCheck,
   Sparkles,
+  User,
   X,
 } from 'lucide-react';
 import { TrackerAccount } from '../types';
 import {
+  buildAniListAuthorizeUrl,
+  buildMalAuthorizeUrl,
+  generatePkceVerifier,
   importAniList,
   importAniListWithToken,
   importFromExportFile,
   importMyAnimeList,
+  storeMalPkceSession,
   TrackerImport,
 } from '../services/trackers';
 import { animeStore } from '../services/animeStore';
 import { library } from '../services/library';
 import { cloudSync, useCloudSync } from '../services/cloudSync';
+import {
+  fetchOAuthServerStatus,
+  getAppBaseUrl,
+  OAuthServerStatus,
+} from '../services/supabase';
 import { toast } from './Toast';
 
 interface TrackersModalProps {
@@ -49,6 +57,8 @@ const PROVIDERS: { id: Provider; name: string; hint: string; accent: string }[] 
   },
 ];
 
+const CUSTOM_OAUTH_KEY = 'listtube.customOAuth.v1';
+
 export const TrackersModal: React.FC<TrackersModalProps> = ({
   isOpen,
   onClose,
@@ -58,15 +68,15 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
   const cloud = useCloudSync();
   const [provider, setProvider] = useState<Provider>('anilist');
   const [username, setUsername] = useState('');
-  const [showPrivateOption, setShowPrivateOption] = useState(false);
-  const [anilistToken, setAnilistToken] = useState('');
-  const [cloudTab, setCloudTab] = useState<'vault' | 'email'>('vault');
-  const [vaultCodeInput, setVaultCodeInput] = useState('');
-  const [cloudEmail, setCloudEmail] = useState('');
-  const [cloudPassword, setCloudPassword] = useState('');
-  const [cloudAuthMode, setCloudAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [cloudBusy, setCloudBusy] = useState(false);
-  const [cloudNotice, setCloudNotice] = useState<string | null>(null);
+  const [showAdvancedOAuth, setShowAdvancedOAuth] = useState(false);
+  const [anilistTokenInput, setAnilistTokenInput] = useState('');
+  const [customAnilistClientId, setCustomAnilistClientId] = useState('');
+  const [customMalClientId, setCustomMalClientId] = useState('');
+  const [oauthStatus, setOauthStatus] = useState<OAuthServerStatus>({
+    anilistConfigured: false,
+    malConfigured: false,
+  });
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TrackerImport | null>(null);
@@ -75,15 +85,26 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setError(null);
-    setCloudNotice(null);
     setResult(null);
     setBusy(false);
-    setShowPrivateOption(false);
+    setGoogleBusy(false);
+    setShowAdvancedOAuth(false);
     const existing = trackers[0];
     if (existing) {
       setProvider(existing.provider);
       setUsername(existing.username);
     }
+    try {
+      const saved = JSON.parse(localStorage.getItem(CUSTOM_OAUTH_KEY) ?? '{}') as {
+        anilistClientId?: string;
+        malClientId?: string;
+      };
+      if (saved.anilistClientId) setCustomAnilistClientId(saved.anilistClientId);
+      if (saved.malClientId) setCustomMalClientId(saved.malClientId);
+    } catch {
+      /* ignore */
+    }
+    void fetchOAuthServerStatus().then(setOauthStatus);
   }, [isOpen, trackers]);
 
   if (!isOpen) return null;
@@ -96,11 +117,27 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
         status: entry.status,
         score: entry.score,
         progress: entry.progress,
+        progressVolumes: entry.progressVolumes,
+        repeat: entry.repeat,
+        startedAt: entry.startedAt,
+        completedAt: entry.completedAt,
+        notes: entry.notes,
       })),
       imported.account
     );
     setResult(imported);
-    toast(`Synced ${imported.entries.length} titles — feed updated!`);
+    toast(`Connected ${imported.entries.length} titles — feed & stats updated!`);
+  };
+
+  const handleGoogleSignIn = async () => {
+    setGoogleBusy(true);
+    setError(null);
+    try {
+      await cloudSync.signInWithGoogle();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Google Sign-In failed');
+      setGoogleBusy(false);
+    }
   };
 
   const submitUsername = async (event: React.FormEvent) => {
@@ -121,24 +158,78 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
       setError(
         err instanceof Error
           ? err.message
-          : 'Could not sync this username. Ensure your list is public.'
+          : 'Could not connect this username. Ensure your list is public.'
       );
     } finally {
       setBusy(false);
     }
   };
 
+  const handleStartOAuth = (target: Provider) => {
+    setError(null);
+    const redirectUri = getAppBaseUrl();
+    if (target === 'anilist') {
+      const clientId = (oauthStatus.anilistClientId || customAnilistClientId).trim();
+      if (!clientId) {
+        setShowAdvancedOAuth(true);
+        setError(
+          `Add ANILIST_CLIENT_ID in Supabase Secrets (or enter an AniList App Client ID below) with redirect URL ${redirectUri}`
+        );
+        return;
+      }
+      if (customAnilistClientId.trim()) {
+        localStorage.setItem(
+          CUSTOM_OAUTH_KEY,
+          JSON.stringify({ anilistClientId: customAnilistClientId.trim(), malClientId: customMalClientId.trim() })
+        );
+      }
+      // Use Authorization Code if configured on server, else Implicit Token Grant for zero-secret Client IDs
+      const url = buildAniListAuthorizeUrl({
+        clientId,
+        redirectUri,
+        useImplicit: !oauthStatus.anilistConfigured,
+        state: `anilist:${crypto.randomUUID?.() ?? Date.now()}`,
+      });
+      window.location.href = url;
+      return;
+    }
+
+    const malClientId = (oauthStatus.malClientId || customMalClientId).trim();
+    if (!malClientId) {
+      setShowAdvancedOAuth(true);
+      setError(
+        `Add MAL_CLIENT_ID in Supabase Secrets (or enter your MAL App Client ID below) with redirect URL ${redirectUri}`
+      );
+      return;
+    }
+    if (customMalClientId.trim()) {
+      localStorage.setItem(
+        CUSTOM_OAUTH_KEY,
+        JSON.stringify({ anilistClientId: customAnilistClientId.trim(), malClientId: customMalClientId.trim() })
+      );
+    }
+    const verifier = generatePkceVerifier(64);
+    const state = `mal:${Date.now()}`;
+    storeMalPkceSession(verifier, state, malClientId);
+    window.location.href = buildMalAuthorizeUrl({
+      clientId: malClientId,
+      redirectUri,
+      codeChallenge: verifier,
+      state,
+    });
+  };
+
   const submitToken = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!anilistToken.trim()) return;
+    if (!anilistTokenInput.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      const imported = await importAniListWithToken(anilistToken);
-      cloudSync.setAniListWritebackToken(anilistToken);
+      const imported = await importAniListWithToken(anilistTokenInput);
+      cloudSync.setAniListWritebackToken(anilistTokenInput);
       commitImport(imported);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'AniList token sync failed.');
+      setError(err instanceof Error ? err.message : 'AniList token connect failed.');
     } finally {
       setBusy(false);
     }
@@ -169,93 +260,13 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
     }
   };
 
-  const handleCreateVault = async () => {
-    setCloudBusy(true);
-    setCloudNotice(null);
-    setError(null);
-    try {
-      const code = await cloudSync.createSyncCode();
-      try {
-        await navigator.clipboard?.writeText(code);
-        toast(`Cloud Sync Code created & copied: ${code}`);
-      } catch {
-        toast(`Cloud Sync Code created: ${code}`);
-      }
-      setCloudNotice(`Vault active (${code}) — paste this code on any other device to sync!`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create vault');
-    } finally {
-      setCloudBusy(false);
-    }
-  };
-
-  const handleLinkVault = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!vaultCodeInput.trim()) return;
-    setCloudBusy(true);
-    setCloudNotice(null);
-    setError(null);
-    try {
-      await cloudSync.linkSyncCode(vaultCodeInput);
-      setVaultCodeInput('');
-      toast('Synced with Cloud Vault!');
-      setCloudNotice('Vault linked & merged with your library!');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid Sync Code');
-    } finally {
-      setCloudBusy(false);
-    }
-  };
-
-  const handleEmailAuth = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!cloudEmail.trim().includes('@')) {
-      setError('Enter a valid email address.');
-      return;
-    }
-    setCloudBusy(true);
-    setCloudNotice(null);
-    setError(null);
-    try {
-      if (cloudAuthMode === 'signup') {
-        const res = await cloudSync.signUpWithEmail(cloudEmail, cloudPassword);
-        setCloudNotice(res.message);
-        if (res.activeSession) toast('Cloud Account created & synced');
-      } else {
-        await cloudSync.signInWithEmail(cloudEmail, cloudPassword);
-        toast(`Signed in as ${cloudEmail}`);
-        setCloudNotice('Signed in & synced with Cloud Account!');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Cloud sign-in failed.');
-    } finally {
-      setCloudBusy(false);
-    }
-  };
-
-  const handleMagicLink = async () => {
-    if (!cloudEmail.trim().includes('@')) {
-      setError('Enter your email first for a magic link.');
-      return;
-    }
-    setCloudBusy(true);
-    setError(null);
-    try {
-      const msg = await cloudSync.sendMagicLink(cloudEmail);
-      setCloudNotice(msg);
-      toast('Magic sign-in link sent');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not send magic link');
-    } finally {
-      setCloudBusy(false);
-    }
-  };
-
   const handleDisconnect = (providerToDisconnect: Provider) => {
     library.disconnectTracker(providerToDisconnect);
+    if (providerToDisconnect === 'anilist') cloudSync.setAniListWritebackToken('');
+    if (providerToDisconnect === 'mal') cloudSync.clearMalOAuthTokens();
     setUsername('');
     setResult(null);
-    toast('Tracker disconnected');
+    toast(`Disconnected ${providerToDisconnect === 'mal' ? 'MyAnimeList' : 'AniList'}`);
   };
 
   const breakdown = result
@@ -278,15 +289,14 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
       }}
     >
       <div className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-white/[0.1] bg-[#1F1F1F] text-white shadow-2xl sm:rounded-3xl">
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4">
           <div>
             <h2 id="tracker-title" className="flex items-center gap-1.5 text-[16px] font-bold text-white">
               <Sparkles className="h-4 w-4 text-[#FF0000]" />
-              Connect to ListTube
+              Account &amp; Trackers
             </h2>
             <p className="text-[11.5px] text-[#AAAAAA]">
-              Sync your anime &amp; manga list to personalize recommendations
+              Connect with Google or enter your AniList / MAL username
             </p>
           </div>
           <button
@@ -310,7 +320,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                   {result.entries.length} titles imported!
                 </p>
                 <p className="text-[12px] text-[#AAAAAA]">
-                  Your For You feed is now tuned to your watch history.
+                  Your For You recommendations, stats &amp; lists are updated.
                 </p>
               </div>
 
@@ -343,320 +353,259 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
             </div>
           ) : (
             <>
-              {/* Provider Switch: AniList vs MyAnimeList */}
-              <div className="grid grid-cols-2 gap-2">
-                {PROVIDERS.map((option) => {
-                  const active = provider === option.id;
-                  const isConn = trackers.some((t) => t.provider === option.id);
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => {
-                        setProvider(option.id);
-                        setError(null);
-                      }}
-                      className={`rounded-2xl border bg-gradient-to-b p-3 text-left transition ${
-                        option.accent
-                      } ${active ? 'ring-2 ring-white/35' : 'opacity-65 hover:opacity-100'}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[13px] font-bold text-white">{option.name}</span>
-                        {isConn && (
-                          <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold text-emerald-400">
-                            SYNCED
-                          </span>
-                        )}
-                      </div>
-                      <span className="mt-0.5 block text-[10.5px] text-neutral-300">
-                        Public Username
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Simple Username Form */}
-              <form onSubmit={submitUsername} className="space-y-2">
-                <div className="flex gap-2">
-                  <input
-                    id="tracker-username"
-                    value={username}
-                    onChange={(event) => setUsername(event.target.value)}
-                    placeholder={PROVIDERS.find((p) => p.id === provider)?.hint}
-                    autoComplete="username"
-                    className="h-11 flex-1 rounded-xl border border-white/[0.14] bg-[#121212] px-3.5 text-[16px] text-white placeholder:text-[13px] placeholder:text-[#777777] outline-none transition focus:border-[#FF0000] lg:text-[13px]"
-                  />
-                  <button
-                    type="submit"
-                    disabled={busy || !username.trim()}
-                    className="flex items-center gap-1.5 rounded-xl bg-[#FF0000] px-4 text-[13px] font-bold text-white transition hover:bg-[#CC0000] disabled:opacity-40"
-                  >
-                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                    {busy ? 'Syncing' : 'Connect'}
-                  </button>
+              {/* 1. Username Tracker Connect */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-1.5 text-[11.5px] font-bold uppercase tracking-wider text-[#CCCCCC]">
+                  <User className="h-3.5 w-3.5 text-[#FF0000]" />
+                  <span>Username / Profile Import</span>
                 </div>
 
-                {error && <p className="text-[12px] font-medium text-rose-400">{error}</p>}
+                <div className="grid grid-cols-2 gap-2">
+                  {PROVIDERS.map((option) => {
+                    const active = provider === option.id;
+                    const conn = trackers.find((t) => t.provider === option.id);
+                    const twoWay =
+                      option.id === 'anilist'
+                        ? Boolean(cloud.anilistWritebackToken)
+                        : cloud.malConnected;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => {
+                          setProvider(option.id);
+                          setError(null);
+                        }}
+                        className={`rounded-2xl border bg-gradient-to-b p-3 text-left transition ${
+                          option.accent
+                        } ${active ? 'ring-2 ring-white/35' : 'opacity-70 hover:opacity-100'}`}
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[13px] font-bold text-white">{option.name}</span>
+                          {(conn || twoWay) && (
+                            <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold text-emerald-400">
+                              {twoWay ? '2-WAY' : 'LINKED'}
+                            </span>
+                          )}
+                        </div>
+                        <span className="mt-0.5 block text-[10.5px] text-neutral-300">
+                          {twoWay ? 'Full OAuth Write-Back' : 'Username + 2-Way OAuth'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
 
-                {activeConnected && (
-                  <div className="flex items-center justify-between rounded-xl bg-[#272727] px-3 py-2 text-[11.5px]">
-                    <span className="text-neutral-300">
-                      Connected as <strong className="text-white">{activeConnected.username}</strong>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleDisconnect(activeConnected.provider)}
-                      className="flex items-center gap-1 font-bold text-rose-400 hover:underline"
-                    >
-                      <LogOut className="h-3 w-3" />
-                      Disconnect
-                    </button>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setShowPrivateOption(!showPrivateOption)}
-                  className="text-[11px] font-medium text-[#AAAAAA] hover:text-white"
-                >
-                  {showPrivateOption ? 'Hide private account options' : 'Private list? Connect via Token or XML file'}
-                </button>
-              </form>
-
-              {showPrivateOption && (
-                <div className="space-y-2.5 rounded-xl border border-white/[0.08] bg-[#161616] p-3">
-                  <form onSubmit={submitToken} className="flex gap-2">
+                <form onSubmit={submitUsername} className="space-y-2">
+                  <div className="flex gap-2">
                     <input
-                      type="password"
-                      value={anilistToken}
-                      onChange={(e) => setAnilistToken(e.target.value)}
-                      placeholder="Paste AniList Bearer Token…"
-                      className="h-9 flex-1 rounded-lg border border-white/15 bg-[#121212] px-3 text-[16px] text-white placeholder:text-[12px] outline-none lg:text-[12px]"
+                      id="tracker-username"
+                      value={username}
+                      onChange={(event) => setUsername(event.target.value)}
+                      placeholder={PROVIDERS.find((p) => p.id === provider)?.hint}
+                      autoComplete="username"
+                      className="h-11 flex-1 rounded-xl border border-white/[0.14] bg-[#121212] px-3.5 text-[16px] text-white placeholder:text-[13px] placeholder:text-[#777777] outline-none transition focus:border-[#FF0000] lg:text-[13px]"
                     />
                     <button
                       type="submit"
-                      disabled={busy || !anilistToken.trim()}
-                      className="rounded-lg bg-[#02A9FF] px-3 text-[11.5px] font-bold text-black disabled:opacity-40"
+                      disabled={busy || !username.trim()}
+                      className="flex items-center gap-1.5 rounded-xl bg-[#FF0000] px-4 text-[13px] font-bold text-white transition hover:bg-[#CC0000] disabled:opacity-40"
                     >
-                      Sync
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                      {busy ? 'Loading' : 'Connect'}
                     </button>
-                  </form>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".xml,.json"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#272727] py-2 text-[11.5px] font-semibold text-white hover:bg-[#383838]"
-                  >
-                    <FileUp className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                    Upload MAL .xml or ListTube .json
-                  </button>
-                </div>
-              )}
+                  </div>
 
-              {/* Clean Divider */}
+                  {/* Direct 2-Way OAuth Launchers */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleStartOAuth('anilist')}
+                      className="flex items-center justify-center gap-1.5 rounded-xl border border-[#02A9FF]/40 bg-[#02A9FF]/15 py-2 text-[11.5px] font-bold text-[#7DD3FC] transition hover:bg-[#02A9FF]/25"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      <span>AniList OAuth</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleStartOAuth('mal')}
+                      className="flex items-center justify-center gap-1.5 rounded-xl border border-[#2E51A2]/60 bg-[#2E51A2]/25 py-2 text-[11.5px] font-bold text-[#93C5FD] transition hover:bg-[#2E51A2]/40"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      <span>MAL OAuth (PKCE)</span>
+                    </button>
+                  </div>
+
+                  {activeConnected && (
+                    <div className="flex items-center justify-between rounded-xl bg-[#272727] px-3 py-2 text-[11.5px]">
+                      <span className="text-neutral-300">
+                        Connected as <strong className="text-white">{activeConnected.username}</strong>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDisconnect(activeConnected.provider)}
+                        className="flex items-center gap-1 font-bold text-rose-400 hover:underline"
+                      >
+                        <LogOut className="h-3 w-3" />
+                        Disconnect
+                      </button>
+                    </div>
+                  )}
+                </form>
+
+                {error && <p className="rounded-xl bg-rose-500/15 px-3 py-2 text-[11.5px] font-medium text-rose-300">{error}</p>}
+              </div>
+
+              {/* Divider */}
               <div className="relative flex items-center py-1">
                 <div className="flex-grow border-t border-white/[0.1]" />
-                <span className="mx-3 flex items-center gap-1 text-[10.5px] font-bold uppercase text-[#AAAAAA]">
-                  <Cloud className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                  ListTube Cloud Sync
+                <span className="mx-3 text-[10.5px] font-bold uppercase tracking-wider text-[#AAAAAA]">
+                  Google Account
                 </span>
                 <div className="flex-grow border-t border-white/[0.1]" />
               </div>
 
-              {cloud.anilistWritebackToken && (
-                <div className="flex items-center justify-between rounded-xl border border-[#02A9FF]/30 bg-[#02A9FF]/10 px-3 py-2 text-[11px]">
-                  <span className="font-semibold text-[#7DD3FC]">
-                    AniList 2-way write-back enabled
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      cloudSync.setAniListWritebackToken('');
-                      toast('Disabled AniList write-back');
-                    }}
-                    className="font-bold text-rose-400 hover:underline"
-                  >
-                    Disable
-                  </button>
-                </div>
-              )}
-
-              {/* Cloud Tabs: 1-Tap Vault Code vs Email Account */}
-              <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-[#141414] p-1">
-                <button
-                  type="button"
-                  onClick={() => setCloudTab('vault')}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11.5px] font-bold transition ${
-                    cloudTab === 'vault' ? 'bg-[#272727] text-white' : 'text-[#AAAAAA] hover:text-white'
-                  }`}
-                >
-                  <KeyRound className="h-3.5 w-3.5 text-emerald-400" />
-                  1-Tap Sync Code
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCloudTab('email')}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11.5px] font-bold transition ${
-                    cloudTab === 'email' ? 'bg-[#272727] text-white' : 'text-[#AAAAAA] hover:text-white'
-                  }`}
-                >
-                  <Mail className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                  Email Account
-                </button>
-              </div>
-
-              {cloudTab === 'vault' ? (
-                cloud.syncCode ? (
-                  <div className="flex items-center justify-between rounded-2xl border border-emerald-500/30 bg-[#272727] p-3">
+              {/* 2. Real Google Sign-In (Replaces Sync Codes & Email/Password completely) */}
+              {cloud.userEmail ? (
+                <div className="flex items-center justify-between rounded-2xl border border-emerald-500/30 bg-[#272727] p-3.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400">
+                      <ShieldCheck className="h-4 w-4" />
+                    </span>
                     <div className="min-w-0">
                       <p className="text-[10.5px] font-bold uppercase tracking-wider text-emerald-400">
-                        Vault Linked (v{cloud.syncVersion})
+                        Connected with Google
                       </p>
-                      <p className="font-mono text-[13.5px] font-black text-white">
-                        {cloud.syncCode}
-                      </p>
+                      <p className="truncate text-[13px] font-bold text-white">{cloud.userEmail}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!cloud.syncCode) return;
-                          await navigator.clipboard?.writeText(cloud.syncCode);
-                          toast('Sync Code copied');
-                        }}
-                        className="rounded-lg bg-white/10 p-1.5 text-white hover:bg-white/20"
-                        title="Copy Sync Code"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          cloudSync.unlinkSyncCode();
-                          toast('Unlinked Vault');
-                        }}
-                        className="text-[11px] font-bold text-rose-400 hover:underline"
-                      >
-                        Unlink
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2.5">
-                    <button
-                      type="button"
-                      disabled={cloudBusy}
-                      onClick={handleCreateVault}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-[12.5px] font-bold text-black transition hover:bg-neutral-200 disabled:opacity-50"
-                    >
-                      {cloudBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-                      Generate 1-Tap Sync Code (No Login Needed)
-                    </button>
-                    <form onSubmit={handleLinkVault} className="flex gap-2">
-                      <input
-                        value={vaultCodeInput}
-                        onChange={(e) => setVaultCodeInput(e.target.value.toUpperCase())}
-                        placeholder="Paste LT-XXXX-XXXX-XXXX from another device"
-                        className="h-10 flex-1 rounded-xl border border-white/15 bg-[#121212] px-3 font-mono text-[16px] text-white placeholder:font-sans placeholder:text-[12px] outline-none focus:border-[#3EA6FF] lg:text-[12px]"
-                      />
-                      <button
-                        type="submit"
-                        disabled={cloudBusy || vaultCodeInput.trim().length < 8}
-                        className="rounded-xl bg-[#272727] px-4 text-[12.5px] font-bold text-white transition hover:bg-[#383838] disabled:opacity-40"
-                      >
-                        Link
-                      </button>
-                    </form>
-                  </div>
-                )
-              ) : cloud.userEmail ? (
-                <div className="flex items-center justify-between rounded-2xl border border-emerald-500/30 bg-[#272727] p-3">
-                  <div className="min-w-0">
-                    <p className="text-[10.5px] font-bold uppercase tracking-wider text-emerald-400">
-                      Signed In &amp; Synced
-                    </p>
-                    <p className="truncate text-[13px] font-bold text-white">{cloud.userEmail}</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
                       void cloudSync.signOut();
-                      toast('Signed out of Cloud Account');
+                      toast('Signed out of Google');
                     }}
-                    className="text-[11px] font-bold text-rose-400 hover:underline"
+                    className="shrink-0 text-[11.5px] font-bold text-rose-400 hover:underline"
                   >
                     Sign out
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleEmailAuth} className="space-y-2">
-                  <input
-                    type="email"
-                    value={cloudEmail}
-                    onChange={(e) => setCloudEmail(e.target.value)}
-                    placeholder="Email address (you@example.com)"
-                    className="h-10 w-full rounded-xl border border-white/15 bg-[#121212] px-3 text-[16px] text-white placeholder:text-[12.5px] outline-none focus:border-[#3EA6FF] lg:text-[12.5px]"
-                  />
-                  <input
-                    type="password"
-                    value={cloudPassword}
-                    onChange={(e) => setCloudPassword(e.target.value)}
-                    placeholder="Password (min 6 chars)"
-                    className="h-10 w-full rounded-xl border border-white/15 bg-[#121212] px-3 text-[16px] text-white placeholder:text-[12.5px] outline-none focus:border-[#3EA6FF] lg:text-[12.5px]"
-                  />
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="submit"
-                      disabled={cloudBusy || !cloudEmail.trim() || cloudPassword.length < 6}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white py-2.5 text-[12.5px] font-bold text-black transition hover:bg-neutral-200 disabled:opacity-40"
-                    >
-                      {cloudBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                      {cloudAuthMode === 'signin' ? 'Sign In' : 'Create Account'}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={cloudBusy}
-                      onClick={handleMagicLink}
-                      className="rounded-xl bg-[#272727] px-3 py-2.5 text-[11.5px] font-bold text-white transition hover:bg-[#383838]"
-                    >
-                      Magic Link
-                    </button>
-                  </div>
+                <div className="space-y-2">
                   <button
                     type="button"
-                    onClick={() =>
-                      setCloudAuthMode((m) => (m === 'signin' ? 'signup' : 'signin'))
-                    }
-                    className="text-[11px] font-medium text-[#AAAAAA] hover:text-white"
+                    disabled={googleBusy}
+                    onClick={handleGoogleSignIn}
+                    className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-white py-3 text-[13px] font-bold text-[#111111] shadow transition hover:bg-neutral-200 disabled:opacity-50"
                   >
-                    {cloudAuthMode === 'signin'
-                      ? 'New to ListTube Cloud? Switch to Create Account'
-                      : 'Already have an account? Switch to Sign In'}
+                    {googleBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          fill="#4285F4"
+                          d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
+                        />
+                        <path
+                          fill="#34A853"
+                          d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"
+                        />
+                        <path
+                          fill="#FBBC05"
+                          d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"
+                        />
+                        <path
+                          fill="#EA4335"
+                          d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"
+                        />
+                      </svg>
+                    )}
+                    <span>Continue with Google</span>
                   </button>
-                </form>
+                  {cloud.googleEnabled === false && (
+                    <p className="rounded-xl bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
+                      Google OAuth needs to be toggled on in Supabase Dashboard → Authentication → Providers → Google (Redirect URL: <code className="text-white">{getAppBaseUrl()}</code>).
+                    </p>
+                  )}
+                </div>
               )}
 
-              {cloudNotice && (
-                <p className="rounded-xl bg-emerald-500/15 px-3 py-2 text-[11.5px] font-medium text-emerald-300">
-                  {cloudNotice}
-                </p>
-              )}
+              {/* Optional Token / XML / Custom App ID Drawer */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedOAuth(!showAdvancedOAuth)}
+                  className="text-[11px] font-medium text-[#AAAAAA] hover:text-white"
+                >
+                  {showAdvancedOAuth
+                    ? 'Hide OAuth setup, Token & XML import'
+                    : 'Token / XML file / OAuth Client ID setup'}
+                </button>
+
+                {showAdvancedOAuth && (
+                  <div className="mt-2.5 space-y-2.5 rounded-xl border border-white/[0.08] bg-[#161616] p-3">
+                    <p className="text-[10.5px] text-[#AAAAAA]">
+                      Redirect URI: <code className="select-all text-white">{getAppBaseUrl()}</code>
+                    </p>
+                    {!oauthStatus.anilistConfigured && (
+                      <input
+                        value={customAnilistClientId}
+                        onChange={(e) => setCustomAnilistClientId(e.target.value)}
+                        placeholder="AniList OAuth Client ID (from anilist.co/settings/developer)"
+                        className="h-9 w-full rounded-lg border border-white/15 bg-[#121212] px-3 text-[12px] text-white outline-none"
+                      />
+                    )}
+                    {!oauthStatus.malConfigured && (
+                      <input
+                        value={customMalClientId}
+                        onChange={(e) => setCustomMalClientId(e.target.value)}
+                        placeholder="MyAnimeList Client ID (from myanimelist.net/apiconfig)"
+                        className="h-9 w-full rounded-lg border border-white/15 bg-[#121212] px-3 text-[12px] text-white outline-none"
+                      />
+                    )}
+                    <form onSubmit={submitToken} className="flex gap-2">
+                      <input
+                        type="password"
+                        value={anilistTokenInput}
+                        onChange={(e) => setAnilistTokenInput(e.target.value)}
+                        placeholder="Or paste AniList Bearer Token…"
+                        className="h-9 flex-1 rounded-lg border border-white/15 bg-[#121212] px-3 text-[16px] text-white placeholder:text-[12px] outline-none lg:text-[12px]"
+                      />
+                      <button
+                        type="submit"
+                        disabled={busy || !anilistTokenInput.trim()}
+                        className="rounded-lg bg-[#02A9FF] px-3 text-[11.5px] font-bold text-black disabled:opacity-40"
+                      >
+                        Connect
+                      </button>
+                    </form>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".xml,.json"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#272727] py-2 text-[11.5px] font-semibold text-white hover:bg-[#383838]"
+                    >
+                      <FileUp className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                      Import MAL .xml or ListTube .json
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
 
         <div className="flex items-center justify-between border-t border-white/[0.08] px-5 py-3 text-[11px] text-[#AAAAAA]">
           <button type="button" onClick={onClose} className="font-medium hover:text-white">
-            Continue without connecting
+            Continue browsing
           </button>
-          <span>AniList · MAL · Supabase Cloud</span>
+          <span>AniList · MyAnimeList · Google</span>
         </div>
       </div>
     </div>

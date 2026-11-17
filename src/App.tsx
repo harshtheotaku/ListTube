@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Check, Play, X } from 'lucide-react';
 import {
   Anime,
@@ -10,24 +10,57 @@ import {
 import { useLibrary, library } from './services/library';
 import { animeStore } from './services/animeStore';
 import { fetchDetail } from './services/anilist';
+import { cloudSync } from './services/cloudSync';
+import { isNativeCapacitor } from './services/platform';
 import { Sidebar, AppTab } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
 import { TopBar } from './components/TopBar';
 import { HomeView } from './components/HomeView';
-import { ExploreView } from './components/ExploreView';
-import { ListView } from './components/ListView';
-import { ScheduleView } from './components/ScheduleView';
-import { NewsView } from './components/NewsView';
-import { YouView } from './components/YouView';
-import { DetailView } from './components/DetailView';
-import { ChannelView } from './components/ChannelView';
-import { TrackersModal } from './components/TrackersModal';
-import { SettingsModal } from './components/SettingsModal';
-import { ProfileModal } from './components/ProfileModal';
-import { NotificationsModal } from './components/NotificationsModal';
+import { GridSkeleton } from './components/Skeleton';
 import { ToastHost, toast } from './components/Toast';
 
-const TABS: AppTab[] = ['home', 'explore', 'list', 'schedule', 'news', 'you'];
+// Code-split secondary views and modals to keep initial JS chunk tiny
+const ExploreView = lazy(() =>
+  import('./components/ExploreView').then((m) => ({ default: m.ExploreView }))
+);
+const ListView = lazy(() =>
+  import('./components/ListView').then((m) => ({ default: m.ListView }))
+);
+const ScheduleView = lazy(() =>
+  import('./components/ScheduleView').then((m) => ({ default: m.ScheduleView }))
+);
+const NewsView = lazy(() =>
+  import('./components/NewsView').then((m) => ({ default: m.NewsView }))
+);
+const FeedView = lazy(() =>
+  import('./components/FeedView').then((m) => ({ default: m.FeedView }))
+);
+const YouView = lazy(() =>
+  import('./components/YouView').then((m) => ({ default: m.YouView }))
+);
+const DetailView = lazy(() =>
+  import('./components/DetailView').then((m) => ({ default: m.DetailView }))
+);
+const ChannelView = lazy(() =>
+  import('./components/ChannelView').then((m) => ({ default: m.ChannelView }))
+);
+const UserProfileView = lazy(() =>
+  import('./components/UserProfileModal').then((m) => ({ default: m.UserProfileView }))
+);
+const TrackersModal = lazy(() =>
+  import('./components/TrackersModal').then((m) => ({ default: m.TrackersModal }))
+);
+const SettingsModal = lazy(() =>
+  import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal }))
+);
+const ProfileModal = lazy(() =>
+  import('./components/ProfileModal').then((m) => ({ default: m.ProfileModal }))
+);
+const NotificationsModal = lazy(() =>
+  import('./components/NotificationsModal').then((m) => ({ default: m.NotificationsModal }))
+);
+
+const TABS: AppTab[] = ['home', 'explore', 'list', 'schedule', 'news', 'feed', 'you'];
 const MEDIA_TYPE_KEY = 'anitube.mediaType.v1';
 
 const EMPTY_QUERIES: Record<AppTab, string> = {
@@ -36,37 +69,107 @@ const EMPTY_QUERIES: Record<AppTab, string> = {
   list: '',
   schedule: '',
   news: '',
+  feed: '',
   you: '',
 };
 
-function routeFromHash(): { tab: AppTab; detailId: string | null; channelId: string | null } {
-  const raw = window.location.hash.replace(/^#\/?/, '').split('?')[0];
+function getWebBasePath(): string {
+  if (typeof window === 'undefined' || isNativeCapacitor() || !window.location.protocol.startsWith('http')) {
+    return '';
+  }
+  if (window.location.pathname.startsWith('/ListTube')) return '/ListTube';
+  const rawBase = import.meta.env.BASE_URL;
+  if (rawBase && rawBase !== './' && rawBase !== '/') return rawBase.replace(/\/+$/, '');
+  return '';
+}
+
+function buildRouteUrl(snap: {
+  tab: AppTab;
+  detailId: string | null;
+  channelId?: string | null;
+  publicUser?: string | null;
+}): string {
+  const seg = snap.detailId
+    ? `/anime/${encodeURIComponent(snap.detailId)}`
+    : snap.channelId
+    ? `/channel/${encodeURIComponent(snap.channelId)}`
+    : snap.publicUser
+    ? `/user/${encodeURIComponent(snap.publicUser)}`
+    : `/${snap.tab}`;
+
+  if (typeof window === 'undefined' || isNativeCapacitor() || !window.location.protocol.startsWith('http')) {
+    return `#${seg}`;
+  }
+  const base = getWebBasePath();
+  const suffix = window.location.search;
+  return `${base}${seg === '/home' ? '/' : seg}${suffix}`;
+}
+
+function parseCurrentRoute(): {
+  tab: AppTab;
+  detailId: string | null;
+  channelId: string | null;
+  publicUser: string | null;
+} {
+  // Handle GitHub Pages 404.html SPA redirect query parameter (?p=/anime/...)
+  const search = new URLSearchParams(window.location.search);
+  const spaRedirect = search.get('p');
+
+  const hashRaw = window.location.hash.startsWith('#/')
+    ? window.location.hash.slice(2).split('?')[0]
+    : '';
+
+  const base = getWebBasePath();
+  let pathRaw = window.location.pathname;
+  if (base && pathRaw.startsWith(base)) pathRaw = pathRaw.slice(base.length);
+  pathRaw = pathRaw.replace(/^\/+|\/+$/g, '');
+
+  const raw = decodeURIComponent(spaRedirect?.replace(/^\/+/, '') || hashRaw || pathRaw || '');
   const tabFromState = window.history.state?.tab as AppTab | undefined;
-  const fallback = TABS.includes(tabFromState as AppTab) ? (tabFromState as AppTab) : 'home';
+  const fallback: AppTab = TABS.includes(tabFromState as AppTab) ? (tabFromState as AppTab) : 'home';
 
   if (raw.startsWith('anime/')) {
-    const id = decodeURIComponent(raw.slice('anime/'.length));
-    return { tab: fallback, detailId: id || null, channelId: null };
+    return {
+      tab: fallback,
+      detailId: decodeURIComponent(raw.slice('anime/'.length)) || null,
+      channelId: null,
+      publicUser: null,
+    };
   }
   if (raw.startsWith('channel/')) {
-    const id = decodeURIComponent(raw.slice('channel/'.length));
-    return { tab: fallback, detailId: null, channelId: id || null };
+    return {
+      tab: fallback,
+      detailId: null,
+      channelId: decodeURIComponent(raw.slice('channel/'.length)) || null,
+      publicUser: null,
+    };
+  }
+  if (raw.startsWith('user/')) {
+    return {
+      tab: fallback,
+      detailId: null,
+      channelId: null,
+      publicUser: decodeURIComponent(raw.slice('user/'.length)) || null,
+    };
   }
   return {
     tab: TABS.includes(raw as AppTab) ? (raw as AppTab) : fallback,
     detailId: null,
     channelId: null,
+    publicUser: null,
   };
 }
 
 export const App: React.FC = () => {
   const libraryState = useLibrary();
-  const [initialRoute] = useState(routeFromHash);
+  const [, setHydrationTick] = useState(0);
+  const [initialRoute] = useState(parseCurrentRoute);
   const [tab, setTab] = useState<AppTab>(initialRoute.tab);
   const [detailId, setDetailId] = useState<string | null>(initialRoute.detailId);
   const [channelAnime, setChannelAnime] = useState<Anime | null>(() =>
     initialRoute.channelId ? animeStore.get(initialRoute.channelId) ?? null : null
   );
+  const [publicUser, setPublicUser] = useState<string | null>(initialRoute.publicUser);
   const [mediaType, setMediaType] = useState<MediaType>(() => {
     if (window.location.hash.includes('mode=manga')) return 'MANGA';
     if (window.location.hash.includes('mode=anime')) return 'ANIME';
@@ -80,30 +183,59 @@ export const App: React.FC = () => {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [quickTarget, setQuickTarget] = useState<Anime | null>(null);
 
-  type NavSnapshot = { tab: AppTab; detailId: string | null; channelAnime: Anime | null };
+  useEffect(() => {
+    const unsubDb = animeStore.subscribeHydration(() => setHydrationTick((n) => n + 1));
+    const unsubOAuth = cloudSync.onOAuthCompleted((info) => {
+      if (info.error) {
+        toast(info.error);
+      } else {
+        toast(
+          `${info.provider === 'mal' ? 'MyAnimeList' : 'AniList'} OAuth connected (${info.count} titles, 2-way sync active)!`
+        );
+      }
+    });
+    return () => {
+      unsubDb();
+      unsubOAuth();
+    };
+  }, []);
+
+  type NavSnapshot = {
+    tab: AppTab;
+    detailId: string | null;
+    channelAnime: Anime | null;
+    publicUser: string | null;
+  };
   const navStackRef = useRef<NavSnapshot[]>([]);
   const routeRef = useRef<NavSnapshot>({
     tab: initialRoute.tab,
     detailId: initialRoute.detailId,
     channelAnime: initialRoute.channelId ? animeStore.get(initialRoute.channelId) ?? null : null,
+    publicUser: initialRoute.publicUser,
   });
-  routeRef.current = { tab, detailId, channelAnime };
+  routeRef.current = { tab, detailId, channelAnime, publicUser };
 
   const modalRef = useRef({ quickTarget, settingsOpen, trackersOpen, profileOpen, notificationsOpen });
   modalRef.current = { quickTarget, settingsOpen, trackersOpen, profileOpen, notificationsOpen };
 
   const scrollTop = () => window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
 
-  const syncHashReplace = (snap: NavSnapshot) => {
-    const hash = snap.detailId
-      ? `#/anime/${encodeURIComponent(snap.detailId)}`
-      : snap.channelAnime
-        ? `#/channel/${encodeURIComponent(snap.channelAnime.id)}`
-        : `#/${snap.tab}`;
+  const syncUrlReplace = (snap: NavSnapshot) => {
+    const nextUrl = buildRouteUrl({
+      tab: snap.tab,
+      detailId: snap.detailId,
+      channelId: snap.channelAnime?.id,
+      publicUser: snap.publicUser,
+    });
     window.history.replaceState(
-      { tab: snap.tab, detail: snap.detailId ?? undefined, channel: snap.channelAnime?.id ?? undefined },
+      {
+        tab: snap.tab,
+        detail: snap.detailId ?? undefined,
+        channel: snap.channelAnime?.id ?? undefined,
+        user: snap.publicUser ?? undefined,
+      },
       '',
-      hash
+      nextUrl
     );
   };
 
@@ -113,7 +245,8 @@ export const App: React.FC = () => {
       top &&
       top.tab === snap.tab &&
       top.detailId === snap.detailId &&
-      top.channelAnime?.id === snap.channelAnime?.id
+      top.channelAnime?.id === snap.channelAnime?.id &&
+      top.publicUser === snap.publicUser
     ) {
       return;
     }
@@ -155,25 +288,32 @@ export const App: React.FC = () => {
       setTab(prev.tab);
       setDetailId(prev.detailId);
       setChannelAnime(prev.channelAnime);
-      syncHashReplace(prev);
+      setPublicUser(prev.publicUser);
+      syncUrlReplace(prev);
       scrollTop();
       return true;
     }
 
     const curr = routeRef.current;
-    if (curr.detailId || curr.channelAnime) {
-      const next: NavSnapshot = { tab: curr.tab, detailId: null, channelAnime: null };
+    if (curr.detailId || curr.channelAnime || curr.publicUser) {
+      const next: NavSnapshot = {
+        tab: curr.tab,
+        detailId: null,
+        channelAnime: null,
+        publicUser: null,
+      };
       setDetailId(null);
       setChannelAnime(null);
-      syncHashReplace(next);
+      setPublicUser(null);
+      syncUrlReplace(next);
       scrollTop();
       return true;
     }
 
     if (curr.tab !== 'home') {
-      const next: NavSnapshot = { tab: 'home', detailId: null, channelAnime: null };
+      const next: NavSnapshot = { tab: 'home', detailId: null, channelAnime: null, publicUser: null };
       setTab('home');
-      syncHashReplace(next);
+      syncUrlReplace(next);
       scrollTop();
       return true;
     }
@@ -194,21 +334,34 @@ export const App: React.FC = () => {
     localStorage.setItem(MEDIA_TYPE_KEY, nextType);
     setDetailId(null);
     setChannelAnime(null);
+    setPublicUser(null);
     navStackRef.current = [];
     setQueriesByTab(EMPTY_QUERIES);
     scrollTop();
   };
 
   useEffect(() => {
-    window.history.replaceState(
-      { tab: initialRoute.tab },
-      '',
-      initialRoute.detailId
-        ? `#/anime/${encodeURIComponent(initialRoute.detailId)}`
-        : initialRoute.channelId
-          ? `#/channel/${encodeURIComponent(initialRoute.channelId)}`
-          : `#/${initialRoute.tab}`
-    );
+    // Strip ?p= SPA redirect param after hydration cleanly
+    const search = new URLSearchParams(window.location.search);
+    if (search.has('p')) {
+      search.delete('p');
+      const qs = search.toString() ? `?${search.toString()}` : '';
+      const nextUrl = buildRouteUrl({
+        tab: initialRoute.tab,
+        detailId: initialRoute.detailId,
+        channelId: initialRoute.channelId,
+        publicUser: initialRoute.publicUser,
+      }).split('?')[0] + qs;
+      window.history.replaceState({ tab: initialRoute.tab }, '', nextUrl);
+    } else {
+      syncUrlReplace({
+        tab: initialRoute.tab,
+        detailId: initialRoute.detailId,
+        channelAnime: initialRoute.channelId ? animeStore.get(initialRoute.channelId) ?? null : null,
+        publicUser: initialRoute.publicUser,
+      });
+    }
+
     if (initialRoute.channelId && !animeStore.get(initialRoute.channelId)) {
       const chId = initialRoute.channelId;
       const numeric = Number(chId.split(':')[1] ?? chId);
@@ -227,11 +380,12 @@ export const App: React.FC = () => {
   }, [initialRoute]);
 
   const openDetail = (id: string) => {
-    if (detailId === id) return;
+    if (detailId === id && !publicUser) return;
     pushSnapshot(routeRef.current);
-    const state = { tab, detail: id };
-    window.history.pushState(state, '', `#/anime/${encodeURIComponent(id)}`);
+    const url = buildRouteUrl({ tab, detailId: id });
+    window.history.pushState({ tab, detail: id }, '', url);
     setChannelAnime(null);
+    setPublicUser(null);
     setDetailId(id);
     scrollTop();
   };
@@ -243,12 +397,24 @@ export const App: React.FC = () => {
 
   const openChannel = (anime: Anime) => {
     animeStore.remember(anime);
-    if (!detailId && channelAnime?.id === anime.id) return;
+    if (!detailId && !publicUser && channelAnime?.id === anime.id) return;
     pushSnapshot(routeRef.current);
-    const state = { tab, channel: anime.id };
-    window.history.pushState(state, '', `#/channel/${encodeURIComponent(anime.id)}`);
+    const url = buildRouteUrl({ tab, detailId: null, channelId: anime.id });
+    window.history.pushState({ tab, channel: anime.id }, '', url);
     setDetailId(null);
+    setPublicUser(null);
     setChannelAnime(anime);
+    scrollTop();
+  };
+
+  const openPublicUser = (userIdOrHandle: string) => {
+    if (publicUser === userIdOrHandle) return;
+    pushSnapshot(routeRef.current);
+    const url = buildRouteUrl({ tab, detailId: null, publicUser: userIdOrHandle });
+    window.history.pushState({ tab, user: userIdOrHandle }, '', url);
+    setDetailId(null);
+    setChannelAnime(null);
+    setPublicUser(userIdOrHandle);
     scrollTop();
   };
 
@@ -258,19 +424,32 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     const onPop = (event: PopStateEvent) => {
-      const state = event.state as { tab?: AppTab; detail?: string; channel?: string } | null;
+      const state = event.state as {
+        tab?: AppTab;
+        detail?: string;
+        channel?: string;
+        user?: string;
+      } | null;
       navStackRef.current.pop();
       if (state?.detail) {
         setTab(state.tab ?? 'home');
         setChannelAnime(null);
+        setPublicUser(null);
         setDetailId(state.detail);
       } else if (state?.channel) {
         setTab(state.tab ?? 'home');
         setDetailId(null);
+        setPublicUser(null);
         setChannelAnime(animeStore.get(state.channel) ?? null);
+      } else if (state?.user) {
+        setTab(state.tab ?? 'feed');
+        setDetailId(null);
+        setChannelAnime(null);
+        setPublicUser(state.user);
       } else {
         setDetailId(null);
         setChannelAnime(null);
+        setPublicUser(null);
         if (state?.tab) setTab(state.tab);
       }
       scrollTop();
@@ -281,17 +460,23 @@ export const App: React.FC = () => {
 
   const navigate = (next: AppTab) => {
     const curr = routeRef.current;
-    if (curr.tab !== next || curr.detailId || curr.channelAnime) {
+    if (curr.tab !== next || curr.detailId || curr.channelAnime || curr.publicUser) {
       pushSnapshot(curr);
     }
     setTab(next);
     setDetailId(null);
     setChannelAnime(null);
-    const state = { tab: next };
-    if (window.history.state?.tab === next && !window.history.state?.detail && !window.history.state?.channel) {
-      window.history.replaceState(state, '', `#/${next}`);
+    setPublicUser(null);
+    const url = buildRouteUrl({ tab: next, detailId: null });
+    if (
+      window.history.state?.tab === next &&
+      !window.history.state?.detail &&
+      !window.history.state?.channel &&
+      !window.history.state?.user
+    ) {
+      window.history.replaceState({ tab: next }, '', url);
     } else {
-      window.history.pushState(state, '', `#/${next}`);
+      window.history.pushState({ tab: next }, '', url);
     }
     scrollTop();
   };
@@ -339,7 +524,7 @@ export const App: React.FC = () => {
   };
 
   const quickEntry = quickTarget ? libraryState.entries[quickTarget.id] : undefined;
-  const activeSearchKey: AppTab = detailId || channelAnime ? 'explore' : tab;
+  const activeSearchKey: AppTab = detailId || channelAnime || publicUser ? 'explore' : tab;
   const activeQuery = queriesByTab[activeSearchKey];
 
   const handleQueryChange = (val: string) => {
@@ -347,7 +532,7 @@ export const App: React.FC = () => {
   };
 
   const handleSearchSubmit = () => {
-    if (detailId || channelAnime) {
+    if (detailId || channelAnime || publicUser) {
       navigate('explore');
       return;
     }
@@ -391,109 +576,143 @@ export const App: React.FC = () => {
 
       <div className={sidebarCollapsed ? 'lg:pl-[74px]' : 'lg:pl-[236px]'}>
         <main>
-          {detailId ? (
-            <DetailView
-              animeId={detailId}
-              libraryState={libraryState}
-              onOpenId={openDetail}
-              onOpenChannel={openChannel}
-              onEditProfile={() => setProfileOpen(true)}
-              onClose={closeDetail}
-              onQuickAdd={quickAdd}
-            />
-          ) : channelAnime ? (
-            <ChannelView
-              seedAnime={channelAnime}
-              libraryState={libraryState}
-              onOpenAnime={openAnime}
-              onOpenChannel={openChannel}
-              onQuickAdd={quickAdd}
-              onBack={closeDetail}
-            />
-          ) : (
-            <>
-              {tab === 'home' && (
-                <HomeView
-                  library={libraryState}
-                  mediaType={mediaType}
-                  onMediaTypeChange={handleMediaTypeChange}
-                  query={queriesByTab.home}
-                  onOpen={openAnime}
-                  onOpenChannel={openChannel}
-                  onNavigate={navigate}
-                  onOpenTrackers={() => setTrackersOpen(true)}
-                  onQuickAdd={quickAdd}
-                />
-              )}
-              {tab === 'explore' && (
-                <ExploreView
-                  library={libraryState}
-                  mediaType={mediaType}
-                  query={queriesByTab.explore}
-                  onOpen={openAnime}
-                  onOpenChannel={openChannel}
-                  onQuickAdd={quickAdd}
-                />
-              )}
-              {tab === 'list' && (
-                <ListView
-                  libraryState={libraryState}
-                  mediaType={mediaType}
-                  query={queriesByTab.list}
-                  onOpen={openAnime}
-                  onOpenChannel={openChannel}
-                  onExplore={() => navigate('explore')}
-                />
-              )}
-              {tab === 'schedule' && (
-                <ScheduleView
-                  libraryState={libraryState}
-                  query={queriesByTab.schedule}
-                  onOpen={openAnime}
-                  onOpenChannel={openChannel}
-                  onQuickAdd={quickAdd}
-                />
-              )}
-              {tab === 'news' && (
-                <NewsView libraryState={libraryState} query={queriesByTab.news} />
-              )}
-              {tab === 'you' && (
-                <YouView
-                  libraryState={libraryState}
-                  mediaType={mediaType}
-                  onMediaTypeChange={handleMediaTypeChange}
-                  onOpenTrackers={() => setTrackersOpen(true)}
-                  onOpenSettings={() => setSettingsOpen(true)}
-                  onEditProfile={() => setProfileOpen(true)}
-                  onOpenSchedule={() => navigate('schedule')}
-                  onOpenNews={() => navigate('news')}
-                  onExplore={() => navigate('explore')}
-                  onOpenAnime={openDetail}
-                />
-              )}
-            </>
-          )}
+          <Suspense
+            fallback={
+              <div className="px-4 py-6 sm:px-6 lg:px-8">
+                <GridSkeleton count={8} mediaType={mediaType} />
+              </div>
+            }
+          >
+            {detailId ? (
+              <DetailView
+                animeId={detailId}
+                libraryState={libraryState}
+                onOpenId={openDetail}
+                onOpenChannel={openChannel}
+                onEditProfile={() => setProfileOpen(true)}
+                onOpenUser={openPublicUser}
+                onClose={closeDetail}
+                onQuickAdd={quickAdd}
+              />
+            ) : channelAnime ? (
+              <ChannelView
+                seedAnime={channelAnime}
+                libraryState={libraryState}
+                onOpenAnime={openAnime}
+                onOpenChannel={openChannel}
+                onQuickAdd={quickAdd}
+                onBack={closeDetail}
+              />
+            ) : publicUser ? (
+              <UserProfileView
+                userIdOrHandle={publicUser}
+                myLibrary={libraryState}
+                onOpenAnime={openDetail}
+                onClose={closeDetail}
+              />
+            ) : (
+              <>
+                {tab === 'home' && (
+                  <HomeView
+                    library={libraryState}
+                    mediaType={mediaType}
+                    onMediaTypeChange={handleMediaTypeChange}
+                    query={queriesByTab.home}
+                    onOpen={openAnime}
+                    onOpenChannel={openChannel}
+                    onNavigate={navigate}
+                    onOpenTrackers={() => setTrackersOpen(true)}
+                    onQuickAdd={quickAdd}
+                  />
+                )}
+                {tab === 'explore' && (
+                  <ExploreView
+                    library={libraryState}
+                    mediaType={mediaType}
+                    query={queriesByTab.explore}
+                    onOpen={openAnime}
+                    onOpenChannel={openChannel}
+                    onQuickAdd={quickAdd}
+                  />
+                )}
+                {tab === 'list' && (
+                  <ListView
+                    libraryState={libraryState}
+                    mediaType={mediaType}
+                    query={queriesByTab.list}
+                    onOpen={openAnime}
+                    onOpenChannel={openChannel}
+                    onExplore={() => navigate('explore')}
+                  />
+                )}
+                {tab === 'schedule' && (
+                  <ScheduleView
+                    libraryState={libraryState}
+                    query={queriesByTab.schedule}
+                    onOpen={openAnime}
+                    onOpenChannel={openChannel}
+                    onQuickAdd={quickAdd}
+                  />
+                )}
+                {tab === 'news' && (
+                  <NewsView libraryState={libraryState} query={queriesByTab.news} />
+                )}
+                {tab === 'feed' && (
+                  <FeedView
+                    myLibrary={libraryState}
+                    onOpenAnime={openDetail}
+                    onOpenUser={openPublicUser}
+                    onOpenTrackers={() => setTrackersOpen(true)}
+                  />
+                )}
+                {tab === 'you' && (
+                  <YouView
+                    libraryState={libraryState}
+                    mediaType={mediaType}
+                    onMediaTypeChange={handleMediaTypeChange}
+                    onOpenTrackers={() => setTrackersOpen(true)}
+                    onOpenSettings={() => setSettingsOpen(true)}
+                    onEditProfile={() => setProfileOpen(true)}
+                    onOpenSchedule={() => navigate('schedule')}
+                    onOpenNews={() => navigate('news')}
+                    onExplore={() => navigate('explore')}
+                    onOpenFeed={() => navigate('feed')}
+                    onOpenAnime={openDetail}
+                  />
+                )}
+              </>
+            )}
+          </Suspense>
         </main>
       </div>
 
       <BottomNav active={tab} onNavigate={navigate} />
       <ToastHost />
 
-      <TrackersModal
-        isOpen={trackersOpen}
-        onClose={() => setTrackersOpen(false)}
-        trackers={libraryState.trackers}
-        onImported={() => navigate('home')}
-      />
-
-      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
-      <NotificationsModal
-        isOpen={notificationsOpen}
-        onClose={() => setNotificationsOpen(false)}
-        onOpenAnimeId={openDetail}
-        onOpenNewsTab={() => navigate('news')}
-      />
+      <Suspense fallback={null}>
+        {trackersOpen && (
+          <TrackersModal
+            isOpen={trackersOpen}
+            onClose={() => setTrackersOpen(false)}
+            trackers={libraryState.trackers}
+            onImported={() => navigate('home')}
+          />
+        )}
+        {settingsOpen && (
+          <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+        )}
+        {profileOpen && (
+          <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
+        )}
+        {notificationsOpen && (
+          <NotificationsModal
+            isOpen={notificationsOpen}
+            onClose={() => setNotificationsOpen(false)}
+            onOpenAnimeId={openDetail}
+            onOpenNewsTab={() => navigate('news')}
+          />
+        )}
+      </Suspense>
 
       {/* Quick 5-List Subscription Sheet */}
       {quickTarget && (

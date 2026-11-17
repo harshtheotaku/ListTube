@@ -48,90 +48,21 @@ function inferAniListTtl(query: string): number {
   return 21600; // 6h for Popular, Top Rated, Genres, Search
 }
 
-function randomSyncCode(): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(12));
-  const chars = Array.from(bytes).map((b) => alphabet[b % alphabet.length]);
-  return `LT-${chars.slice(0, 4).join("")}-${chars.slice(4, 8).join("")}-${chars.slice(8, 12).join("")}`;
+function escapeHtml(raw: string): string {
+  return raw
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
-function normalizeCode(raw: string): string {
-  return raw.toUpperCase().replace(/[^A-Z0-9-]/g, "").trim();
+function toFuzzyDate(dateStr?: string | null): { year: number; month: number; day: number } | undefined {
+  if (!dateStr) return undefined;
+  const m = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return undefined;
+  return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
 }
-
-function mergeVaultPayloads(existing: any, incoming: any): any {
-  if (!existing || typeof existing !== "object") return incoming;
-  if (!incoming || typeof incoming !== "object") return existing;
-
-  const existingEntries = existing.library?.entries ?? {};
-  const incomingEntries = incoming.library?.entries ?? {};
-  const mergedEntries: Record<string, any> = { ...existingEntries };
-
-  for (const [id, entry] of Object.entries<any>(incomingEntries)) {
-    const prev = mergedEntries[id];
-    if (!prev || (entry?.updatedAt ?? 0) >= (prev?.updatedAt ?? 0)) {
-      mergedEntries[id] = entry;
-    }
-  }
-
-  const deletedSet = new Set<string>(incoming.deletedEntryIds ?? []);
-  for (const dId of deletedSet) {
-    if (mergedEntries[dId] && (incoming.library?.updatedAt ?? 0) > (mergedEntries[dId].updatedAt ?? 0)) {
-      delete mergedEntries[dId];
-    }
-  }
-
-  const mergeArr = (a: string[] = [], b: string[] = []) => Array.from(new Set([...a, ...b]));
-
-  const existingComments = existing.comments ?? {};
-  const incomingComments = incoming.comments ?? {};
-  const mergedComments: Record<string, any[]> = {};
-  const allMediaIds = new Set([...Object.keys(existingComments), ...Object.keys(incomingComments)]);
-  for (const mId of allMediaIds) {
-    const map = new Map<string, any>();
-    for (const c of existingComments[mId] ?? []) {
-      if (c?.id) map.set(c.id, c);
-    }
-    for (const c of incomingComments[mId] ?? []) {
-      if (c?.id) map.set(c.id, c);
-    }
-    const deletedComments = new Set<string>(incoming.deletedCommentIds ?? []);
-    for (const delId of deletedComments) map.delete(delId);
-    mergedComments[mId] = Array.from(map.values()).sort((x, y) => (y.createdAt ?? 0) - (x.createdAt ?? 0));
-  }
-
-  const snapshots = { ...(existing.snapshots ?? {}), ...(incoming.snapshots ?? {}) };
-
-  const existingProfileAt = existing.profileUpdatedAt ?? 0;
-  const incomingProfileAt = incoming.profileUpdatedAt ?? Date.now();
-  const profile = incomingProfileAt >= existingProfileAt ? incoming.profile ?? existing.profile : existing.profile;
-
-  const settings = incoming.settings ?? existing.settings;
-
-  const incomingTrackers = incoming.library?.trackers ?? existing.library?.trackers ?? [];
-  const mergedNotInterested = mergeArr(existing.library?.notInterested, incoming.library?.notInterested);
-
-  return {
-    library: {
-      entries: mergedEntries,
-      notInterested: mergedNotInterested,
-      events: (incoming.library?.events?.length ?? 0) >= (existing.library?.events?.length ?? 0)
-        ? incoming.library?.events ?? []
-        : existing.library?.events ?? [],
-      trackers: incomingTrackers,
-      interests: incoming.library?.interests ?? existing.library?.interests ?? [],
-      mangaInterests: incoming.library?.mangaInterests ?? existing.library?.mangaInterests ?? [],
-      updatedAt: Math.max(existing.library?.updatedAt ?? 0, incoming.library?.updatedAt ?? 0, Date.now()),
-    },
-    profile,
-    profileUpdatedAt: Math.max(existingProfileAt, incomingProfileAt),
-    settings,
-    comments: mergedComments,
-    snapshots,
-  };
-}
-
-const DOUJIN_FILTER_RE = /\b(doujinshi|dj|hentai|nsfw|netorare|ntr|loli|shota|ecchi-hon|bakunyuu|bitch|paizuri|chikan|oppai)\b/i;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -249,6 +180,121 @@ Deno.serve(async (req: Request) => {
         return jsonResponse(cachedRow.payload, 200, { "X-ListTube-Cache": "STALE" });
       }
       return jsonResponse({ html: "" }, 200);
+    }
+
+    // 3b. OP/ED Theme Songs Proxy + Postgres L2 Cache (Jikan -> MAL HTML fallback)
+    if (path === "/mal-themes" && req.method === "GET") {
+      const id = Number(url.searchParams.get("id") ?? "0");
+      if (!id) return jsonResponse({ error: "Missing valid MAL id" }, 400);
+
+      const cacheKey = `mal:themes:v2:${id}`;
+      const { data: cachedRow } = await supabase
+        .from("api_cache")
+        .select("payload, expires_at")
+        .eq("cache_key", cacheKey)
+        .maybeSingle();
+
+      if (cachedRow && new Date(cachedRow.expires_at).getTime() > Date.now()) {
+        return jsonResponse(cachedRow.payload, 200, { "X-ListTube-Cache": "HIT" });
+      }
+
+      const decodeHtml = (s: string) =>
+        s
+          .replace(/<[^>]+>/g, " ")
+          .replace(/&nbsp;|&#160;/gi, " ")
+          .replace(/&quot;/g, '"')
+          .replace(/&#039;|&apos;/g, "'")
+          .replace(/&amp;/g, "&")
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/\s+/g, " ")
+          .trim();
+
+      const isSongRow = (txt: string) =>
+        txt.length > 3 &&
+        !/^(?:spotify|apple music|amazon music|youtube music|\s)+$/i.test(txt) &&
+        !txt.toLowerCase().includes("no opening") &&
+        !txt.toLowerCase().includes("no ending") &&
+        (/^\d+:/.test(txt) || /\bby\s+/i.test(txt) || /["“].+["”]/.test(txt));
+
+      let openings: string[] = [];
+      let endings: string[] = [];
+
+      // Attempt 1: Jikan themes API from Deno Edge network
+      try {
+        const jikanRes = await fetch(`https://api.jikan.moe/v4/anime/${id}/themes`, {
+          signal: AbortSignal.timeout(5500),
+          headers: { Accept: "application/json" },
+        });
+        if (jikanRes.ok) {
+          const jData = await jikanRes.json();
+          openings = Array.isArray(jData?.data?.openings) ? jData.data.openings : [];
+          endings = Array.isArray(jData?.data?.endings) ? jData.data.endings : [];
+        }
+      } catch {
+        // Fall through to MyAnimeList HTML extraction
+      }
+
+      // Attempt 2: Direct MyAnimeList anime page HTML parser
+      if (openings.length === 0 && endings.length === 0) {
+        try {
+          const malRes = await fetch(`https://myanimelist.net/anime/${id}`, {
+            signal: AbortSignal.timeout(7500),
+            headers: {
+              "User-Agent": "Mozilla/5.0 (compatible; ListTube/1.2; +https://github.com/harshtheotaku/ListTube)",
+              Accept: "text/html,application/xhtml+xml",
+            },
+          });
+          if (malRes.ok) {
+            const html = await malRes.text();
+            const extractBlock = (marker: string, nextMarker: string): string[] => {
+              const start = html.indexOf(marker);
+              if (start === -1) return [];
+              const end = html.indexOf(nextMarker, start + marker.length);
+              const slice = html.slice(start, end === -1 ? start + 18000 : Math.min(end, start + 18000));
+              const items: string[] = [];
+              const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+              let m: RegExpExecArray | null;
+              while ((m = rowRegex.exec(slice)) !== null) {
+                const txt = decodeHtml(m[1]);
+                if (isSongRow(txt)) {
+                  items.push(txt);
+                }
+              }
+              if (items.length === 0) {
+                const spanRegex = /<span[^>]*class="[^"]*theme-song[^"]*"[^>]*>([\s\S]*?)<\/span>/gi;
+                while ((m = spanRegex.exec(slice)) !== null) {
+                  const txt = decodeHtml(m[1]);
+                  if (isSongRow(txt)) items.push(txt);
+                }
+              }
+              return items;
+            };
+            openings = extractBlock("theme-songs js-theme-songs opnening", "theme-songs js-theme-songs ending");
+            endings = extractBlock("theme-songs js-theme-songs ending", "More info");
+          }
+        } catch {
+          // Return cached or empty below
+        }
+      }
+
+      const payload = { openings, endings };
+      if (openings.length > 0 || endings.length > 0) {
+        await supabase.from("api_cache").upsert(
+          {
+            cache_key: cacheKey,
+            payload,
+            expires_at: new Date(Date.now() + 7 * 86400 * 1000).toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "cache_key" }
+        );
+        return jsonResponse(payload, 200, { "X-ListTube-Cache": "MISS" });
+      }
+      if (cachedRow) {
+        return jsonResponse(cachedRow.payload, 200, { "X-ListTube-Cache": "STALE" });
+      }
+      return jsonResponse(payload, 200);
     }
 
     // 4. CORS-Free Server-Side News Proxy + Cache (ANN RSS & MAL News)
@@ -467,73 +513,168 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ ok: true, warmed });
     }
 
-    // 7. Zero-Email Cross-Device Cloud Sync Vault (Sync Code: LT-XXXX-XXXX-XXXX)
-    if (path === "/sync" && req.method === "GET") {
-      const code = normalizeCode(url.searchParams.get("code") ?? "");
-      if (code.length < 8) return jsonResponse({ error: "Invalid sync code" }, 400);
-      const hash = await sha256Hex(code);
-      const { data: vault } = await supabase
-        .from("sync_vaults")
-        .select("payload, version, updated_at")
-        .eq("sync_code_hash", hash)
-        .maybeSingle();
-
-      if (!vault) return jsonResponse({ error: "Sync code not found" }, 404);
-      return jsonResponse({ payload: vault.payload, version: vault.version, updatedAt: vault.updated_at });
+    // 7. OAuth Configuration Status (safe public client IDs only, never secrets)
+    if (path === "/oauth/status" && req.method === "GET") {
+      const anilistClientId = Deno.env.get("ANILIST_CLIENT_ID") ?? "";
+      const malClientId = Deno.env.get("MAL_CLIENT_ID") ?? "";
+      return jsonResponse({
+        anilistConfigured: Boolean(anilistClientId),
+        anilistClientId: anilistClientId || undefined,
+        malConfigured: Boolean(malClientId),
+        malClientId: malClientId || undefined,
+      });
     }
 
-    if (path === "/sync" && req.method === "POST") {
+    // 8. AniList OAuth Authorization Code Exchange
+    if (path === "/oauth/anilist/exchange" && req.method === "POST") {
       const body = await req.json();
-      const action = String(body.action ?? "push");
-      const incoming = body.payload ?? {};
-
-      if (action === "create") {
-        const code = randomSyncCode();
-        const hash = await sha256Hex(code);
-        const nowIso = new Date().toISOString();
-        const { error } = await supabase.from("sync_vaults").insert({
-          sync_code_hash: hash,
-          payload: incoming,
-          version: 1,
-          updated_at: nowIso,
-        });
-        if (error) return jsonResponse({ error: error.message }, 500);
-        return jsonResponse({ ok: true, code, payload: incoming, version: 1, updatedAt: nowIso });
+      const code = String(body.code ?? "").trim();
+      const redirectUri = String(body.redirectUri ?? "").trim();
+      const clientId = String(body.clientId ?? Deno.env.get("ANILIST_CLIENT_ID") ?? "").trim();
+      const clientSecret = String(body.clientSecret ?? Deno.env.get("ANILIST_CLIENT_SECRET") ?? "").trim();
+      if (!code || !redirectUri || !clientId || !clientSecret) {
+        return jsonResponse(
+          { error: "AniList OAuth requires ANILIST_CLIENT_ID & ANILIST_CLIENT_SECRET on server (or use Implicit/Token fallback)." },
+          400
+        );
       }
 
-      const code = normalizeCode(String(body.code ?? ""));
-      if (code.length < 8) return jsonResponse({ error: "Missing sync code" }, 400);
-      const hash = await sha256Hex(code);
-
-      const { data: existing } = await supabase
-        .from("sync_vaults")
-        .select("payload, version")
-        .eq("sync_code_hash", hash)
-        .maybeSingle();
-
-      const merged = existing ? mergeVaultPayloads(existing.payload, incoming) : incoming;
-      const nextVersion = (existing?.version ?? 0) + 1;
-      const nowIso = new Date().toISOString();
-
-      const { error } = await supabase.from("sync_vaults").upsert(
-        {
-          sync_code_hash: hash,
-          payload: merged,
-          version: nextVersion,
-          updated_at: nowIso,
-        },
-        { onConflict: "sync_code_hash" }
-      );
-      if (error) return jsonResponse({ error: error.message }, 500);
-
-      return jsonResponse({ ok: true, code, payload: merged, version: nextVersion, updatedAt: nowIso });
+      const res = await fetch("https://anilist.co/api/v2/oauth/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: redirectUri,
+          code,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.access_token) {
+        return jsonResponse({ error: data?.message || data?.error_description || "AniList token exchange failed" }, 400);
+      }
+      return jsonResponse(data);
     }
 
-    // 8. AniList Live Progress / Status / Score Write-Back Mutation
+    // 9. MyAnimeList OAuth 2.0 PKCE Token Exchange & Refresh
+    if (path === "/oauth/mal/token" && req.method === "POST") {
+      const body = await req.json();
+      const grantType = body.grantType === "refresh_token" ? "refresh_token" : "authorization_code";
+      const clientId = String(body.clientId ?? Deno.env.get("MAL_CLIENT_ID") ?? "").trim();
+      const clientSecret = String(body.clientSecret ?? Deno.env.get("MAL_CLIENT_SECRET") ?? "").trim();
+      if (!clientId) {
+        return jsonResponse({ error: "MAL OAuth Client ID is not configured yet (set MAL_CLIENT_ID in Supabase Edge Secrets)." }, 400);
+      }
+
+      const form = new URLSearchParams({
+        client_id: clientId,
+        grant_type: grantType,
+      });
+      if (clientSecret) form.set("client_secret", clientSecret);
+      if (grantType === "refresh_token") {
+        form.set("refresh_token", String(body.refreshToken ?? ""));
+      } else {
+        form.set("code", String(body.code ?? ""));
+        form.set("code_verifier", String(body.codeVerifier ?? ""));
+        if (body.redirectUri) form.set("redirect_uri", String(body.redirectUri));
+      }
+
+      const res = await fetch("https://myanimelist.net/v1/oauth2/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+        body: form.toString(),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.access_token) {
+        return jsonResponse({ error: data?.message || data?.error || "MAL OAuth token exchange failed" }, 400);
+      }
+      return jsonResponse(data);
+    }
+
+    // 10. Authenticated MyAnimeList List Import (supports Private MAL lists via OAuth Bearer)
+    if (path === "/oauth/mal/list" && req.method === "GET") {
+      const token = String(url.searchParams.get("token") ?? req.headers.get("authorization") ?? "")
+        .replace(/^Bearer\s+/i, "")
+        .trim();
+      if (!token) return jsonResponse({ error: "Missing MAL OAuth access token" }, 401);
+
+      const meRes = await fetch("https://api.myanimelist.net/v2/users/@me?fields=id,name,picture", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!meRes.ok) return jsonResponse({ error: `MAL /@me HTTP ${meRes.status}` }, meRes.status);
+      const user = await meRes.json();
+
+      const fetchList = async (kind: "animelist" | "mangalist") => {
+        const fields =
+          kind === "animelist"
+            ? "list_status{status,score,num_episodes_watched,is_rewatching,num_times_rewatched,start_date,finish_date,comments},num_episodes,media_type,mean,num_list_users,main_picture,genres,studios,start_season"
+            : "list_status{status,score,num_chapters_read,num_volumes_read,is_rereading,num_times_reread,start_date,finish_date,comments},num_chapters,num_volumes,media_type,mean,num_list_users,main_picture,genres,authors{first_name,last_name}";
+        const rows: any[] = [];
+        let nextUrl: string | null = `https://api.myanimelist.net/v2/users/@me/${kind}?fields=${encodeURIComponent(fields)}&limit=500&nsfw=false`;
+        let pages = 0;
+        while (nextUrl && pages < 5) {
+          const r = await fetch(nextUrl, { headers: { Authorization: `Bearer ${token}` } });
+          if (!r.ok) break;
+          const json = await r.json();
+          if (Array.isArray(json.data)) rows.push(...json.data);
+          nextUrl = json.paging?.next ?? null;
+          pages += 1;
+        }
+        return rows;
+      };
+
+      const [anime, manga] = await Promise.all([fetchList("animelist"), fetchList("mangalist")]);
+      return jsonResponse({ user, anime, manga });
+    }
+
+    // 11. AniList Bidirectional 2-Way Sync (Save, Dates, Volumes, Rewatches, Notes, Privacy & Delete)
     if (path === "/anilist-writeback" && req.method === "POST") {
       const body = await req.json();
       const token = String(body.token ?? "").trim();
       const mediaId = Number(body.mediaId ?? 0);
+      const action = body.action === "delete" ? "delete" : "save";
+      if (!token || !mediaId) return jsonResponse({ error: "Missing AniList token or mediaId" }, 400);
+
+      if (action === "delete") {
+        let entryId = Number(body.listEntryId ?? 0);
+        if (!entryId) {
+          const lookupRes = await fetch("https://graphql.anilist.co", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              query: `query($mediaId: Int) { Media(id: $mediaId) { mediaListEntry { id } } }`,
+              variables: { mediaId },
+            }),
+          });
+          const lookupJson = await lookupRes.json();
+          entryId = Number(lookupJson?.data?.Media?.mediaListEntry?.id ?? 0);
+        }
+        if (!entryId) return jsonResponse({ ok: true, deleted: false });
+
+        const delRes = await fetch("https://graphql.anilist.co", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            query: `mutation($id: Int) { DeleteMediaListEntry(id: $id) { deleted } }`,
+            variables: { id: entryId },
+          }),
+        });
+        const delJson = await delRes.json();
+        if (!delRes.ok || delJson.errors?.length) {
+          return jsonResponse({ error: delJson.errors?.[0]?.message ?? `AniList delete HTTP ${delRes.status}` }, 400);
+        }
+        return jsonResponse({ ok: true, deleted: Boolean(delJson.data?.DeleteMediaListEntry?.deleted) });
+      }
+
       const statusMap: Record<string, string> = {
         watching: "CURRENT",
         completed: "COMPLETED",
@@ -542,15 +683,38 @@ Deno.serve(async (req: Request) => {
         dropped: "DROPPED",
       };
       const anilistStatus = statusMap[String(body.status ?? "")] ?? undefined;
-      if (!token || !mediaId) return jsonResponse({ error: "Missing AniList token or mediaId" }, 400);
 
       const mutation = `
-        mutation($mediaId: Int, $status: MediaListStatus, $scoreRaw: Int, $progress: Int) {
-          SaveMediaListEntry(mediaId: $mediaId, status: $status, scoreRaw: $scoreRaw, progress: $progress) {
+        mutation(
+          $mediaId: Int
+          $status: MediaListStatus
+          $scoreRaw: Int
+          $progress: Int
+          $progressVolumes: Int
+          $repeat: Int
+          $startedAt: FuzzyDateInput
+          $completedAt: FuzzyDateInput
+          $notes: String
+          $private: Boolean
+        ) {
+          SaveMediaListEntry(
+            mediaId: $mediaId
+            status: $status
+            scoreRaw: $scoreRaw
+            progress: $progress
+            progressVolumes: $progressVolumes
+            repeat: $repeat
+            startedAt: $startedAt
+            completedAt: $completedAt
+            notes: $notes
+            private: $private
+          ) {
             id
             status
             score
             progress
+            progressVolumes
+            repeat
           }
         }
       `;
@@ -568,6 +732,12 @@ Deno.serve(async (req: Request) => {
             status: anilistStatus,
             scoreRaw: body.score ? Math.round(Number(body.score) * 10) : undefined,
             progress: typeof body.progress === "number" ? body.progress : undefined,
+            progressVolumes: typeof body.progressVolumes === "number" ? body.progressVolumes : undefined,
+            repeat: typeof body.repeat === "number" ? body.repeat : undefined,
+            startedAt: toFuzzyDate(body.startedAt),
+            completedAt: toFuzzyDate(body.completedAt),
+            notes: typeof body.notes === "string" ? body.notes.slice(0, 2000) : undefined,
+            private: typeof body.isPrivate === "boolean" ? body.isPrivate : undefined,
           },
         }),
       });
@@ -576,6 +746,179 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ error: json.errors?.[0]?.message ?? `AniList HTTP ${res.status}` }, 400);
       }
       return jsonResponse({ ok: true, entry: json.data?.SaveMediaListEntry });
+    }
+
+    // 12. MyAnimeList Bidirectional 2-Way API v2 Write-Back (Anime & Manga Save + Delete)
+    if (path === "/mal-writeback" && req.method === "POST") {
+      const body = await req.json();
+      const token = String(body.token ?? "").trim();
+      const malId = Number(body.malId ?? 0);
+      const mediaType = body.mediaType === "MANGA" ? "manga" : "anime";
+      const action = body.action === "delete" ? "delete" : "save";
+      if (!token || !malId) return jsonResponse({ error: "Missing MAL OAuth token or malId" }, 400);
+
+      const endpoint = `https://api.myanimelist.net/v2/${mediaType}/${malId}/my_list_status`;
+      if (action === "delete") {
+        const delRes = await fetch(endpoint, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!delRes.ok && delRes.status !== 404) {
+          return jsonResponse({ error: `MAL delete HTTP ${delRes.status}` }, delRes.status);
+        }
+        return jsonResponse({ ok: true, deleted: true });
+      }
+
+      const animeStatusMap: Record<string, string> = {
+        watching: "watching",
+        completed: "completed",
+        planned: "plan_to_watch",
+        on_hold: "on_hold",
+        dropped: "dropped",
+      };
+      const mangaStatusMap: Record<string, string> = {
+        watching: "reading",
+        completed: "completed",
+        planned: "plan_to_read",
+        on_hold: "on_hold",
+        dropped: "dropped",
+      };
+
+      const form = new URLSearchParams();
+      if (body.status) {
+        const mapped = mediaType === "manga" ? mangaStatusMap[body.status] : animeStatusMap[body.status];
+        if (mapped) form.set("status", mapped);
+      }
+      if (typeof body.score === "number" && body.score > 0) {
+        form.set("score", String(Math.max(1, Math.min(10, Math.round(body.score)))));
+      }
+      if (typeof body.progress === "number") {
+        form.set(
+          mediaType === "manga" ? "num_chapters_read" : "num_watched_episodes",
+          String(Math.max(0, Math.floor(body.progress)))
+        );
+      }
+      if (mediaType === "manga" && typeof body.progressVolumes === "number") {
+        form.set("num_volumes_read", String(Math.max(0, Math.floor(body.progressVolumes))));
+      }
+      if (typeof body.repeat === "number") {
+        form.set(
+          mediaType === "manga" ? "num_times_reread" : "num_times_rewatched",
+          String(Math.max(0, Math.floor(body.repeat)))
+        );
+      }
+      if (typeof body.startedAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.startedAt)) {
+        form.set("start_date", body.startedAt);
+      }
+      if (typeof body.completedAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.completedAt)) {
+        form.set("finish_date", body.completedAt);
+      }
+      if (typeof body.notes === "string") {
+        form.set("comments", body.notes.slice(0, 500));
+      }
+
+      const res = await fetch(endpoint, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: form.toString(),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return jsonResponse({ error: json?.message || json?.error || `MAL HTTP ${res.status}` }, res.status);
+      }
+      return jsonResponse({ ok: true, entry: json });
+    }
+
+    // 13. SSR OpenGraph Link Preview Endpoint (?id=anilist:16498 or ?id=anilist-manga:30002)
+    if (path === "/share" && req.method === "GET") {
+      const rawId = (url.searchParams.get("id") ?? "").trim();
+      const targetOrigin = (url.searchParams.get("origin") ?? "https://harshtheotaku.github.io/ListTube").replace(/\/$/, "");
+      const redirectUrl = rawId ? `${targetOrigin}/anime/${encodeURIComponent(rawId)}` : targetOrigin;
+
+      let title = "ListTube — Anime & Manga Recommendations";
+      let desc = "Track anime & manga, read reviews, explore MAL catalogs, and get personalized recommendations.";
+      let image = "https://s4.anilist.co/file/anilistcdn/media/anime/banner/16498-8jpFCOcDmneX.jpg";
+
+      const idMatch = rawId.match(/^(anilist|anilist-manga|mal|mal-manga):(\d+)$/i);
+      if (idMatch) {
+        const prefix = idMatch[1].toLowerCase();
+        const numericId = Number(idMatch[2]);
+        const mediaType = prefix.includes("manga") ? "MANGA" : "ANIME";
+        const isMal = prefix.startsWith("mal");
+        const cacheKey = `og:${prefix}:${numericId}`;
+
+        const { data: cachedOg } = await supabase
+          .from("api_cache")
+          .select("payload, expires_at")
+          .eq("cache_key", cacheKey)
+          .maybeSingle();
+
+        let media: any = cachedOg?.payload;
+        if (!media || new Date(cachedOg.expires_at).getTime() <= Date.now()) {
+          const gql = isMal
+            ? `query($idMal: Int, $type: MediaType) { Media(idMal: $idMal, type: $type) { title { english romaji } description(asHtml: false) bannerImage coverImage { extraLarge } averageScore episodes chapters format startDate { year } } }`
+            : `query($id: Int, $type: MediaType) { Media(id: $id, type: $type) { title { english romaji } description(asHtml: false) bannerImage coverImage { extraLarge } averageScore episodes chapters format startDate { year } } }`;
+          const vars = isMal ? { idMal: numericId, type: mediaType } : { id: numericId, type: mediaType };
+          const up = await fetch("https://graphql.anilist.co", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ query: gql, variables: vars }),
+          });
+          if (up.ok) {
+            const j = await up.json();
+            media = j?.data?.Media ?? null;
+            if (media) {
+              await supabase.from("api_cache").upsert(
+                {
+                  cache_key: cacheKey,
+                  payload: media,
+                  expires_at: new Date(Date.now() + 86400 * 1000).toISOString(),
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "cache_key" }
+              );
+            }
+          }
+        }
+
+        if (media) {
+          const mTitle = media.title?.english || media.title?.romaji || "Untitled";
+          const scoreLabel = media.averageScore ? ` • ★ ${(media.averageScore / 10).toFixed(1)}` : "";
+          const yearLabel = media.startDate?.year ? ` (${media.startDate.year})` : "";
+          title = `${mTitle}${yearLabel}${scoreLabel} — ListTube`;
+          desc = String(media.description ?? desc).replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim().slice(0, 220);
+          image = media.bannerImage || media.coverImage?.extraLarge || image;
+        }
+      }
+
+      const html = `<!doctype html><html lang="en"><head>
+<meta charset="utf-8" />
+<title>${escapeHtml(title)}</title>
+<meta name="description" content="${escapeHtml(desc)}" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="ListTube" />
+<meta property="og:title" content="${escapeHtml(title)}" />
+<meta property="og:description" content="${escapeHtml(desc)}" />
+<meta property="og:image" content="${escapeHtml(image)}" />
+<meta property="og:url" content="${escapeHtml(redirectUrl)}" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="${escapeHtml(title)}" />
+<meta name="twitter:description" content="${escapeHtml(desc)}" />
+<meta name="twitter:image" content="${escapeHtml(image)}" />
+<meta http-equiv="refresh" content="0;url=${escapeHtml(redirectUrl)}" />
+<script>window.location.replace(${JSON.stringify(redirectUrl)});</script>
+</head><body style="background:#0F0F0F;color:#fff;font-family:sans-serif;padding:32px"><p>Opening <a href="${escapeHtml(redirectUrl)}" style="color:#3EA6FF">${escapeHtml(title)}</a>…</p></body></html>`;
+
+      return new Response(html, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "public, max-age=3600",
+        },
+      });
     }
 
     return jsonResponse({ error: "Not found" }, 404);

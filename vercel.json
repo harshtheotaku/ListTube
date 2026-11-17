@@ -8,6 +8,21 @@
     {
       "source": "/proxy/ann/(.*)",
       "destination": "https://www.animenewsnetwork.com/$1"
+    },
+    {
+      "source": "/anime/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(bot|crawler|spider|discord|twitter|facebook|slack|telegram|whatsapp|preview|embed).*"
+        }
+      ],
+      "destination": "/api/og?id=:id"
+    },
+    {
+      "source": "/((?!api/|assets/|proxy/).*)",
+      "destination": "/index.html"
     }
   ]
 }

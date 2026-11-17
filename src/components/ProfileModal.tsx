@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, Heart, ImagePlus, Sparkles, Trash2, User, X } from 'lucide-react';
+import { Check, Heart, ImagePlus, Loader2, Search, Sparkles, Trash2, User, X } from 'lucide-react';
+import { FavoriteCharacterItem } from '../types';
+import { searchAniListCharacters } from '../services/anilist';
 import {
   BUILT_IN_AVATARS,
   BUILT_IN_BANNERS,
@@ -67,6 +69,24 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
   const [bioInput, setBioInput] = useState(profile.bio ?? '');
   const [locationInput, setLocationInput] = useState(profile.location ?? '');
   const [uploading, setUploading] = useState<'avatar' | 'banner' | null>(null);
+  const [charQuery, setCharQuery] = useState('');
+  const [charResults, setCharResults] = useState<FavoriteCharacterItem[]>([]);
+  const [charSearching, setCharSearching] = useState(false);
+
+  useEffect(() => {
+    const q = charQuery.trim();
+    if (!q) {
+      setCharResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setCharSearching(true);
+      void searchAniListCharacters(q, 16)
+        .then(setCharResults)
+        .finally(() => setCharSearching(false));
+    }, 280);
+    return () => clearTimeout(timer);
+  }, [charQuery]);
 
   useEffect(() => {
     if (isOpen) {
@@ -147,6 +167,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
     .map((id) => animeStore.get(id))
     .filter((a): a is NonNullable<typeof a> => Boolean(a));
   const favCharIds = profile.favoriteCharacters ?? [];
+  const favCharData = profile.favoriteCharactersData ?? [];
 
   return (
     <div
@@ -414,10 +435,98 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
 
           {activeTab === 'favorites' && (
             <div className="space-y-5">
+              {/* Live Search ANY Anime/Manga Character */}
               <div>
                 <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#AAAAAA]">
                   <Sparkles className="h-3.5 w-3.5 text-[#FF0000]" />
-                  Favorite Characters (Pick up to 6)
+                  Search &amp; Pin Any Favorite Character ({favCharData.length + favCharIds.length}/12)
+                </p>
+                <div className="flex items-center gap-2 rounded-xl border border-white/[0.12] bg-[#141414] px-3 py-2 focus-within:border-[#3EA6FF]">
+                  {charSearching ? (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#3EA6FF]" />
+                  ) : (
+                    <Search className="h-4 w-4 shrink-0 text-[#AAAAAA]" />
+                  )}
+                  <input
+                    value={charQuery}
+                    onChange={(e) => setCharQuery(e.target.value)}
+                    placeholder="Search any character (e.g. Killua, Frieren, Guts, Makima)…"
+                    className="w-full bg-transparent text-[13px] text-white placeholder:text-[#777777] outline-none"
+                  />
+                  {charQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setCharQuery('')}
+                      className="text-[#AAAAAA] hover:text-white"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {charResults.length > 0 && (
+                  <div className="mt-2.5 grid max-h-48 grid-cols-4 gap-2 overflow-y-auto pr-1">
+                    {charResults.map((ch) => {
+                      const selected = favCharData.some((x) => String(x.id) === String(ch.id));
+                      return (
+                        <button
+                          key={ch.id}
+                          type="button"
+                          onClick={() => {
+                            const added = profileStore.toggleFavoriteCharacterItem(ch);
+                            toast(added ? `${ch.name} added to Favorites ★` : `Removed ${ch.name}`);
+                          }}
+                          className={`relative flex flex-col items-center gap-1 rounded-xl border p-1.5 transition ${
+                            selected
+                              ? 'border-rose-500 bg-rose-500/15'
+                              : 'border-white/[0.06] bg-[#272727]/80 hover:border-white/25'
+                          }`}
+                        >
+                          <img
+                            src={ch.image}
+                            alt={ch.name}
+                            className="h-11 w-11 rounded-full object-cover bg-black"
+                          />
+                          {selected && (
+                            <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-white">
+                              <Heart className="h-2.5 w-2.5 fill-current" />
+                            </span>
+                          )}
+                          <span className="line-clamp-1 w-full text-center text-[10px] font-semibold text-neutral-200">
+                            {ch.name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {favCharData.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {favCharData.map((ch) => (
+                      <div
+                        key={ch.id}
+                        className="flex items-center gap-2 rounded-full border border-rose-500/30 bg-rose-500/10 py-1 pl-1 pr-2.5"
+                      >
+                        <img src={ch.image} alt={ch.name} className="h-6 w-6 rounded-full object-cover" />
+                        <span className="max-w-[120px] truncate text-[11px] font-semibold text-white">
+                          {ch.name}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${ch.name}`}
+                          onClick={() => profileStore.toggleFavoriteCharacterItem(ch)}
+                          className="text-rose-300 hover:text-white"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <p className="mt-4 mb-2 text-[10.5px] font-bold uppercase tracking-wider text-[#AAAAAA]">
+                  Quick Character Presets
                 </p>
                 <div className="grid grid-cols-4 gap-2">
                   {BUILT_IN_AVATARS.map((char) => {
