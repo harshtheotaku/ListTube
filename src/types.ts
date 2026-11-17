@@ -80,6 +80,16 @@ export interface StaffPersonDetail {
   favourites?: number;
   siteUrl?: string;
   works: PersonCreditWork[];
+  hasMoreWorks?: boolean;
+  totalWorks?: number;
+}
+
+export interface StaffSearchItem {
+  id: number;
+  name: string;
+  nativeName?: string;
+  image?: string;
+  primaryOccupations: string[];
 }
 
 export interface CharacterDetailExtra {

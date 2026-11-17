@@ -29,6 +29,15 @@ import {
   readAndClearMalPkceSession,
   storeMalPkceSession,
 } from './trackers';
+import {
+  AniListOutboxPayload,
+  enqueueOutboxJob,
+  flushWritebackOutbox,
+  loadOutbox,
+  makeOutboxJobId,
+  MalOutboxPayload,
+  removeOutboxJob,
+} from './writebackOutbox';
 
 const CLOUD_META_KEY = 'listtube.cloud.v2';
 
@@ -44,6 +53,7 @@ export interface CloudStatus {
   malConnected: boolean;
   googleEnabled: boolean | null;
   isLinked: boolean;
+  pendingOutboxCount: number;
 }
 
 export interface MergedComment extends UserComment {
@@ -142,6 +152,7 @@ function getSnapshot(): CloudStatus {
       malConnected: Boolean(meta.malAccessToken),
       googleEnabled,
       isLinked: Boolean(userId),
+      pendingOutboxCount: loadOutbox().length,
     };
   }
   return cachedSnapshot;
@@ -678,16 +689,27 @@ async function completeOAuthBridge(bridge?: OAuthBridgePayload | null): Promise<
   }
 }
 
-async function processOAuthReturnUrl(): Promise<void> {
+async function processOAuthReturnUrl(overrideUrl?: string): Promise<void> {
   if (typeof window === 'undefined') return;
-  const search = new URLSearchParams(window.location.search);
-  const hash = window.location.hash;
+  let search = new URLSearchParams(window.location.search);
+  let hash = window.location.hash;
+  if (overrideUrl) {
+    try {
+      const parsed = new URL(overrideUrl);
+      search = parsed.searchParams;
+      hash = parsed.hash;
+    } catch {
+      return;
+    }
+  }
 
   // 1. AniList Implicit Grant return (#access_token=... without leading #/)
   if (hash.startsWith('#access_token=')) {
     const hashParams = new URLSearchParams(hash.slice(1));
     const token = hashParams.get('access_token');
-    window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+    if (!overrideUrl) {
+      window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+    }
     if (token) {
       try {
         const [imported, bridgeRes] = await Promise.all([
@@ -725,7 +747,9 @@ async function processOAuthReturnUrl(): Promise<void> {
     search.delete('code');
     search.delete('state');
     const cleanSearch = search.toString() ? `?${search.toString()}` : '';
-    window.history.replaceState({}, '', `${window.location.pathname}${cleanSearch}`);
+    if (!overrideUrl) {
+      window.history.replaceState({}, '', `${window.location.pathname}${cleanSearch}`);
+    }
     if (!pkce || pkce.state !== state) return;
     try {
       const tokens = await exchangeMalOAuthEdge({
@@ -758,7 +782,9 @@ async function processOAuthReturnUrl(): Promise<void> {
     search.delete('code');
     search.delete('state');
     const cleanSearch = search.toString() ? `?${search.toString()}` : '';
-    window.history.replaceState({}, '', `${window.location.pathname}${cleanSearch}`);
+    if (!overrideUrl) {
+      window.history.replaceState({}, '', `${window.location.pathname}${cleanSearch}`);
+    }
     try {
       const tokens = await exchangeAniListOAuthEdge({
         code,
@@ -782,6 +808,47 @@ async function processOAuthReturnUrl(): Promise<void> {
   }
 }
 
+async function dispatchAniListWriteback(
+  mediaType: 'ANIME' | 'MANGA',
+  payload: AniListOutboxPayload
+): Promise<void> {
+  const jobId = makeOutboxJobId('anilist', mediaType, payload.mediaId);
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    enqueueOutboxJob({ id: jobId, provider: 'anilist', payload, error: 'Offline' });
+    emit();
+    return;
+  }
+  const res = await writeBackAniListEdge({ ...payload, token: meta.anilistWritebackToken });
+  if (res.ok) {
+    removeOutboxJob(jobId);
+  } else {
+    enqueueOutboxJob({ id: jobId, provider: 'anilist', payload, error: res.error });
+  }
+  emit();
+}
+
+async function dispatchMalWriteback(payload: MalOutboxPayload): Promise<void> {
+  const jobId = makeOutboxJobId('mal', payload.mediaType, payload.malId);
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    enqueueOutboxJob({ id: jobId, provider: 'mal', payload, error: 'Offline' });
+    emit();
+    return;
+  }
+  const tk = await ensureFreshMalToken();
+  if (!tk) {
+    enqueueOutboxJob({ id: jobId, provider: 'mal', payload, error: 'No active MAL OAuth token' });
+    emit();
+    return;
+  }
+  const res = await writeBackMalEdge({ ...payload, token: tk });
+  if (res.ok) {
+    removeOutboxJob(jobId);
+  } else {
+    enqueueOutboxJob({ id: jobId, provider: 'mal', payload, error: res.error });
+  }
+  emit();
+}
+
 function handleLibraryChange() {
   if (applyingRemote) {
     prevEntriesSnapshot = { ...library.getSnapshot().entries };
@@ -790,7 +857,7 @@ function handleLibraryChange() {
 
   const current = library.getSnapshot().entries;
 
-  // Detect deletions -> queue DB deletion + push 2-way Delete to AniList & MAL OAuth!
+  // Detect deletions -> queue DB deletion + push 2-way Delete to AniList & MAL OAuth (with persistent outbox retry)!
   for (const [prevId, prevEntry] of Object.entries(prevEntriesSnapshot)) {
     if (!current[prevId]) {
       if (!meta.deletedEntryIds.includes(prevId)) {
@@ -805,23 +872,10 @@ function handleLibraryChange() {
         prevEntry.mediaType === 'MANGA' || prevId.includes('manga') ? 'MANGA' : 'ANIME';
 
       if (meta.anilistWritebackToken && rawAniId > 0) {
-        void writeBackAniListEdge({
-          token: meta.anilistWritebackToken,
-          mediaId: rawAniId,
-          action: 'delete',
-        });
+        void dispatchAniListWriteback(mType, { mediaId: rawAniId, action: 'delete' });
       }
       if (meta.malAccessToken && rawMalId > 0) {
-        void ensureFreshMalToken().then((tk) => {
-          if (tk) {
-            void writeBackMalEdge({
-              token: tk,
-              malId: rawMalId,
-              mediaType: mType,
-              action: 'delete',
-            });
-          }
-        });
+        void dispatchMalWriteback({ malId: rawMalId, mediaType: mType, action: 'delete' });
       }
     }
   }
@@ -854,8 +908,7 @@ function handleLibraryChange() {
     const rawMalId = snap?.malId ?? (id.startsWith('mal') ? Number(id.split(':')[1]) : 0);
 
     if (meta.anilistWritebackToken && rawAnilistId > 0) {
-      void writeBackAniListEdge({
-        token: meta.anilistWritebackToken,
+      void dispatchAniListWriteback(mType, {
         mediaId: rawAnilistId,
         action: 'save',
         status: nextEntry.status,
@@ -873,23 +926,18 @@ function handleLibraryChange() {
     }
 
     if (meta.malAccessToken && rawMalId > 0) {
-      void ensureFreshMalToken().then((tk) => {
-        if (tk) {
-          void writeBackMalEdge({
-            token: tk,
-            malId: rawMalId,
-            mediaType: mType,
-            action: 'save',
-            status: nextEntry.status,
-            score: nextEntry.score,
-            progress: nextEntry.progress,
-            progressVolumes: nextEntry.progressVolumes,
-            repeat: nextEntry.repeat,
-            startedAt: nextEntry.startedAt,
-            completedAt: nextEntry.completedAt,
-            notes: nextEntry.notes,
-          });
-        }
+      void dispatchMalWriteback({
+        malId: rawMalId,
+        mediaType: mType,
+        action: 'save',
+        status: nextEntry.status,
+        score: nextEntry.score,
+        progress: nextEntry.progress,
+        progressVolumes: nextEntry.progressVolumes,
+        repeat: nextEntry.repeat,
+        startedAt: nextEntry.startedAt,
+        completedAt: nextEntry.completedAt,
+        notes: nextEntry.notes,
       });
     }
 
@@ -972,9 +1020,27 @@ function scheduleDebouncedSync() {
 }
 
 export const cloudSync = {
+  async flushOutbox(forceAll = false): Promise<{ succeeded: number; failed: number; remaining: number }> {
+    const result = await flushWritebackOutbox({
+      getAniListToken: () => meta.anilistWritebackToken,
+      getMalToken: () => ensureFreshMalToken(),
+      sendAniList: (args) => writeBackAniListEdge(args),
+      sendMal: (args) => writeBackMalEdge(args),
+      forceAll,
+    });
+    emit();
+    return result;
+  },
+
   init() {
     if (initialized || typeof window === 'undefined') return;
     initialized = true;
+
+    (window as Window & { __listtubeHandleOAuthUrl?: (u: string) => void }).__listtubeHandleOAuthUrl = (
+      callbackUrl: string
+    ) => {
+      void processOAuthReturnUrl(callbackUrl);
+    };
 
     library.subscribe(handleLibraryChange);
     profileStore.subscribe(handleProfileChange);
@@ -985,19 +1051,30 @@ export const cloudSync = {
     window.addEventListener('online', () => {
       syncState = userId ? 'syncing' : 'idle';
       emit();
+      void cloudSync.flushOutbox(true);
       if (userId) void cloudSync.syncNow();
     });
     window.addEventListener('offline', () => {
       syncState = 'offline';
       emit();
     });
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        void cloudSync.flushOutbox(false);
+      }
+    });
+    window.setInterval(() => {
+      if (loadOutbox().length > 0) {
+        void cloudSync.flushOutbox(false);
+      }
+    }, 45_000);
 
     void checkGoogleProviderEnabled().then((enabled) => {
       googleEnabled = enabled;
       emit();
     });
 
-    void processOAuthReturnUrl();
+    void processOAuthReturnUrl().then(() => cloudSync.flushOutbox(true));
 
     void supabase.auth.getSession().then(({ data }) => {
       const sessionUser = data.session?.user;
@@ -1044,6 +1121,7 @@ export const cloudSync = {
     emit();
 
     try {
+      await cloudSync.flushOutbox(true);
       await pullAuthAccount(userId);
       await pushAuthAccount(userId);
       meta.lastSyncedAt = Date.now();

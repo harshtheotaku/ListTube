@@ -768,6 +768,8 @@ export const App: React.FC = () => {
         onSubmit={handleSearchSubmit}
         onHome={() => navigate('home')}
         onOpenAnime={openAnime}
+        onOpenEntity={openEntity}
+        onOpenUser={openPublicUser}
         onOpenTrackers={() => setTrackersOpen(true)}
         onToggleSidebar={() => {
           if (isWatchMode || window.innerWidth < 1024) {

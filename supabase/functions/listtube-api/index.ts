@@ -34,6 +34,15 @@ function getSupabaseAdmin() {
   });
 }
 
+function getEnvSecret(primary: string): string {
+  const direct = Deno.env.get(primary)?.trim();
+  if (direct) return direct;
+  const lower = Deno.env.get(primary.toLowerCase())?.trim();
+  if (lower) return lower;
+  const upper = Deno.env.get(primary.toUpperCase())?.trim();
+  return upper || "";
+}
+
 function normalizeTitle(raw: string): string {
   return raw
     .toLowerCase()
@@ -658,10 +667,10 @@ Deno.serve(async (req: Request) => {
 
     // 7. OAuth Configuration Status (safe public client IDs only, never secrets)
     if (path === "/oauth/status" && req.method === "GET") {
-      const anilistClientId = Deno.env.get("ANILIST_CLIENT_ID") || DEFAULT_ANILIST_CLIENT_ID;
-      const malClientId = Deno.env.get("MAL_CLIENT_ID") || DEFAULT_MAL_CLIENT_ID;
-      const hasAniListSecret = Boolean(Deno.env.get("ANILIST_CLIENT_SECRET"));
-      const hasMalSecret = Boolean(Deno.env.get("MAL_CLIENT_SECRET"));
+      const anilistClientId = getEnvSecret("ANILIST_CLIENT_ID") || DEFAULT_ANILIST_CLIENT_ID;
+      const malClientId = getEnvSecret("MAL_CLIENT_ID") || DEFAULT_MAL_CLIENT_ID;
+      const hasAniListSecret = Boolean(getEnvSecret("ANILIST_CLIENT_SECRET"));
+      const hasMalSecret = Boolean(getEnvSecret("MAL_CLIENT_SECRET"));
       return jsonResponse({
         anilistConfigured: Boolean(anilistClientId),
         anilistCodeFlowReady: Boolean(anilistClientId && hasAniListSecret),
@@ -676,8 +685,8 @@ Deno.serve(async (req: Request) => {
       const body = await req.json();
       const code = String(body.code ?? "").trim();
       const redirectUri = String(body.redirectUri ?? "").trim();
-      const clientId = String(body.clientId ?? (Deno.env.get("ANILIST_CLIENT_ID") || DEFAULT_ANILIST_CLIENT_ID)).trim();
-      const clientSecret = String(body.clientSecret ?? Deno.env.get("ANILIST_CLIENT_SECRET") ?? "").trim();
+      const clientId = String(body.clientId ?? (getEnvSecret("ANILIST_CLIENT_ID") || DEFAULT_ANILIST_CLIENT_ID)).trim();
+      const clientSecret = String(body.clientSecret ?? getEnvSecret("ANILIST_CLIENT_SECRET") ?? "").trim();
       if (!code || !redirectUri || !clientId || !clientSecret) {
         return jsonResponse(
           { error: "AniList Authorization Code exchange requires ANILIST_CLIENT_SECRET configured in Supabase Edge Secrets." },
@@ -734,8 +743,8 @@ Deno.serve(async (req: Request) => {
     if (path === "/oauth/mal/token" && req.method === "POST") {
       const body = await req.json();
       const grantType = body.grantType === "refresh_token" ? "refresh_token" : "authorization_code";
-      const clientId = String(body.clientId ?? (Deno.env.get("MAL_CLIENT_ID") || DEFAULT_MAL_CLIENT_ID)).trim();
-      const clientSecret = String(body.clientSecret ?? Deno.env.get("MAL_CLIENT_SECRET") ?? "").trim();
+      const clientId = String(body.clientId ?? (getEnvSecret("MAL_CLIENT_ID") || DEFAULT_MAL_CLIENT_ID)).trim();
+      const clientSecret = String(body.clientSecret ?? getEnvSecret("MAL_CLIENT_SECRET") ?? "").trim();
       if (!clientId) {
         return jsonResponse({ error: "MAL OAuth Client ID is not configured." }, 400);
       }

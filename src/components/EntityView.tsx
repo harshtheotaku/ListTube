@@ -50,6 +50,8 @@ export const EntityView: React.FC<EntityViewProps> = ({
   const [wiki, setWiki] = useState<WikipediaSummary | null>(null);
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>('ALL');
   const [sortBy, setSortBy] = useState<WorkSort>('popularity');
+  const [staffPage, setStaffPage] = useState(1);
+  const [loadingMoreStaff, setLoadingMoreStaff] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,6 +60,7 @@ export const EntityView: React.FC<EntityViewProps> = ({
     setCharacter(null);
     setStudio(null);
     setWiki(null);
+    setStaffPage(1);
 
     const run = async () => {
       let wikiQuery = '';
@@ -368,6 +371,44 @@ export const EntityView: React.FC<EntityViewProps> = ({
                     </div>
                   </button>
                 ))}
+              </div>
+            )}
+
+            {target.kind === 'person' && staff?.hasMoreWorks && (
+              <div className="flex justify-center pt-2">
+                <button
+                  type="button"
+                  disabled={loadingMoreStaff}
+                  onClick={async () => {
+                    if (loadingMoreStaff) return;
+                    const nextPage = staffPage + 1;
+                    setLoadingMoreStaff(true);
+                    try {
+                      const more = await fetchStaffPersonDetail(Number(target.idOrName), nextPage);
+                      if (more) {
+                        setStaff((prev) => {
+                          if (!prev) return more;
+                          const seenIds = new Set(prev.works.map((w) => `${w.id}-${w.role ?? ''}`));
+                          const appended = more.works.filter(
+                            (w) => !seenIds.has(`${w.id}-${w.role ?? ''}`)
+                          );
+                          return {
+                            ...prev,
+                            works: [...prev.works, ...appended],
+                            hasMoreWorks: more.hasMoreWorks,
+                            totalWorks: more.totalWorks ?? prev.totalWorks,
+                          };
+                        });
+                        setStaffPage(nextPage);
+                      }
+                    } finally {
+                      setLoadingMoreStaff(false);
+                    }
+                  }}
+                  className="rounded-full border border-white/[0.14] bg-[#272727] px-6 py-2.5 text-[12.5px] font-bold text-white transition hover:bg-[#383838] disabled:opacity-50"
+                >
+                  {loadingMoreStaff ? 'Loading more credits…' : 'Load More Credits'}
+                </button>
               </div>
             )}
           </div>

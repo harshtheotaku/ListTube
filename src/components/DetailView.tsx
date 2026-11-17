@@ -12,6 +12,7 @@ import {
   Flag,
   FolderPlus,
   Heart,
+  Layers,
   Lock,
   Minus,
   Music,
@@ -2172,8 +2173,66 @@ export const DetailView: React.FC<DetailViewProps> = ({
             )}
           </div>
 
-          {/* Right Column: Up Next & Similar */}
-          <div className="min-w-0 space-y-3">
+          {/* Right Column: Franchise Relations + Up Next & Similar */}
+          <div className="min-w-0 space-y-5">
+            {(() => {
+              const formatRel = (rel?: string) => {
+                if (!rel) return 'Related';
+                return rel
+                  .toLowerCase()
+                  .split('_')
+                  .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                  .join(' ');
+              };
+              const storyRelations = (anime.similar ?? [])
+                .filter((r) => Boolean(r.relation && r.relation !== 'Recommendation'))
+                .slice(0, 12);
+              if (storyRelations.length === 0) return null;
+              return (
+                <div className="space-y-2.5 rounded-2xl border border-white/[0.08] bg-[#161616] p-3.5">
+                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
+                    <h2 className="flex items-center gap-2 text-[14.5px] font-bold text-white">
+                      <Layers className="h-4 w-4 text-[#3EA6FF]" />
+                      Franchise &amp; Story Relations
+                    </h2>
+                    <span className="text-[11px] font-semibold text-[#AAAAAA]">
+                      {storyRelations.length} linked
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                    {storyRelations.map((rel) => (
+                      <button
+                        key={`rel-${rel.id}-${rel.relation}`}
+                        type="button"
+                        onClick={() => onOpenId(rel.id)}
+                        className="group flex w-full items-center gap-2.5 rounded-xl border border-white/[0.06] bg-[#1F1F1F] p-1.5 text-left transition hover:border-white/20 hover:bg-[#2A2A2A]"
+                      >
+                        <img
+                          src={rel.cover}
+                          alt={rel.title}
+                          loading="lazy"
+                          className="h-14 w-10 shrink-0 rounded-lg object-cover bg-black"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="rounded bg-[#3EA6FF]/15 px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase tracking-wider text-[#3EA6FF]">
+                              {formatRel(rel.relation)}
+                            </span>
+                            <span className="text-[9.5px] font-semibold uppercase text-[#888888]">
+                              {rel.mediaType === 'MANGA' ? 'Manga' : 'Anime'}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 line-clamp-1 text-[12px] font-semibold text-[#F1F1F1] group-hover:text-white">
+                            {rel.title}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
               <h2 className="flex items-center gap-2 text-[16px] font-bold text-white">
                 <Sparkles className="h-4 w-4 text-[#FF0000]" />

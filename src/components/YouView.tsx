@@ -23,12 +23,13 @@ import {
   Trash2,
   Users,
 } from 'lucide-react';
-import { LibraryState, ListEntry, MediaType, statusLabel } from '../types';
+import { LibraryState, MediaType, statusLabel } from '../types';
 import { animeStore } from '../services/animeStore';
 import { buildTasteProfile } from '../services/recommender';
 import { library } from '../services/library';
 import { BUILT_IN_AVATARS, useProfile } from '../services/profile';
 import { cloudSync, useCloudSync } from '../services/cloudSync';
+import { computeMediaStats, DistEntry, MediaStatsSummary } from '../services/mediaStats';
 import { formatUserScore } from '../services/scoring';
 import { useSettings } from '../services/settings';
 import { toast } from './Toast';
@@ -51,72 +52,39 @@ type ChannelTab = 'overview' | 'stats' | 'favorites' | 'about';
 
 const CARD = 'rounded-2xl border border-white/[0.08] bg-[#181818] p-4 sm:p-5';
 
-interface MalMediaStats {
-  total: number;
-  watching: number;
-  completed: number;
-  onHold: number;
-  dropped: number;
-  planned: number;
-  days: number;
-  meanScore: number;
-  scoredCount: number;
-  units: number;
-  scoreDist: Record<number, number>;
-}
-
-function computeMalStats(entries: Record<string, ListEntry>, targetType: MediaType): MalMediaStats {
-  const list = Object.values(entries).filter((e) => {
-    const a = animeStore.get(e.animeId);
-    return (a?.mediaType ?? e.mediaType ?? 'ANIME') === targetType;
-  });
-
-  let minutes = 0;
-  let units = 0;
-  let scoreSum = 0;
-  let scoredCount = 0;
-  const scoreDist: Record<number, number> = { 10: 0, 9: 0, 8: 0, 7: 0, 6: 0, 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
-
-  let watching = 0;
-  let completed = 0;
-  let onHold = 0;
-  let dropped = 0;
-  let planned = 0;
-
-  for (const e of list) {
-    if (e.status === 'watching') watching++;
-    else if (e.status === 'completed') completed++;
-    else if (e.status === 'on_hold') onHold++;
-    else if (e.status === 'dropped') dropped++;
-    else if (e.status === 'planned') planned++;
-
-    const a = animeStore.get(e.animeId);
-    const prog = e.progress ?? 0;
-    units += prog;
-    minutes += prog * (targetType === 'MANGA' ? 8 : a?.duration ?? 24);
-
-    if (e.score && e.score > 0) {
-      scoreSum += e.score;
-      scoredCount += 1;
-      const bucket = Math.min(10, Math.max(1, Math.round(e.score)));
-      scoreDist[bucket] = (scoreDist[bucket] ?? 0) + 1;
-    }
-  }
-
-  return {
-    total: list.length,
-    watching,
-    completed,
-    onHold,
-    dropped,
-    planned,
-    days: Math.round((minutes / 1440) * 10) / 10,
-    meanScore: scoredCount > 0 ? Math.round((scoreSum / scoredCount) * 100) / 100 : 0,
-    scoredCount,
-    units,
-    scoreDist,
-  };
-}
+const HorizontalDistCard: React.FC<{
+  title: string;
+  items: DistEntry[];
+  barClass: string;
+  emptyText: string;
+}> = ({ title, items, barClass, emptyText }) => {
+  const max = Math.max(1, ...items.map((i) => i.count));
+  return (
+    <div className={CARD}>
+      <p className="mb-3 text-[12px] font-bold uppercase tracking-wider text-white">{title}</p>
+      {items.length === 0 ? (
+        <p className="text-[12px] italic text-[#AAAAAA]">{emptyText}</p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <div key={item.label} className="space-y-1">
+              <div className="flex justify-between text-[11.5px]">
+                <span className="font-semibold text-neutral-200">{item.label}</span>
+                <span className="font-mono text-[#AAAAAA]">{item.count}</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                <div
+                  className={`h-full rounded-full ${barClass}`}
+                  style={{ width: `${Math.max(8, (item.count / max) * 100)}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 function formatTimeAgo(ts: number): string {
   const sec = Math.max(1, Math.floor((Date.now() - ts) / 1000));
@@ -130,7 +98,7 @@ function formatTimeAgo(ts: number): string {
   return new Date(ts).toLocaleDateString();
 }
 
-const MalDistributionBar: React.FC<{ stats: MalMediaStats; isManga: boolean }> = ({ stats, isManga }) => {
+const MalDistributionBar: React.FC<{ stats: MediaStatsSummary; isManga: boolean }> = ({ stats, isManga }) => {
   const denom = Math.max(stats.total, 1);
   const segs = [
     { key: 'watching', label: isManga ? 'Reading' : 'Watching', count: stats.watching, color: 'bg-emerald-500' },
@@ -194,8 +162,14 @@ export const YouView: React.FC<YouViewProps> = ({
   const [selectedFavCharId, setSelectedFavCharId] = useState<string | null>(null);
   const isManga = mediaType === 'MANGA';
 
-  const animeStats = useMemo(() => computeMalStats(libraryState.entries, 'ANIME'), [libraryState.entries]);
-  const mangaStats = useMemo(() => computeMalStats(libraryState.entries, 'MANGA'), [libraryState.entries]);
+  const animeStats = useMemo(
+    () => computeMediaStats(libraryState.entries, 'ANIME', (id) => animeStore.get(id)),
+    [libraryState.entries]
+  );
+  const mangaStats = useMemo(
+    () => computeMediaStats(libraryState.entries, 'MANGA', (id) => animeStore.get(id)),
+    [libraryState.entries]
+  );
   const activeStats = isManga ? mangaStats : animeStats;
 
   const recentUpdates = useMemo(
@@ -878,6 +852,43 @@ export const YouView: React.FC<YouViewProps> = ({
               </div>
             )}
           </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <HorizontalDistCard
+              title={`${isManga ? 'Manga' : 'Anime'} Format Breakdown`}
+              items={activeStats.formatDist}
+              barClass="bg-sky-400"
+              emptyText="Add titles with format metadata to see TV, Movie, OVA, and Manga breakdown."
+            />
+            <HorizontalDistCard
+              title="Release Decade Timeline"
+              items={activeStats.decadeDist}
+              barClass="bg-emerald-400"
+              emptyText="Track titles with release years to map your favorite eras."
+            />
+          </div>
+
+          {cloud.pendingOutboxCount > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[12px]">
+              <span className="font-semibold text-amber-200">
+                {cloud.pendingOutboxCount} list update{cloud.pendingOutboxCount === 1 ? '' : 's'} queued for retry (AniList / MAL 2-way sync).
+              </span>
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await cloudSync.flushOutbox(true);
+                  toast(
+                    res.remaining === 0
+                      ? 'Queued tracker updates synced!'
+                      : `Synced ${res.succeeded}, ${res.remaining} remaining`
+                  );
+                }}
+                className="rounded-full bg-amber-400 px-3.5 py-1 text-[11px] font-bold text-black hover:bg-amber-300"
+              >
+                Flush Sync Queue
+              </button>
+            </div>
+          )}
         </div>
       )}
 

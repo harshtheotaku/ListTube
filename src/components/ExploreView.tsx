@@ -18,6 +18,7 @@ import {
   MAL_DEMOGRAPHICS,
   MAL_THEMES,
   currentSeason,
+  fetchByStudio,
   fetchMostFavorited,
   fetchPopular,
   fetchReleasing,
@@ -114,6 +115,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const [filterYearMin, setFilterYearMin] = useState<number>(0);
   const [filterYearMax, setFilterYearMax] = useState<number>(0);
   const [filterMinScore, setFilterMinScore] = useState<number>(0);
+  const [filterStudio, setFilterStudio] = useState<string>('');
   const [filterSort, setFilterSort] = useState<string>('POPULARITY_DESC');
   const [hideMyList, setHideMyList] = useState(false);
 
@@ -186,6 +188,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     setFilterYearMin(0);
     setFilterYearMax(0);
     setFilterMinScore(0);
+    setFilterStudio('');
     setFilterSort('POPULARITY_DESC');
     setHideMyList(false);
     setDirectoryExpanded(false);
@@ -206,6 +209,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     (filterYearMin ? 1 : 0) +
     (filterYearMax ? 1 : 0) +
     (filterMinScore ? 1 : 0) +
+    (filterStudio.trim() ? 1 : 0) +
     (filterSort !== 'POPULARITY_DESC' ? 1 : 0) +
     (hideMyList ? 1 : 0);
 
@@ -366,6 +370,25 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
         if (searchTerm && !hasMultiAxisFilter) {
           result = await searchSmart(searchTerm, mediaType, 24);
+        } else if (hasMultiAxisFilter && filterStudio.trim()) {
+          const studioPool = await fetchByStudio(filterStudio.trim(), mediaType, new Set(), 48);
+          result = studioPool.filter((a) => {
+            if (searchTerm && !`${a.title} ${a.titleRomaji ?? ''}`.toLowerCase().includes(searchTerm.toLowerCase())) {
+              return false;
+            }
+            if (selectedGenres.length && !selectedGenres.every((g) => a.genres.includes(g))) return false;
+            if (selectedTags.length && !selectedTags.some((t) => a.tags.includes(t))) return false;
+            if (filterFormat && a.format !== filterFormat) return false;
+            if (filterStatus && a.status !== filterStatus) return false;
+            if (filterCountry && a.countryOfOrigin !== filterCountry) return false;
+            if (filterYearMin && (!a.year || a.year < filterYearMin)) return false;
+            if (filterYearMax && (!a.year || a.year > filterYearMax)) return false;
+            if (filterMinScore && (!a.score || a.score < filterMinScore)) return false;
+            return true;
+          });
+          if (filterSort === 'SCORE_DESC') result.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+          else if (filterSort === 'START_DATE_DESC') result.sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
+          else if (filterSort === 'TITLE_ENGLISH') result.sort((a, b) => a.title.localeCompare(b.title));
         } else if (hasMultiAxisFilter) {
           const sortArr =
             searchTerm && filterSort === 'POPULARITY_DESC'
@@ -529,6 +552,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       filterYearMin,
       filterYearMax,
       filterMinScore,
+      filterStudio,
       filterSort,
       hideMyList,
       chart,
@@ -579,6 +603,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       if (filterFormat) parts.push(filterFormat);
       if (filterCountry) parts.push(filterCountry);
       if (selectedSeason) parts.push(`${SEASON_LABEL[selectedSeason.season]} ${selectedSeason.year}`);
+      if (filterStudio.trim()) parts.push(filterStudio.trim());
       if (filterMinScore) parts.push(`${filterMinScore}★+`);
       if (filterYearMin || filterYearMax) {
         parts.push(`${filterYearMin || '...'}–${filterYearMax || '...'}`);
@@ -598,6 +623,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     filterCountry,
     selectedSeason,
     filterMinScore,
+    filterStudio,
     filterYearMin,
     filterYearMax,
     chart,
@@ -620,6 +646,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     setFilterYearMin(0);
     setFilterYearMax(0);
     setFilterMinScore(0);
+    setFilterStudio('');
     setFilterSort('POPULARITY_DESC');
     setHideMyList(false);
   };
@@ -884,6 +911,46 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                 />
               </div>
             </div>
+
+            {!isManga && (
+              <div>
+                <label className="mb-1 block text-[10.5px] font-bold uppercase text-[#AAAAAA]">
+                  Studio
+                </label>
+                <select
+                  aria-label="Filter by studio"
+                  value={filterStudio}
+                  onChange={(e) => setFilterStudio(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-white/15 bg-[#0F0F0F] px-2.5 text-[12px] text-white outline-none focus:border-[#3EA6FF]"
+                >
+                  <option value="">Any Studio</option>
+                  {[
+                    'MAPPA',
+                    'ufotable',
+                    'Kyoto Animation',
+                    'Madhouse',
+                    'Bones',
+                    'Wit Studio',
+                    'CloverWorks',
+                    'A-1 Pictures',
+                    'Sunrise',
+                    'Production I.G',
+                    'Studio Ghibli',
+                    'Trigger',
+                    'Shaft',
+                    'P.A. Works',
+                    'David Production',
+                    'Toei Animation',
+                    'Pierrot',
+                    'J.C.Staff',
+                  ].map((st) => (
+                    <option key={st} value={st}>
+                      {st}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-3">

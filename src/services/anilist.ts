@@ -12,6 +12,7 @@ import {
   ScoreDistBucket,
   StaffCredit,
   StaffPersonDetail,
+  StaffSearchItem,
   StatusDistBucket,
   StreamingLink,
   StudioDetail,
@@ -890,6 +891,60 @@ export async function searchAniListCharacters(
   );
 }
 
+const STAFF_SEARCH_QUERY = `
+  query StaffSearch($search: String, $perPage: Int) {
+    Page(page: 1, perPage: $perPage) {
+      staff(search: $search, sort: [SEARCH_MATCH, FAVOURITES_DESC]) {
+        id
+        name { full native }
+        image { large medium }
+        primaryOccupations
+      }
+    }
+  }
+`;
+
+export async function searchAniListStaff(
+  query: string,
+  limit = 12
+): Promise<StaffSearchItem[]> {
+  const clean = query.trim();
+  if (!clean) return [];
+  return cached(
+    `staff-search:${clean.toLowerCase()}:${limit}`,
+    async () => {
+      type StaffRes = {
+        Page?: {
+          staff?: {
+            id: number;
+            name?: { full?: string | null; native?: string | null } | null;
+            image?: { large?: string | null; medium?: string | null } | null;
+            primaryOccupations?: (string | null)[] | null;
+          }[];
+        };
+      };
+      const data = await request<StaffRes>(STAFF_SEARCH_QUERY, {
+        search: clean,
+        perPage: limit,
+      });
+      const out: StaffSearchItem[] = [];
+      for (const st of data.Page?.staff ?? []) {
+        const name = st.name?.full?.trim();
+        if (!name) continue;
+        out.push({
+          id: st.id,
+          name,
+          nativeName: st.name?.native ?? undefined,
+          image: st.image?.large || st.image?.medium || undefined,
+          primaryOccupations: (st.primaryOccupations ?? []).filter((x): x is string => Boolean(x)),
+        });
+      }
+      return out;
+    },
+    30 * 60 * 1000
+  );
+}
+
 const SCHEDULE_QUERY = `
   query Schedule($start: Int, $end: Int) {
     Page(page: 1, perPage: 50) {
@@ -1121,7 +1176,7 @@ export async function fetchByStudio(
 }
 
 const STAFF_PERSON_QUERY = `
-  query StaffPerson($id: Int) {
+  query StaffPerson($id: Int, $page: Int) {
     Staff(id: $id) {
       id
       name { full native }
@@ -1134,9 +1189,35 @@ const STAFF_PERSON_QUERY = `
       yearsActive
       favourites
       siteUrl
-      staffMedia(sort: [POPULARITY_DESC], perPage: 25) {
+      staffMedia(sort: [POPULARITY_DESC], perPage: 25, page: $page) {
+        pageInfo {
+          hasNextPage
+          total
+        }
         edges {
           staffRole
+          node {
+            id
+            type
+            isAdult
+            averageScore
+            popularity
+            title { english romaji }
+            coverImage { extraLarge large medium }
+            startDate { year }
+          }
+        }
+      }
+      characterMedia(sort: [POPULARITY_DESC], perPage: 25, page: $page) {
+        pageInfo {
+          hasNextPage
+          total
+        }
+        edges {
+          characterRole
+          characters {
+            name { full }
+          }
           node {
             id
             type
@@ -1153,11 +1234,21 @@ const STAFF_PERSON_QUERY = `
   }
 `;
 
-export async function fetchStaffPersonDetail(staffId: number): Promise<StaffPersonDetail | null> {
+export async function fetchStaffPersonDetail(staffId: number, page = 1): Promise<StaffPersonDetail | null> {
   if (!staffId) return null;
   return cached(
-    `staff-detail:v2:${staffId}`,
+    `staff-detail:v4:${staffId}:p${page}`,
     async () => {
+      type MediaNodeStub = {
+        id: number;
+        type?: MediaType | null;
+        isAdult?: boolean | null;
+        averageScore?: number | null;
+        popularity?: number | null;
+        title?: { english?: string | null; romaji?: string | null } | null;
+        coverImage?: { extraLarge?: string | null; large?: string | null; medium?: string | null } | null;
+        startDate?: { year?: number | null } | null;
+      };
       type Res = {
         Staff?: {
           id: number;
@@ -1172,46 +1263,63 @@ export async function fetchStaffPersonDetail(staffId: number): Promise<StaffPers
           favourites?: number | null;
           siteUrl?: string | null;
           staffMedia?: {
+            pageInfo?: { hasNextPage?: boolean | null; total?: number | null } | null;
             edges?: {
               staffRole?: string | null;
-              node?: {
-                id: number;
-                type?: MediaType | null;
-                isAdult?: boolean | null;
-                averageScore?: number | null;
-                popularity?: number | null;
-                title?: { english?: string | null; romaji?: string | null } | null;
-                coverImage?: { extraLarge?: string | null; large?: string | null; medium?: string | null } | null;
-                startDate?: { year?: number | null } | null;
-              } | null;
+              node?: MediaNodeStub | null;
+            }[];
+          } | null;
+          characterMedia?: {
+            pageInfo?: { hasNextPage?: boolean | null; total?: number | null } | null;
+            edges?: {
+              characterRole?: string | null;
+              characters?: ({ name?: { full?: string | null } | null } | null)[] | null;
+              node?: MediaNodeStub | null;
             }[];
           } | null;
         } | null;
       };
-      const data = await request<Res>(STAFF_PERSON_QUERY, { id: staffId });
+      const data = await request<Res>(STAFF_PERSON_QUERY, { id: staffId, page });
       const s = data.Staff;
       if (!s?.name?.full) return null;
       const works: PersonCreditWork[] = [];
       const seen = new Set<string>();
-      for (const edge of s.staffMedia?.edges ?? []) {
-        const node = edge.node;
-        if (!node || node.isAdult) continue;
+      const pushWork = (node: MediaNodeStub | null | undefined, role?: string) => {
+        if (!node || node.isAdult) return;
         const mType: MediaType = node.type === 'MANGA' ? 'MANGA' : 'ANIME';
         const prefix = mType === 'MANGA' ? 'anilist-manga' : 'anilist';
         const mediaId = `${prefix}:${node.id}`;
-        if (seen.has(mediaId)) continue;
+        if (seen.has(mediaId)) return;
         seen.add(mediaId);
         works.push({
           id: mediaId,
           title: node.title?.english || node.title?.romaji || 'Untitled',
           cover: node.coverImage?.extraLarge || node.coverImage?.large || node.coverImage?.medium || '',
           mediaType: mType,
-          role: edge.staffRole ?? undefined,
+          role,
           year: node.startDate?.year ?? undefined,
           score: node.averageScore ? Number((node.averageScore / 10).toFixed(1)) : undefined,
           popularity: node.popularity ?? undefined,
         });
+      };
+
+      for (const edge of s.characterMedia?.edges ?? []) {
+        const charNames = (edge.characters ?? [])
+          .map((c) => c?.name?.full?.trim())
+          .filter((x): x is string => Boolean(x));
+        const vaRole = charNames.length
+          ? `Voice (${charNames.slice(0, 2).join(', ')})`
+          : edge.characterRole
+          ? `Voice (${edge.characterRole})`
+          : 'Voice Actor';
+        pushWork(edge.node, vaRole);
       }
+      for (const edge of s.staffMedia?.edges ?? []) {
+        pushWork(edge.node, edge.staffRole ?? undefined);
+      }
+
+      const staffHasNext = Boolean(s.staffMedia?.pageInfo?.hasNextPage);
+      const charHasNext = Boolean(s.characterMedia?.pageInfo?.hasNextPage);
       return {
         id: s.id,
         name: s.name.full,
@@ -1226,6 +1334,10 @@ export async function fetchStaffPersonDetail(staffId: number): Promise<StaffPers
         favourites: s.favourites ?? undefined,
         siteUrl: s.siteUrl ?? undefined,
         works,
+        hasMoreWorks: staffHasNext || charHasNext,
+        totalWorks:
+          (s.characterMedia?.pageInfo?.total ?? 0) + (s.staffMedia?.pageInfo?.total ?? 0) ||
+          works.length,
       };
     },
     6 * 60 * 60 * 1000
