@@ -6,13 +6,13 @@
 
 Built with React, TypeScript, Tailwind CSS v4, and Capacitor Android — bringing YouTube's dark `#0F0F0F` AMOLED interface, infinite discovery feeds, franchise channels, and community-backed recommendation algorithms to Web & Android with zero forced login.
 
-[![Live Website](https://img.shields.io/badge/Live%20Website-GitHub%20Pages-FF0000?style=for-the-badge&logo=githubpages&logoColor=white)](https://harshtheotaku.github.io/ListTube/)
+[![Live Website](https://img.shields.io/badge/Live%20Website-ListTube.vercel.app-FF0000?style=for-the-badge&logo=vercel&logoColor=white)](https://listtube.vercel.app/)
 [![Download Android APK](https://img.shields.io/badge/Download-Android%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=black)](https://github.com/harshtheotaku/ListTube/releases/latest/download/ListTube-android.apk)
 [![Build Web & Android](https://github.com/harshtheotaku/ListTube/actions/workflows/build.yml/badge.svg)](https://github.com/harshtheotaku/ListTube/actions/workflows/build.yml)
 [![Deploy Website](https://github.com/harshtheotaku/ListTube/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/harshtheotaku/ListTube/actions/workflows/deploy-pages.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
-[**Launch Web App**](https://harshtheotaku.github.io/ListTube/) · [**Download Android APK**](https://github.com/harshtheotaku/ListTube/releases/latest/download/ListTube-android.apk) · [**Report an Issue**](https://github.com/harshtheotaku/ListTube/issues)
+[**Launch Web App (`listtube.vercel.app`)**](https://listtube.vercel.app/) · [**Download Android APK**](https://github.com/harshtheotaku/ListTube/releases/latest/download/ListTube-android.apk) · [**Report an Issue**](https://github.com/harshtheotaku/ListTube/issues)
 
 </div>
 
@@ -109,9 +109,9 @@ Switch seamlessly between **Anime (`16:9`)** and **Manga (`4:5` portrait covers)
 
 ### Web App (Desktop & Mobile Browser)
 Open the live hosted website directly in any browser:
-> **https://harshtheotaku.github.io/ListTube/**
+> **https://listtube.vercel.app** *(also reachable via `https://listtube-in.vercel.app` & `https://harshtheotaku-listtube.vercel.app`, with a secondary GitHub Pages mirror at `https://harshtheotaku.github.io/ListTube/`)*
 
-*(Supports desktop & mobile browsers and can be added to your Home Screen. Built with relative asset paths so custom domains work cleanly via CNAME.)*
+*(Runs on Vercel Edge + [`api/og.ts`](api/og.ts) for clean `/anime/...` routes, dynamic OpenGraph social cards, and desktop/mobile PWA Add-to-Home-Screen.)*
 
 <details>
 <summary>Developer Build, USB Install & Local Self-Hosting</summary>

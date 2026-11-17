@@ -47,7 +47,7 @@ async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs
 
 export function getAppBaseUrl(): string {
   if (typeof window === 'undefined' || isNativeCapacitor() || !window.location.protocol.startsWith('http')) {
-    return 'https://harshtheotaku.github.io/ListTube';
+    return 'https://listtube.vercel.app';
   }
   const base = import.meta.env.BASE_URL && import.meta.env.BASE_URL !== './'
     ? import.meta.env.BASE_URL

@@ -835,7 +835,7 @@ Deno.serve(async (req: Request) => {
     // 13. SSR OpenGraph Link Preview Endpoint (?id=anilist:16498 or ?id=anilist-manga:30002)
     if (path === "/share" && req.method === "GET") {
       const rawId = (url.searchParams.get("id") ?? "").trim();
-      const targetOrigin = (url.searchParams.get("origin") ?? "https://harshtheotaku.github.io/ListTube").replace(/\/$/, "");
+      const targetOrigin = (url.searchParams.get("origin") ?? "https://listtube.vercel.app").replace(/\/$/, "");
       const redirectUrl = rawId ? `${targetOrigin}/anime/${encodeURIComponent(rawId)}` : targetOrigin;
 
       let title = "ListTube — Anime & Manga Recommendations";
