@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { passesContentSettings } from './contentFilter';
 import { computePacingPlan } from './pacingGoal';
 import { settingsStore } from './settings';
-import { buildThemeQuizRound } from './themeQuiz';
+import { buildJeopardyBoard, buildThemeQuizRound, doesTypedGuessMatch } from './themeQuiz';
 import { computeWrappedSummary } from './wrappedStats';
 import { pickDefaultCollageSlots } from './collageGrid';
 import { animeStore } from './animeStore';
@@ -112,6 +112,12 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
       expect(typeof q.audioQuery).toBe('string');
       expect(q.audioQuery.length).toBeGreaterThan(2);
     });
+
+    const board = buildJeopardyBoard();
+    expect(board).toHaveLength(4);
+    board.forEach((cat) => expect(cat.cells).toHaveLength(4));
+    expect(doesTypedGuessMatch('aot', 'Attack on Titan', ['aot', 'snk'])).toBe(true);
+    expect(doesTypedGuessMatch('chainsaw', 'Chainsaw Man', ['csm'])).toBe(true);
 
     const a1 = makeAnime({ id: 'anilist:101', title: 'Frieren', score: 9.2 });
     const a2 = makeAnime({ id: 'anilist:102', title: 'Monster', score: 9.1 });
