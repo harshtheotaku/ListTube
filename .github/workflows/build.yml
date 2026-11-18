@@ -65,12 +65,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if gh release view v1.2.0 >/dev/null 2>&1; then
-            gh release upload v1.2.0 ListTube-android.apk --clobber
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" ListTube-android.apk --clobber
           else
-            gh release create v1.2.0 ListTube-android.apk --latest --title "ListTube v1.2.0" --notes "ListTube v1.2.0 — signed Android APK (ListTube-android.apk) for direct install & Obtainium auto-updates."
-          fi
-          gh release delete-asset v1.0.0 AniTube-android.apk -y >/dev/null 2>&1 || true
-          if gh release view v1.0.0 >/dev/null 2>&1; then
-            gh release upload v1.0.0 ListTube-android.apk --clobber || true
+            gh release create "$TAG" ListTube-android.apk --latest --title "ListTube $TAG" --notes "ListTube $TAG — signed Android APK (ListTube-android.apk) for direct in-app & Obtainium auto-updates."
           fi

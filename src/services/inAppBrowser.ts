@@ -22,7 +22,17 @@ declare global {
       haptic?: (kind: string) => void;
       scheduleAiringAlert?: (id: string, title: string, body: string, triggerAtMs: number) => void;
       cancelAiringAlert?: (id: string) => void;
+      getAppVersionInfo?: () => string;
+      canRequestPackageInstalls?: () => boolean;
+      openInstallUnknownAppsSettings?: () => void;
+      installPendingUpdate?: () => void;
+      downloadAndInstallApk?: (apkUrl: string, targetVersion: string) => void;
     };
+    __listtubeUpdateProgress?: (payload: {
+      status?: string;
+      progress?: number;
+      message?: string;
+    }) => void;
   }
 }
 

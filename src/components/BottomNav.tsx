@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Home, MessageSquareHeart, Tv } from 'lucide-react';
+import { Compass, Gamepad2, Home, MessageSquareHeart, Tv } from 'lucide-react';
 import { useSettings } from '../services/settings';
 import { useChromeVisible } from '../services/scrollChrome';
 import { useProfile } from '../services/profile';
@@ -16,6 +16,7 @@ interface BottomNavProps {
 const ITEMS: { id: AppTab; label: string; icon?: React.ElementType }[] = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'explore', label: 'Explore', icon: Compass },
+  { id: 'quiz', label: 'Quiz', icon: Gamepad2 },
   { id: 'feed', label: 'Feed', icon: MessageSquareHeart },
   { id: 'list', label: 'Subs', icon: Tv },
   { id: 'you', label: 'You' },
@@ -68,7 +69,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ active, onNavigate }) => {
         style={{ paddingBottom: 'max(6px, env(safe-area-inset-bottom, 0px))' }}
         className={`fixed inset-x-3 bottom-2.5 z-40 mx-auto max-w-[440px] rounded-[30px] border border-white/[0.18] px-1.5 pt-1.5 liquid-glass transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:hidden ${hideClass}`}
       >
-        <div className="flex items-stretch justify-around gap-1">
+        <div className="flex items-stretch justify-around gap-0.5">
           {ITEMS.map((item) => {
             const isActive = active === item.id;
             return (
@@ -85,7 +86,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ active, onNavigate }) => {
                   }
                 }}
                 aria-current={isActive ? 'page' : undefined}
-                className={`lt-press flex flex-1 flex-col items-center gap-0.5 rounded-[22px] py-1.5 text-[10px] font-semibold transition-all duration-200 ${
+                className={`lt-press flex flex-1 flex-col items-center gap-0.5 rounded-[22px] px-0.5 py-1.5 text-[9.5px] font-semibold transition-all duration-200 ${
                   isActive
                     ? 'bg-white/[0.15] text-white shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.28)]'
                     : 'text-[#A6A6AE] hover:text-white'

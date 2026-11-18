@@ -8,10 +8,13 @@ import {
   settingsStore,
 } from './settings';
 import {
+  buildDailyTenRound,
+  buildDuelMatchup,
   buildJeopardyBoard,
   buildNextInfiniteQuestion,
   buildThemeQuizRound,
   doesTypedGuessMatch,
+  getQuizRankInfo,
   getSeenQuizCount,
   markQuizQuestionSeen,
   resetSeenQuizHistory,
@@ -294,5 +297,30 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
     expect(rx.isSpoiler).toBe(true);
     const list = await fetchEpisodeReactions('anilist:16498', 5);
     expect(list.some((x) => x.body.includes('Legendary transformation'))).toBe(true);
+  });
+
+  it('supports Quiz difficulties, Daily 10 deterministic gauntlet, Score Duel, Rank & autoUpdateApp setting', () => {
+    expect(settingsStore.getSnapshot().autoUpdateApp).toBe(true);
+    settingsStore.update({ autoUpdateApp: false });
+    expect(settingsStore.getSnapshot().autoUpdateApp).toBe(false);
+
+    const easyQ = buildNextInfiniteQuestion({ scope: 'all', difficulty: 'easy' });
+    const medQ = buildNextInfiniteQuestion({ scope: 'all', difficulty: 'medium' });
+    const hardQ = buildNextInfiniteQuestion({ scope: 'all', difficulty: 'hard' });
+    expect(easyQ.difficulty).toBe('easy');
+    expect(medQ.difficulty).toBe('medium');
+    expect(hardQ.difficulty).toBe('hard');
+
+    const dayA1 = buildDailyTenRound('2026-11-19');
+    const dayA2 = buildDailyTenRound('2026-11-19');
+    expect(dayA1).toHaveLength(10);
+    expect(dayA1.map((q) => q.signature)).toEqual(dayA2.map((q) => q.signature));
+
+    const duel = buildDuelMatchup('score');
+    expect(duel.left.id).not.toBe(duel.right.id);
+    expect(['left', 'right']).toContain(duel.winner);
+
+    const rank = getQuizRankInfo(5200, 10);
+    expect(rank.title).toBe('ANBU Frame Reader');
   });
 });

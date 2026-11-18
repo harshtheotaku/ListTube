@@ -43,7 +43,16 @@ import {
   TitleLanguage,
 } from '../types';
 import { animeStore } from '../services/animeStore';
-import { APP_VERSION, AppUpdateInfo, checkForGitHubUpdate } from '../services/appUpdater';
+import {
+  APP_VERSION,
+  AppUpdateInfo,
+  canInstallInAppNative,
+  checkForGitHubUpdate,
+  openInstallPermissionSettings,
+  retryPendingInstall,
+  triggerInAppUpdate,
+  useAppUpdateState,
+} from '../services/appUpdater';
 import { exportMalXml } from '../services/backupImport';
 import {
   createUserApiKey,
@@ -189,10 +198,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const lib = useLibrary();
   const cloud = useCloudSync();
   const pwaInstall = usePwaInstallPrompt();
+  const appUpdate = useAppUpdateState();
   const [section, setSection] = useState<SettingsSection>('appearance');
   const [searchQuery, setSearchQuery] = useState('');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const resolvedUpdate = updateInfo ?? appUpdate.info;
   const [storageEst, setStorageEst] = useState<{ usage: number; quota: number } | null>(null);
   const [apiKeys, setApiKeys] = useState<UserApiKeySummary[]>([]);
   const [newApiToken, setNewApiToken] = useState<string | null>(null);
@@ -1551,55 +1562,140 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       Clean Now
                     </button>
                   </div>
-                  <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-                    <div>
-                      <p className="text-[13px] font-bold text-white">
-                        App Updates (v{APP_VERSION})
-                      </p>
-                      <p className="text-[11px] text-[#AAAAAA]">
-                        {updateInfo
-                          ? updateInfo.updateAvailable
-                            ? `Update v${updateInfo.latestVersion} ready on GitHub Releases!`
-                            : `You are running the latest version (v${updateInfo.latestVersion}).`
-                          : 'Check GitHub Releases directly (also works automatically with Obtainium).'}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {updateInfo?.updateAvailable && (
-                        <a
-                          href={updateInfo.apkUrl}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1.5 text-[11.5px] font-bold text-black hover:bg-emerald-400"
+                  <div className="space-y-3 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[13px] font-bold text-white">
+                          Direct In-App Auto-Updater (v{APP_VERSION})
+                        </p>
+                        <p className="text-[11px] text-[#AAAAAA]">
+                          {resolvedUpdate
+                            ? resolvedUpdate.updateAvailable
+                              ? `Update v${resolvedUpdate.latestVersion} ready (${resolvedUpdate.assetSizeBytes ? `${(resolvedUpdate.assetSizeBytes / (1024 * 1024)).toFixed(1)} MB` : 'signed APK'})`
+                              : `You are running the latest version (v${resolvedUpdate.latestVersion}).`
+                            : 'Downloads & installs APK updates right inside ListTube — no GitHub visit required.'}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {resolvedUpdate?.updateAvailable && appUpdate.downloadState !== 'downloading' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nativeHandled = triggerInAppUpdate(resolvedUpdate);
+                              if (!nativeHandled) {
+                                toast('Downloading update package…');
+                              }
+                            }}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-3.5 py-1.5 text-[11.5px] font-bold text-black hover:bg-emerald-400"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            {canInstallInAppNative()
+                              ? `Update In-App (v${resolvedUpdate.latestVersion})`
+                              : `Download v${resolvedUpdate.latestVersion}`}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={checkingUpdate}
+                          onClick={() => {
+                            setCheckingUpdate(true);
+                            void checkForGitHubUpdate(true)
+                              .then((res) => {
+                                if (res) {
+                                  setUpdateInfo(res);
+                                  if (res.updateAvailable && settings.autoUpdateApp && canInstallInAppNative()) {
+                                    triggerInAppUpdate(res);
+                                    toast(`Downloading ListTube v${res.latestVersion} in app…`);
+                                  } else {
+                                    toast(
+                                      res.updateAvailable
+                                        ? `ListTube v${res.latestVersion} available!`
+                                        : `Up to date (v${res.latestVersion})`
+                                    );
+                                  }
+                                } else {
+                                  toast('Could not reach update feed');
+                                }
+                              })
+                              .finally(() => setCheckingUpdate(false));
+                          }}
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/[0.1] px-3 py-1.5 text-[11.5px] font-bold text-white hover:bg-white/[0.18] disabled:opacity-50"
                         >
-                          <Download className="h-3.5 w-3.5" />
-                          Download v{updateInfo.latestVersion}
-                        </a>
-                      )}
+                          <RefreshCw className={`h-3.5 w-3.5 text-[#3EA6FF] ${checkingUpdate ? 'animate-spin' : ''}`} />
+                          {checkingUpdate ? 'Checking…' : 'Check Now'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {appUpdate.downloadState === 'downloading' && (
+                      <div className="space-y-1.5 rounded-xl bg-black/35 p-3">
+                        <div className="flex items-center justify-between text-[11px] font-bold text-emerald-300">
+                          <span>{appUpdate.statusMessage || 'Downloading update APK…'}</span>
+                          <span>{appUpdate.downloadProgress}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className="h-full rounded-full bg-emerald-400 transition-all duration-150"
+                            style={{ width: `${appUpdate.downloadProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {appUpdate.downloadState === 'needs_permission' && (
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-400/35 bg-amber-500/10 px-3 py-2.5">
+                        <p className="text-[11.5px] font-semibold text-amber-200">
+                          {appUpdate.statusMessage || "Enable 'Install unknown apps' to finish updating in app."}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={openInstallPermissionSettings}
+                            className="rounded-full bg-amber-400 px-3 py-1 text-[11px] font-bold text-black"
+                          >
+                            Allow Permission
+                          </button>
+                          <button
+                            type="button"
+                            onClick={retryPendingInstall}
+                            className="rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold text-white"
+                          >
+                            Install APK
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {appUpdate.downloadState === 'error' && appUpdate.statusMessage && (
+                      <p className="text-[11px] font-semibold text-rose-300">
+                        Update error: {appUpdate.statusMessage}
+                      </p>
+                    )}
+
+                    <div className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.04] px-3 py-2.5">
+                      <div>
+                        <p className="text-[12.5px] font-bold text-white">
+                          Auto-Update App Automatically
+                        </p>
+                        <p className="text-[10.5px] text-[#AAAAAA]">
+                          Checks for new releases automatically and downloads &amp; installs inside the app
+                        </p>
+                      </div>
                       <button
                         type="button"
-                        disabled={checkingUpdate}
-                        onClick={() => {
-                          setCheckingUpdate(true);
-                          void checkForGitHubUpdate(true)
-                            .then((res) => {
-                              if (res) {
-                                setUpdateInfo(res);
-                                toast(
-                                  res.updateAvailable
-                                    ? `ListTube v${res.latestVersion} available!`
-                                    : `Up to date (v${res.latestVersion})`
-                                );
-                              } else {
-                                toast('Could not reach GitHub Releases');
-                              }
-                            })
-                            .finally(() => setCheckingUpdate(false));
-                        }}
-                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/[0.1] px-3 py-1.5 text-[11.5px] font-bold text-white hover:bg-white/[0.18] disabled:opacity-50"
+                        role="switch"
+                        aria-checked={settings.autoUpdateApp}
+                        aria-label="Toggle automatic in-app updates"
+                        onClick={() => settingsStore.update({ autoUpdateApp: !settings.autoUpdateApp })}
+                        className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+                          settings.autoUpdateApp ? 'bg-emerald-500' : 'bg-white/20'
+                        }`}
                       >
-                        <RefreshCw className={`h-3.5 w-3.5 text-[#3EA6FF] ${checkingUpdate ? 'animate-spin' : ''}`} />
-                        {checkingUpdate ? 'Checking…' : 'Check Now'}
+                        <span
+                          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
+                            settings.autoUpdateApp ? 'left-[22px]' : 'left-0.5'
+                          }`}
+                        />
                       </button>
                     </div>
                   </div>

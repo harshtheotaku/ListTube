@@ -4,11 +4,14 @@ import { fetchAnimeThemes } from './jikan';
 
 export type JeopardyCellKind = 'audio' | 'visual_crop' | 'riddle_trivia' | 'studio_year';
 export type QuizPoolScope = 'all' | 'mylist';
+export type QuizDifficultyLevel = 'easy' | 'medium' | 'hard';
+export type QuizDifficultyFilter = 'all' | QuizDifficultyLevel;
 
 export interface InfiniteQuizQuestion {
   id: string;
   signature: string;
   kind: JeopardyCellKind;
+  difficulty: QuizDifficultyLevel;
   animeTitle: string;
   malId?: number;
   prompt: string;
@@ -42,6 +45,7 @@ export interface JeopardyCell {
   id: string;
   categoryId: string;
   points: number;
+  difficulty: QuizDifficultyLevel;
   kind: JeopardyCellKind;
   prompt: string;
   clues: string[];
@@ -396,6 +400,90 @@ const ICONIC_THEMES: SeedTheme[] = [
     clue1: '2004 graffiti hip-hop rock flashing pink street fashion over Soul Reapers.',
     clue2: 'Strawberry-haired substitute Shinigami & Kon the plush lion.',
   },
+  {
+    anime: 'One Punch Man',
+    aliases: ['opm'],
+    kind: 'OP 1',
+    song: 'THE HERO!!',
+    artist: 'JAM Project',
+    year: 2015,
+    studio: 'Madhouse',
+    tier: 'easy',
+    clue1: 'Explosive super-hero metal shout starting with "ONE PUUUUNCH!"',
+    clue2: 'Bald Caped Baldy bored of ending every monster in a single hit.',
+  },
+  {
+    anime: 'My Hero Academia',
+    aliases: ['mha', 'bnha', 'boku no hero academia'],
+    kind: 'OP 1',
+    song: 'THE DAY',
+    artist: 'Porno Graffitti',
+    year: 2016,
+    studio: 'Bones',
+    tier: 'easy',
+    clue1: 'Rapid-fire electric guitar sprint backed by UA High hero silhouettes.',
+    clue2: 'Quirkless middle schooler eats a hair strand to inherit One For All.',
+  },
+  {
+    anime: 'SPY x FAMILY',
+    aliases: ['spy x family', 'spyxfamily', 'sxf'],
+    kind: 'OP 1',
+    song: 'Mixed Nuts',
+    artist: 'Official HIGE DANdism',
+    year: 2022,
+    studio: 'Wit Studio',
+    tier: 'medium',
+    clue1: 'Frenetic jazz-piano chaos fitting a fake family hiding double lives.',
+    clue2: 'A spy dad, an assassin mom, and a pink-haired peanut-loving telepath.',
+  },
+  {
+    anime: 'Haikyu!!',
+    aliases: ['haikyu', 'haikyuu'],
+    kind: 'OP 1',
+    song: 'Imagination',
+    artist: 'SPYAIR',
+    year: 2014,
+    studio: 'Production I.G',
+    tier: 'medium',
+    clue1: 'Uplifting stadium rock soaring alongside a quick-attack volleyball toss.',
+    clue2: 'Tiny orange-haired decoy Hinata teams up with setter Kageyama at Karasuno.',
+  },
+  {
+    anime: 'Violet Evergarden',
+    aliases: ['violet', 've'],
+    kind: 'OP 1',
+    song: 'Sincerely',
+    artist: 'TRUE',
+    year: 2018,
+    studio: 'Kyoto Animation',
+    tier: 'hard',
+    clue1: 'Lush orchestral strings and delicate soaring vocals about learning "I love you."',
+    clue2: 'Auto Memory Doll with mechanical silver arms writing heartfelt letters.',
+  },
+  {
+    anime: 'Puella Magi Madoka Magica',
+    aliases: ['madoka', 'madoka magica', 'pmmm'],
+    kind: 'OP 1',
+    song: 'Connect',
+    artist: 'ClariS',
+    year: 2011,
+    studio: 'Shaft',
+    tier: 'hard',
+    clue1: 'Deceptively cheerful idol pop hiding one of anime’s darkest magical girl tragedies.',
+    clue2: 'Red-eyed white ferret Kyubey offers wishes in exchange for grief seeds.',
+  },
+  {
+    anime: 'Bakemonogatari',
+    aliases: ['monogatari', 'nisemonogatari'],
+    kind: 'OP 4',
+    song: 'Renai Circulation',
+    artist: 'Kana Hanazawa',
+    year: 2009,
+    studio: 'Shaft',
+    tier: 'medium',
+    clue1: '"Se-no!" — the internet’s most remixed flute & whisper cute anime opening.',
+    clue2: 'Araragi helps Nadeko Sengoku untangle an invisible snake curse.',
+  },
 ];
 
 interface SeedRiddle {
@@ -421,6 +509,18 @@ const HERALEN_RIDDLES: SeedRiddle[] = [
     options: ['Code Geass', 'Death Note', 'Guilty Crown', '86 EIGHTY-SIX'],
   },
   {
+    anime: 'Death Note',
+    aliases: ['dn'],
+    tier: 'easy',
+    prompt: 'Deduce this cat-and-mouse psychological thriller:',
+    clues: [
+      'Clue 1: Features dramatic classical choir chants over furious pen strokes.',
+      'Clue 2: A barefoot sweet-tooth detective sits crouched in a white chair.',
+      'Clue 3: Ryuk drops a black notebook from the Shinigami Realm in Tokyo.',
+    ],
+    options: ['Death Note', 'Monster', 'Psycho-Pass', 'Code Geass'],
+  },
+  {
     anime: 'Gintama',
     aliases: ['gintama'],
     tier: 'medium',
@@ -433,6 +533,18 @@ const HERALEN_RIDDLES: SeedRiddle[] = [
     options: ['Gintama', 'Saiki K.', 'Sket Dance', 'Samurai Champloo'],
   },
   {
+    anime: 'Steins;Gate',
+    aliases: ['steins gate', 'sg'],
+    tier: 'medium',
+    prompt: 'Solve this Akihabara time-loop mystery:',
+    clues: [
+      'Clue 1: A mysterious CRT TV downstairs controls whether experiments work.',
+      'Clue 2: Diverges across worldlines measured by a glowing Nixie tube meter.',
+      'Clue 3: "I am mad scientist! It’s so cool! Sonuvabitch!" — El Psy Kongroo.',
+    ],
+    options: ['Steins;Gate', 'ERASED', 'Re:ZERO', 'Link Click'],
+  },
+  {
     anime: 'Made in Abyss',
     aliases: ['mia', 'made in abyss'],
     tier: 'hard',
@@ -443,6 +555,18 @@ const HERALEN_RIDDLES: SeedRiddle[] = [
       'Clue 3: Riko & robot boy Reg descend toward the 7th layer in search of Lyza.',
     ],
     options: ['Made in Abyss', 'The Promised Neverland', 'Madoka Magica', 'Somali and the Forest Spirit'],
+  },
+  {
+    anime: 'Re:ZERO -Starting Life in Another World-',
+    aliases: ['rezero', 're zero'],
+    tier: 'hard',
+    prompt: 'Name this brutal isekai suffering loop:',
+    clues: [
+      'Clue 1: An eerie witch-whisper sound effect plays whenever checkpoints trigger.',
+      'Clue 2: Features giant murderous white rabbits and a Mansion full of loops.',
+      'Clue 3: Subaru Natsuki resets to an appa fruit stand with Return by Death.',
+    ],
+    options: ['Re:ZERO -Starting Life in Another World-', 'Konosuba', 'Mushoku Tensei', 'Overlord'],
   },
   {
     anime: 'Odd Taxi',
@@ -527,6 +651,37 @@ export type QuizDifficultyTier = 'three_sec';
 export const SNIPPET_LADDER: Record<QuizDifficultyTier, number[]> = {
   three_sec: [3, 7, 15, 28],
 };
+
+export const SNIPPET_LADDER_BY_DIFFICULTY: Record<QuizDifficultyFilter, number[]> = {
+  all: [3, 7, 15, 28],
+  easy: [6, 12, 20, 30],
+  medium: [3, 7, 15, 28],
+  hard: [2, 5, 10, 20],
+};
+
+export const DIFFICULTY_META: Record<
+  QuizDifficultyLevel,
+  { label: string; multiplier: number; starterSec: number; blurPx: [number, number, number] }
+> = {
+  easy: { label: 'Easy', multiplier: 1.0, starterSec: 6, blurPx: [10, 4, 1] },
+  medium: { label: 'Medium', multiplier: 1.25, starterSec: 3, blurPx: [14, 6, 2] },
+  hard: { label: 'Hard', multiplier: 1.75, starterSec: 2, blurPx: [18, 9, 3] },
+};
+
+export function normalizeTierToDifficulty(
+  tier: 'easy' | 'medium' | 'hard' | 'impossible' | undefined
+): QuizDifficultyLevel {
+  if (tier === 'easy') return 'easy';
+  if (tier === 'medium') return 'medium';
+  return 'hard';
+}
+
+function classifyAnimeDifficulty(anime: Anime): QuizDifficultyLevel {
+  const pop = anime.popularity ?? 0;
+  if (pop >= 220_000) return 'easy';
+  if (pop >= 65_000) return 'medium';
+  return 'hard';
+}
 
 export function getQuizHighScore(): number {
   if (typeof localStorage === 'undefined') return 0;
@@ -705,6 +860,7 @@ export function buildJeopardyBoard(catalogInput?: Anime[]): JeopardyCategory[] {
       id: `jp-audio-${points}-${pick.song}`,
       categoryId: 'audio',
       points,
+      difficulty: normalizeTierToDifficulty(tier),
       kind: 'audio',
       prompt: `Listen to this ${clipSec}s theme snippet (${pick.kind}) — name the anime!`,
       clues: [
@@ -753,6 +909,7 @@ export function buildJeopardyBoard(catalogInput?: Anime[]): JeopardyCategory[] {
       id: `jp-vis-${points}-${show.id}`,
       categoryId: 'visual',
       points,
+      difficulty: idx === 0 ? 'easy' : idx === 1 ? 'medium' : 'hard',
       kind: 'visual_crop',
       prompt: `Cursed Frame (${points} pts): Can you tell which anime this blurred poster belongs to?`,
       clues: [
@@ -770,11 +927,15 @@ export function buildJeopardyBoard(catalogInput?: Anime[]): JeopardyCategory[] {
   const riddleOrder: SeedRiddle['tier'][] = ['easy', 'medium', 'hard', 'impossible'];
   const riddlePoints = [100, 200, 400, 600];
   const riddleCells: JeopardyCell[] = riddleOrder.map((tier, idx) => {
-    const pick = HERALEN_RIDDLES.find((r) => r.tier === tier) ?? HERALEN_RIDDLES[idx % HERALEN_RIDDLES.length];
+    const poolByTier = HERALEN_RIDDLES.filter((r) => r.tier === tier);
+    const pick =
+      poolByTier[Math.floor(Math.random() * poolByTier.length)] ??
+      HERALEN_RIDDLES[idx % HERALEN_RIDDLES.length];
     return {
       id: `jp-riddle-${riddlePoints[idx]}-${pick.anime}`,
       categoryId: 'riddle',
       points: riddlePoints[idx],
+      difficulty: normalizeTierToDifficulty(tier),
       kind: 'riddle_trivia',
       prompt: pick.prompt,
       clues: [...pick.clues],
@@ -788,6 +949,7 @@ export function buildJeopardyBoard(catalogInput?: Anime[]): JeopardyCategory[] {
   const studioPool = ICONIC_THEMES.slice().sort(() => Math.random() - 0.5).slice(0, 4);
   const studioCells: JeopardyCell[] = [100, 200, 400, 600].map((points, idx) => {
     const item = studioPool[idx];
+    const diff: QuizDifficultyLevel = idx === 0 ? 'easy' : idx === 1 ? 'medium' : 'hard';
     const mode = idx % 2;
     if (mode === 0) {
       const studioChoices = Array.from(
@@ -798,6 +960,7 @@ export function buildJeopardyBoard(catalogInput?: Anime[]): JeopardyCategory[] {
         id: `jp-meta-${points}-${item.anime}`,
         categoryId: 'meta',
         points,
+        difficulty: diff,
         kind: 'studio_year',
         prompt: `Which animation studio produced ${item.anime} (${item.year})?`,
         clues: [
@@ -819,6 +982,7 @@ export function buildJeopardyBoard(catalogInput?: Anime[]): JeopardyCategory[] {
       id: `jp-meta-${points}-yr-${item.anime}`,
       categoryId: 'meta',
       points,
+      difficulty: diff,
       kind: 'studio_year',
       prompt: `What year did ${item.anime} premiere on TV?`,
       clues: [
@@ -889,9 +1053,11 @@ export function buildNextInfiniteQuestion(opts: {
   mediaType?: MediaType;
   sessionExclude?: Set<string>;
   preferKind?: JeopardyCellKind;
+  difficulty?: QuizDifficultyFilter;
 }): InfiniteQuizQuestion {
   const seen = getSeenQuizKeys();
   const exclude = opts.sessionExclude ?? new Set<string>();
+  const wantedDiff = opts.difficulty && opts.difficulty !== 'all' ? opts.difficulty : null;
   const allCatalog = animeStore
     .all()
     .filter((a) => a.cover && a.title && a.title.length <= 52);
@@ -915,10 +1081,11 @@ export function buildNextInfiniteQuestion(opts: {
     ])
   );
 
-  // Build candidate question generators (curated audio + dynamic catalog items)
+  // Build candidate question generators (curated audio, curated riddles + dynamic catalog items)
   const candidates: InfiniteQuizQuestion[] = [];
 
   for (const theme of ICONIC_THEMES) {
+    if (opts.preferKind && opts.preferKind !== 'audio') continue;
     const matchesMyList =
       listItems.length > 0 &&
       listItems.some(
@@ -928,14 +1095,17 @@ export function buildNextInfiniteQuestion(opts: {
       );
     if (opts.scope === 'mylist' && listItems.length >= 2 && !matchesMyList) continue;
 
+    const diff = normalizeTierToDifficulty(theme.tier);
     const sig = `audio:${theme.song.toLowerCase()}`;
     if (exclude.has(sig)) continue;
+    const starterSec = DIFFICULTY_META[diff].starterSec;
     candidates.push({
       id: `${sig}-${Math.random().toString(36).slice(2, 7)}`,
       signature: sig,
       kind: 'audio',
+      difficulty: diff,
       animeTitle: theme.anime,
-      prompt: `3s Audio Blitz — which anime features ${theme.kind}: “${theme.song}”?`,
+      prompt: `${starterSec}s Audio Blitz — which anime features ${theme.kind}: “${theme.song}”?`,
       clues: [
         `Premiere: ${theme.year} · Studio: ${theme.studio}`,
         theme.clue1,
@@ -944,7 +1114,7 @@ export function buildNextInfiniteQuestion(opts: {
       songTitle: theme.song,
       artist: theme.artist,
       audioQuery: `${theme.song} ${theme.artist}`,
-      initialClipSec: 3,
+      initialClipSec: starterSec,
       options: buildOptionsForTitle(theme.anime, distractorTitles),
       correctAnswer: theme.anime,
       aliases: theme.aliases,
@@ -952,10 +1122,33 @@ export function buildNextInfiniteQuestion(opts: {
     });
   }
 
+  for (const riddle of HERALEN_RIDDLES) {
+    if (opts.preferKind && opts.preferKind !== 'riddle_trivia') continue;
+    if (opts.scope === 'mylist') continue;
+    const diff = normalizeTierToDifficulty(riddle.tier);
+    const sig = `riddle:${riddle.anime.toLowerCase()}`;
+    if (exclude.has(sig)) continue;
+    candidates.push({
+      id: `${sig}-${Math.random().toString(36).slice(2, 7)}`,
+      signature: sig,
+      kind: 'riddle_trivia',
+      difficulty: diff,
+      animeTitle: riddle.anime,
+      prompt: riddle.prompt,
+      clues: [...riddle.clues],
+      options: [...riddle.options].sort(() => Math.random() - 0.5),
+      correctAnswer: riddle.anime,
+      aliases: riddle.aliases,
+      fromMyList: false,
+    });
+  }
+
   // Dynamic questions across hundreds of catalog / user list titles
-  const shuffledPool = [...pool].sort(() => Math.random() - 0.5).slice(0, 60);
+  const shuffledPool = [...pool].sort(() => Math.random() - 0.5).slice(0, 75);
   for (const anime of shuffledPool) {
     const isInList = Boolean(opts.entries?.[anime.id]);
+    const diff = classifyAnimeDifficulty(anime);
+    const starterSec = DIFFICULTY_META[diff].starterSec;
     const yearStr = anime.year ? String(anime.year) : undefined;
     const studio = anime.studios?.[0];
     const synopsisHint = maskTitleWords(anime.description ?? '', anime.title);
@@ -969,6 +1162,7 @@ export function buildNextInfiniteQuestion(opts: {
       opts.preferKind && kindPool.includes(opts.preferKind)
         ? opts.preferKind
         : kindPool[Math.floor(Math.random() * kindPool.length)] ?? 'visual_crop';
+    if (opts.preferKind && chosenKind !== opts.preferKind) continue;
 
     const sig = `${chosenKind}:${anime.id}`;
     if (exclude.has(sig)) continue;
@@ -978,15 +1172,16 @@ export function buildNextInfiniteQuestion(opts: {
         id: `${sig}-${Math.random().toString(36).slice(2, 7)}`,
         signature: sig,
         kind: 'audio',
+        difficulty: diff,
         animeTitle: anime.title,
         malId: anime.malId,
-        prompt: `Mystery 3s Opening/Ending — identify this series!`,
+        prompt: `Mystery ${starterSec}s Opening/Ending — identify this series!`,
         clues: [
           `Genres: ${(anime.genres ?? []).slice(0, 3).join(', ') || 'Anime'}`,
           `${studio ? `Studio: ${studio}` : 'Series'}${yearStr ? ` (${yearStr})` : ''}`,
           synopsisHint || `${anime.episodes ?? '?'} episodes`,
         ],
-        initialClipSec: 3,
+        initialClipSec: starterSec,
         options: buildOptionsForTitle(anime.title, distractorTitles),
         correctAnswer: anime.title,
         fromMyList: isInList,
@@ -996,6 +1191,7 @@ export function buildNextInfiniteQuestion(opts: {
         id: `${sig}-${Math.random().toString(36).slice(2, 7)}`,
         signature: sig,
         kind: 'visual_crop',
+        difficulty: diff,
         animeTitle: anime.title,
         prompt: `Blurred Poster Frame — which ${anime.mediaType === 'MANGA' ? 'manga' : 'anime'} is this?`,
         clues: [
@@ -1013,6 +1209,7 @@ export function buildNextInfiniteQuestion(opts: {
         id: `${sig}-${Math.random().toString(36).slice(2, 7)}`,
         signature: sig,
         kind: 'riddle_trivia',
+        difficulty: diff,
         animeTitle: anime.title,
         prompt: `3-Clue Lore Challenge — name this title!`,
         clues: [
@@ -1035,6 +1232,7 @@ export function buildNextInfiniteQuestion(opts: {
         id: `${sig}-${Math.random().toString(36).slice(2, 7)}`,
         signature: sig,
         kind: 'studio_year',
+        difficulty: diff,
         animeTitle: anime.title,
         prompt: `Which studio produced ${anime.title}${yearStr ? ` (${yearStr})` : ''}?`,
         clues: [
@@ -1049,30 +1247,364 @@ export function buildNextInfiniteQuestion(opts: {
     }
   }
 
+  // Prefer matching difficulty filter cleanly
+  const diffFiltered = wantedDiff ? candidates.filter((c) => c.difficulty === wantedDiff) : candidates;
+  const scopedPool = diffFiltered.length > 0 ? diffFiltered : candidates;
+
   // Strictly prioritize never-before-seen questions first!
-  const unseen = candidates.filter((c) => !seen.has(c.signature));
-  const preferredList = unseen.length > 0 ? unseen : candidates;
+  const unseen = scopedPool.filter((c) => !seen.has(c.signature));
+  const preferredList = unseen.length > 0 ? unseen : scopedPool;
   const finalPool = preferredList.length > 0 ? preferredList : [candidates[0]].filter(Boolean);
 
   if (finalPool.length > 0) {
     return finalPool[Math.floor(Math.random() * finalPool.length)];
   }
 
-  // Guaranteed safe fallback if catalog hasn't hydrated yet
-  const t = ICONIC_THEMES[Math.floor(Math.random() * ICONIC_THEMES.length)];
+  // Guaranteed safe fallback matching difficulty when possible
+  const themedPool = wantedDiff
+    ? ICONIC_THEMES.filter((t) => normalizeTierToDifficulty(t.tier) === wantedDiff)
+    : ICONIC_THEMES;
+  const src = themedPool.length > 0 ? themedPool : ICONIC_THEMES;
+  const t = src[Math.floor(Math.random() * src.length)];
+  const diff = normalizeTierToDifficulty(t.tier);
   return {
     id: `fallback-${Date.now()}`,
     signature: `audio:${t.song.toLowerCase()}`,
     kind: 'audio',
+    difficulty: diff,
     animeTitle: t.anime,
-    prompt: `3s Audio Blitz — which anime features ${t.kind}: “${t.song}”?`,
+    prompt: `${DIFFICULTY_META[diff].starterSec}s Audio Blitz — which anime features ${t.kind}: “${t.song}”?`,
     clues: [`${t.year} · ${t.studio}`, t.clue1, t.clue2],
     songTitle: t.song,
     artist: t.artist,
     audioQuery: `${t.song} ${t.artist}`,
-    initialClipSec: 3,
+    initialClipSec: DIFFICULTY_META[diff].starterSec,
     options: buildOptionsForTitle(t.anime, fallbackTitles),
     correctAnswer: t.anime,
     aliases: t.aliases,
+  };
+}
+
+// =========================================================================
+// Creative Expansion 1: Daily 10 Seeded Gauntlet + Emoji Share Result
+// =========================================================================
+
+const DAILY_STATE_KEY = 'listtube.quiz.daily.v1';
+
+export interface DailyQuizResult {
+  dateKey: string;
+  score: number;
+  correctCount: number;
+  total: number;
+  outcomes: ('hit' | 'miss')[];
+  completedAt: number;
+}
+
+export function getTodayDateKey(d = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function seededPrng(seedText: string): () => number {
+  let h = 2166136261;
+  for (let i = 0; i < seedText.length; i += 1) {
+    h ^= seedText.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return () => {
+    h += 0x6d2b79f5;
+    let t = Math.imul(h ^ (h >>> 15), 1 | h);
+    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function seededShuffle<T>(arr: T[], rand: () => number): T[] {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+export function buildDailyTenRound(dateKey = getTodayDateKey()): InfiniteQuizQuestion[] {
+  const rand = seededPrng(`listtube-daily-${dateKey}`);
+  const allTitles = ICONIC_THEMES.map((t) => t.anime);
+  const shuffledThemes = seededShuffle(ICONIC_THEMES, rand);
+  const shuffledRiddles = seededShuffle(HERALEN_RIDDLES, rand);
+  const out: InfiniteQuizQuestion[] = [];
+
+  // 5 Seeded OP/ED Audio questions
+  for (let i = 0; i < 5 && i < shuffledThemes.length; i += 1) {
+    const theme = shuffledThemes[i];
+    const diff = normalizeTierToDifficulty(theme.tier);
+    const distractors = seededShuffle(
+      allTitles.filter((t) => t !== theme.anime),
+      rand
+    ).slice(0, 3);
+    out.push({
+      id: `daily-${dateKey}-audio-${i}-${theme.song}`,
+      signature: `daily:${dateKey}:audio:${theme.song}`,
+      kind: 'audio',
+      difficulty: diff,
+      animeTitle: theme.anime,
+      prompt: `Daily OP/ED #${out.length + 1} (${theme.kind}) — identify the anime from audio:`,
+      clues: [`Premiere: ${theme.year} · Studio: ${theme.studio}`, theme.clue1, theme.clue2],
+      songTitle: theme.song,
+      artist: theme.artist,
+      audioQuery: `${theme.song} ${theme.artist}`,
+      initialClipSec: DIFFICULTY_META[diff].starterSec,
+      options: seededShuffle([theme.anime, ...distractors], rand),
+      correctAnswer: theme.anime,
+      aliases: theme.aliases,
+    });
+  }
+
+  // 3 Seeded Lore Riddles
+  for (let i = 0; i < 3 && i < shuffledRiddles.length; i += 1) {
+    const r = shuffledRiddles[i];
+    const diff = normalizeTierToDifficulty(r.tier);
+    out.push({
+      id: `daily-${dateKey}-riddle-${i}-${r.anime}`,
+      signature: `daily:${dateKey}:riddle:${r.anime}`,
+      kind: 'riddle_trivia',
+      difficulty: diff,
+      animeTitle: r.anime,
+      prompt: r.prompt,
+      clues: [...r.clues],
+      options: seededShuffle([...r.options], rand),
+      correctAnswer: r.anime,
+      aliases: r.aliases,
+    });
+  }
+
+  // 2 Seeded Studio / Year Meta questions
+  const metaPicks = shuffledThemes.slice(5, 7);
+  metaPicks.forEach((item, idx) => {
+    const diff = idx === 0 ? 'medium' : 'hard';
+    if (idx % 2 === 0) {
+      const studios = Array.from(
+        new Set([item.studio, 'MAPPA', 'Madhouse', 'Bones', 'ufotable', 'Wit Studio', 'Pierrot'])
+      );
+      const dist = seededShuffle(studios.filter((s) => s !== item.studio), rand).slice(0, 3);
+      out.push({
+        id: `daily-${dateKey}-studio-${item.anime}`,
+        signature: `daily:${dateKey}:studio:${item.anime}`,
+        kind: 'studio_year',
+        difficulty: diff,
+        animeTitle: item.anime,
+        prompt: `Studio Challenge: Who animated ${item.anime} (${item.year})?`,
+        clues: [`Theme: "${item.song}" by ${item.artist}`, item.clue1, item.clue2],
+        options: seededShuffle([item.studio, ...dist], rand),
+        correctAnswer: item.studio,
+      });
+    } else {
+      const years = seededShuffle(
+        [String(item.year), String(item.year - 2), String(item.year + 2), String(item.year - 4)],
+        rand
+      );
+      out.push({
+        id: `daily-${dateKey}-year-${item.anime}`,
+        signature: `daily:${dateKey}:year:${item.anime}`,
+        kind: 'studio_year',
+        difficulty: diff,
+        animeTitle: item.anime,
+        prompt: `Premiere Year: When did ${item.anime} first air?`,
+        clues: [`Studio: ${item.studio}`, `Theme: "${item.song}"`, item.clue2],
+        options: years,
+        correctAnswer: String(item.year),
+      });
+    }
+  });
+
+  return out;
+}
+
+export function getDailyQuizResult(dateKey = getTodayDateKey()): DailyQuizResult | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(DAILY_STATE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DailyQuizResult;
+    return parsed?.dateKey === dateKey ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveDailyQuizResult(result: DailyQuizResult): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(DAILY_STATE_KEY, JSON.stringify(result));
+  } catch {
+    /* ignore */
+  }
+}
+
+// =========================================================================
+// Creative Expansion 2: Live Catalog Higher / Lower Duel
+// =========================================================================
+
+export type DuelMetric = 'score' | 'popularity' | 'year' | 'episodes';
+
+export interface DuelCardItem {
+  id: string;
+  title: string;
+  cover?: string;
+  genres: string[];
+  studio?: string;
+  score: number;
+  popularity: number;
+  year: number;
+  episodes: number;
+}
+
+export interface DuelMatchup {
+  id: string;
+  metric: DuelMetric;
+  question: string;
+  unitLabel: string;
+  left: DuelCardItem;
+  right: DuelCardItem;
+  winner: 'left' | 'right';
+}
+
+const DUEL_BEST_KEY = 'listtube.duel.best.v1';
+
+const FALLBACK_DUEL_CATALOG: DuelCardItem[] = [
+  { id: 'd-fmab', title: 'Fullmetal Alchemist: Brotherhood', genres: ['Action', 'Adventure'], studio: 'Bones', score: 9.0, popularity: 340000, year: 2009, episodes: 64 },
+  { id: 'd-frieren', title: 'Frieren: Beyond Journey’s End', genres: ['Adventure', 'Fantasy'], studio: 'Madhouse', score: 9.1, popularity: 260000, year: 2023, episodes: 28 },
+  { id: 'd-aot', title: 'Attack on Titan', genres: ['Action', 'Drama'], studio: 'Wit Studio', score: 8.5, popularity: 410000, year: 2013, episodes: 25 },
+  { id: 'd-steins', title: 'Steins;Gate', genres: ['Sci-Fi', 'Thriller'], studio: 'White Fox', score: 8.9, popularity: 250000, year: 2011, episodes: 24 },
+  { id: 'd-hxh', title: 'Hunter x Hunter (2011)', genres: ['Action', 'Adventure'], studio: 'Madhouse', score: 8.9, popularity: 310000, year: 2011, episodes: 148 },
+  { id: 'd-deathnote', title: 'Death Note', genres: ['Mystery', 'Thriller'], studio: 'Madhouse', score: 8.4, popularity: 395000, year: 2006, episodes: 37 },
+  { id: 'd-bebop', title: 'Cowboy Bebop', genres: ['Action', 'Sci-Fi'], studio: 'Sunrise', score: 8.6, popularity: 195000, year: 1998, episodes: 26 },
+  { id: 'd-eva', title: 'Neon Genesis Evangelion', genres: ['Drama', 'Mecha'], studio: 'Gainax', score: 8.3, popularity: 215000, year: 1995, episodes: 26 },
+  { id: 'd-jjk', title: 'Jujutsu Kaisen', genres: ['Action', 'Supernatural'], studio: 'MAPPA', score: 8.5, popularity: 380000, year: 2020, episodes: 24 },
+  { id: 'd-csm', title: 'Chainsaw Man', genres: ['Action', 'Horror'], studio: 'MAPPA', score: 8.4, popularity: 325000, year: 2022, episodes: 12 },
+  { id: 'd-kny', title: 'Demon Slayer', genres: ['Action', 'Fantasy'], studio: 'ufotable', score: 8.2, popularity: 405000, year: 2019, episodes: 26 },
+  { id: 'd-vinland', title: 'Vinland Saga', genres: ['Action', 'Drama'], studio: 'Wit Studio', score: 8.7, popularity: 220000, year: 2019, episodes: 24 },
+  { id: 'd-naruto', title: 'Naruto Shippuden', genres: ['Action', 'Adventure'], studio: 'Pierrot', score: 8.2, popularity: 350000, year: 2007, episodes: 500 },
+  { id: 'd-bocchi', title: 'Bocchi the Rock!', genres: ['Comedy', 'Music'], studio: 'CloverWorks', score: 8.7, popularity: 165000, year: 2022, episodes: 12 },
+];
+
+export function getDuelHighStreak(): number {
+  if (typeof localStorage === 'undefined') return 0;
+  return Number(localStorage.getItem(DUEL_BEST_KEY) || 0);
+}
+
+export function saveDuelHighStreak(streak: number): void {
+  if (typeof localStorage === 'undefined') return;
+  if (streak > getDuelHighStreak()) localStorage.setItem(DUEL_BEST_KEY, String(streak));
+}
+
+export function buildDuelMatchup(preferMetric?: DuelMetric): DuelMatchup {
+  const live = animeStore
+    .all()
+    .filter(
+      (a) =>
+        (a.mediaType ?? 'ANIME') === 'ANIME' &&
+        Boolean(a.title) &&
+        (a.score ?? 0) > 4 &&
+        (a.popularity ?? 0) > 5000 &&
+        (a.year ?? 0) > 1980 &&
+        (a.episodes ?? 0) > 0
+    )
+    .slice(0, 120)
+    .map<DuelCardItem>((a) => ({
+      id: a.id,
+      title: a.title,
+      cover: a.cover,
+      genres: (a.genres ?? []).slice(0, 2),
+      studio: a.studios?.[0],
+      score: Number((a.score ?? 7.5).toFixed(1)),
+      popularity: a.popularity ?? 50_000,
+      year: a.year ?? 2015,
+      episodes: a.episodes ?? 12,
+    }));
+
+  const pool = live.length >= 8 ? live : FALLBACK_DUEL_CATALOG;
+  const metrics: DuelMetric[] = ['score', 'popularity', 'year', 'episodes'];
+  const metric = preferMetric ?? metrics[Math.floor(Math.random() * metrics.length)];
+
+  let left = pool[0];
+  let right = pool[1];
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const a = pool[Math.floor(Math.random() * pool.length)];
+    const b = pool[Math.floor(Math.random() * pool.length)];
+    if (!a || !b || a.id === b.id) continue;
+    if (Math.abs(a[metric] - b[metric]) > (metric === 'score' ? 0.15 : 0)) {
+      left = a;
+      right = b;
+      break;
+    }
+  }
+
+  // In 'year' duel, ask which aired EARLIER (older classical vs newer); in others, ask HIGHER
+  const isYear = metric === 'year';
+  const winner: 'left' | 'right' = isYear
+    ? left.year <= right.year
+      ? 'left'
+      : 'right'
+    : left[metric] >= right[metric]
+      ? 'left'
+      : 'right';
+
+  const copyMap: Record<DuelMetric, { question: string; unitLabel: string }> = {
+    score: { question: 'Which anime holds the HIGHER community score?', unitLabel: 'Score' },
+    popularity: { question: 'Which series has MORE community members?', unitLabel: 'Fans' },
+    year: { question: 'Which anime premiered EARLIER on TV?', unitLabel: 'Premiere' },
+    episodes: { question: 'Which series ran for MORE episodes?', unitLabel: 'Episodes' },
+  };
+
+  return {
+    id: `duel-${metric}-${left.id}-${right.id}-${Date.now()}`,
+    metric,
+    question: copyMap[metric].question,
+    unitLabel: copyMap[metric].unitLabel,
+    left,
+    right,
+    winner,
+  };
+}
+
+// =========================================================================
+// Creative Expansion 3: Otaku Rank Tier Progression
+// =========================================================================
+
+export interface QuizRankInfo {
+  title: string;
+  nextTitle: string | null;
+  progressPct: number;
+}
+
+const RANK_THRESHOLDS = [
+  { min: 0, title: 'Academy Student' },
+  { min: 400, title: 'Genin Tracker' },
+  { min: 1200, title: 'Chunin OP Sleuth' },
+  { min: 2500, title: 'Jonin Trivia Master' },
+  { min: 5000, title: 'ANBU Frame Reader' },
+  { min: 9000, title: 'Kage Lore Champion' },
+  { min: 15000, title: 'Grandmaster Otaku' },
+];
+
+export function getQuizRankInfo(bestScore: number, seenCount: number): QuizRankInfo {
+  const power = Math.max(bestScore, seenCount * 95);
+  let idx = 0;
+  for (let i = 0; i < RANK_THRESHOLDS.length; i += 1) {
+    if (power >= RANK_THRESHOLDS[i].min) idx = i;
+  }
+  const current = RANK_THRESHOLDS[idx];
+  const next = RANK_THRESHOLDS[idx + 1] ?? null;
+  const progressPct = next
+    ? Math.min(100, Math.max(4, Math.round(((power - current.min) / (next.min - current.min)) * 100)))
+    : 100;
+  return {
+    title: current.title,
+    nextTitle: next?.title ?? null,
+    progressPct,
   };
 }

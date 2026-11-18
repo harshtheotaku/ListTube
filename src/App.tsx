@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Check, Play, X } from 'lucide-react';
+import { Bell, Check, Download, Play, X } from 'lucide-react';
 import {
   Anime,
   ListStatus,
@@ -89,7 +89,14 @@ import { MiniPlayer } from './components/MiniPlayer';
 import { LaunchSplash } from './components/LaunchSplash';
 import { resetScrollChrome } from './services/scrollChrome';
 import { autoMaintainStorageCache, syncSubscribedCoverCache } from './services/offlineCoverCache';
-import { checkForGitHubUpdate } from './services/appUpdater';
+import {
+  dismissUpdateBanner,
+  maybeAutoCheckAndInstallUpdate,
+  openInstallPermissionSettings,
+  retryPendingInstall,
+  triggerInAppUpdate,
+  useAppUpdateState,
+} from './services/appUpdater';
 
 const TABS: AppTab[] = ['home', 'explore', 'list', 'schedule', 'news', 'feed', 'you', 'quiz', 'settings'];
 const MEDIA_TYPE_KEY = 'anitube.mediaType.v1';
@@ -240,6 +247,7 @@ function parseCurrentRoute(): {
 export const App: React.FC = () => {
   const libraryState = useLibrary();
   const settings = useSettings();
+  const appUpdate = useAppUpdateState();
   const [, setHydrationTick] = useState(0);
   const [initialRoute] = useState(parseCurrentRoute);
   const [tab, setTab] = useState<AppTab>(initialRoute.tab);
@@ -421,16 +429,14 @@ export const App: React.FC = () => {
     const t = setTimeout(() => {
       if (covers.length > 0) void syncSubscribedCoverCache(covers);
       if (settings.autoClearCache) void autoMaintainStorageCache(false);
-      if (isNativeCapacitor()) {
-        void checkForGitHubUpdate(false).then((info) => {
-          if (info?.updateAvailable) {
-            toast(`ListTube v${info.latestVersion} is out! Download in Settings -> App Updates.`);
-          }
-        });
-      }
+      void maybeAutoCheckAndInstallUpdate(settings.autoUpdateApp).then((info) => {
+        if (info?.updateAvailable && !settings.autoUpdateApp) {
+          toast(`ListTube v${info.latestVersion} is ready! Tap Install on the update banner.`);
+        }
+      });
     }, 1500);
     return () => clearTimeout(t);
-  }, [libraryState.entries, settings.autoClearCache]);
+  }, [libraryState.entries, settings.autoClearCache, settings.autoUpdateApp]);
 
   const modalRef = useRef({
     quickTarget,
@@ -946,7 +952,9 @@ export const App: React.FC = () => {
         onOpenEntity={openEntity}
         onOpenUser={openPublicUser}
         onOpenTrackers={() => setTrackersOpen(true)}
+        onOpenQuiz={() => navigate('quiz')}
         onOpenSettings={() => navigate('settings')}
+        activeTab={tab}
         onToggleSidebar={() => {
           if (isWatchMode || window.innerWidth < 1024) {
             setDrawerOpen((d) => !d);
@@ -1110,6 +1118,7 @@ export const App: React.FC = () => {
                     libraryState={libraryState}
                     mediaType={mediaType}
                     onExplore={() => navigate('explore')}
+                    onOpenAnime={openAnime}
                   />
                 )}
                 {tab === 'settings' && (
@@ -1152,6 +1161,83 @@ export const App: React.FC = () => {
 
       <BottomNav active={tab} onNavigate={(t) => { resetScrollChrome(); navigate(t); }} />
       <MiniPlayer onOpenAnimeId={openDetail} />
+
+      {(appUpdate.downloadState === 'downloading' ||
+        appUpdate.downloadState === 'needs_permission' ||
+        (appUpdate.info?.updateAvailable && !appUpdate.bannerDismissed)) && (
+        <div
+          role="status"
+          aria-label="App Update Banner"
+          className="fixed bottom-20 left-3 right-3 z-40 mx-auto max-w-md rounded-2xl border border-emerald-400/35 bg-[#121614]/95 p-3.5 text-white shadow-2xl backdrop-blur-xl lg:bottom-5 lg:left-auto lg:right-5"
+        >
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="text-[12.5px] font-black text-emerald-300">
+                {appUpdate.downloadState === 'downloading'
+                  ? `Updating ListTube (${appUpdate.downloadProgress}%)`
+                  : appUpdate.downloadState === 'needs_permission'
+                    ? 'Allow App Updates in Settings'
+                    : `ListTube v${appUpdate.info?.latestVersion} Available`}
+              </p>
+              <p className="text-[11px] text-[#CCCCCC]">
+                {appUpdate.statusMessage ||
+                  'Install directly inside ListTube without leaving the app.'}
+              </p>
+              {appUpdate.downloadState === 'downloading' && (
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-emerald-400 transition-all duration-150"
+                    style={{ width: `${appUpdate.downloadProgress}%` }}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex shrink-0 items-center gap-1.5">
+              {appUpdate.downloadState === 'needs_permission' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={openInstallPermissionSettings}
+                    className="lt-press rounded-full bg-amber-400 px-3 py-1.5 text-[11px] font-black text-black"
+                  >
+                    Allow
+                  </button>
+                  <button
+                    type="button"
+                    onClick={retryPendingInstall}
+                    className="lt-press rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-bold text-white"
+                  >
+                    Install
+                  </button>
+                </>
+              ) : (
+                appUpdate.downloadState !== 'downloading' &&
+                appUpdate.info && (
+                  <button
+                    type="button"
+                    onClick={() => triggerInAppUpdate(appUpdate.info)}
+                    className="lt-press inline-flex items-center gap-1 rounded-full bg-emerald-500 px-3 py-1.5 text-[11px] font-black text-black hover:bg-emerald-400"
+                  >
+                    <Download className="h-3 w-3" />
+                    Update
+                  </button>
+                )
+              )}
+              {appUpdate.info?.latestVersion && appUpdate.downloadState !== 'downloading' && (
+                <button
+                  type="button"
+                  onClick={() => dismissUpdateBanner(appUpdate.info!.latestVersion)}
+                  aria-label="Dismiss update banner"
+                  className="rounded-full p-1 text-[#8E8E93] hover:bg-white/10 hover:text-white"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <Suspense fallback={null}>
         <InAppBrowserModal />
       </Suspense>

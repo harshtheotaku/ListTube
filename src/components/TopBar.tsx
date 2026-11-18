@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Building2, Menu, Search, Settings, Star, User, Users, X } from 'lucide-react';
+import { ArrowLeft, Building2, Gamepad2, Menu, Search, Settings, Star, User, Users, X } from 'lucide-react';
 import {
   Anime,
   FavoriteCharacterItem,
@@ -15,6 +15,7 @@ import { useSettings } from '../services/settings';
 import { useChromeVisible } from '../services/scrollChrome';
 import { EntityRouteTarget } from './EntityView';
 import { ListTubeLogo } from './ListTubeLogo';
+import type { AppTab } from './Sidebar';
 
 type SearchEntityTab = 'all' | 'anime' | 'manga' | 'characters' | 'staff' | 'users';
 
@@ -27,8 +28,10 @@ interface TopBarProps {
   onOpenEntity?: (target: EntityRouteTarget) => void;
   onOpenUser?: (userIdOrHandle: string) => void;
   onOpenTrackers?: () => void;
+  onOpenQuiz?: () => void;
   onOpenSettings?: () => void;
   onToggleSidebar?: () => void;
+  activeTab?: AppTab;
   mediaType: MediaType;
   trackers?: TrackerAccount[];
 }
@@ -41,8 +44,10 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenAnime,
   onOpenEntity,
   onOpenUser,
+  onOpenQuiz,
   onOpenSettings,
   onToggleSidebar,
+  activeTab,
   mediaType,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -171,8 +176,24 @@ export const TopBar: React.FC<TopBarProps> = ({
               </button>
             </div>
 
-            {/* YouTube-Clean Right: Search + Direct Settings Page Gear */}
-            <div className="flex shrink-0 items-center gap-1">
+            {/* YouTube-Clean Right: Direct Quiz Arena Nav + Search + Direct Settings Page Gear */}
+            <div className="flex shrink-0 items-center gap-1.5">
+              {onOpenQuiz && (
+                <button
+                  type="button"
+                  onClick={onOpenQuiz}
+                  aria-label="Open Quiz Arena"
+                  title="OP/ED Quiz, Daily 10, Score Duel & Jeopardy"
+                  className={`lt-press flex h-9 items-center gap-1.5 rounded-full px-3 text-[12px] font-bold transition ${
+                    activeTab === 'quiz'
+                      ? 'bg-gradient-to-r from-[#FF0000] to-amber-500 text-white shadow-md'
+                      : 'border border-white/[0.12] bg-white/[0.08] text-white hover:bg-white/[0.16]'
+                  }`}
+                >
+                  <Gamepad2 className={`h-4 w-4 ${activeTab === 'quiz' ? 'text-white' : 'text-amber-400'}`} />
+                  <span>Quiz</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {

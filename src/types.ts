@@ -308,6 +308,7 @@ export interface AppSettings {
   hapticsEnabled: boolean;
   digestMode: boolean;
   quietHoursEnabled: boolean;
+  autoUpdateApp: boolean;
 }
 
 export interface ScheduleItem {

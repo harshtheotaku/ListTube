@@ -79,6 +79,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   hapticsEnabled: true,
   digestMode: false,
   quietHoursEnabled: false,
+  autoUpdateApp: true,
 };
 
 function mergeSettings(raw: Partial<AppSettings>): AppSettings {
@@ -181,6 +182,8 @@ function mergeSettings(raw: Partial<AppSettings>): AppSettings {
       raw.hapticsEnabled !== undefined ? Boolean(raw.hapticsEnabled) : true,
     digestMode: Boolean(raw.digestMode ?? false),
     quietHoursEnabled: Boolean(raw.quietHoursEnabled ?? false),
+    autoUpdateApp:
+      raw.autoUpdateApp !== undefined ? Boolean(raw.autoUpdateApp) : true,
   };
 }
 

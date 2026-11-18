@@ -8,11 +8,13 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -29,8 +31,14 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import androidx.activity.OnBackPressedCallback;
+import androidx.core.content.FileProvider;
 import com.getcapacitor.BridgeActivity;
 import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -41,6 +49,9 @@ public class MainActivity extends BridgeActivity {
     private boolean bridgeConfigured = false;
     private String pendingOAuthUrl = null;
     private String pendingShortcutTab = null;
+    private File pendingInstallApk = null;
+    private boolean waitingInstallPermission = false;
+    private volatile boolean updateDownloading = false;
 
     @SuppressLint("SourceLockedOrientationActivity")
     @Override
@@ -164,11 +175,229 @@ public class MainActivity extends BridgeActivity {
                         }
                     });
                 }
+
+                @JavascriptInterface
+                public String getAppVersionInfo() {
+                    try {
+                        PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+                        long code = Build.VERSION.SDK_INT >= 28 ? pi.getLongVersionCode() : pi.versionCode;
+                        JSONObject obj = new JSONObject();
+                        obj.put("versionName", pi.versionName != null ? pi.versionName : "");
+                        obj.put("versionCode", code);
+                        return obj.toString();
+                    } catch (Exception e) {
+                        return "{}";
+                    }
+                }
+
+                @JavascriptInterface
+                public boolean canRequestPackageInstalls() {
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true;
+                    return getPackageManager().canRequestPackageInstalls();
+                }
+
+                @JavascriptInterface
+                public void openInstallUnknownAppsSettings() {
+                    runOnUiThread(() -> openUnknownSourcesSettings());
+                }
+
+                @JavascriptInterface
+                public void installPendingUpdate() {
+                    runOnUiThread(() -> {
+                        File target = pendingInstallApk;
+                        if (target == null || !target.exists()) {
+                            target = new File(new File(getCacheDir(), "updates"), "ListTube-update.apk");
+                        }
+                        if (target.exists()) {
+                            handleDownloadedApkReady(target);
+                        } else {
+                            emitUpdateProgress("error", 0, "Downloaded APK not found — tap Update again.");
+                        }
+                    });
+                }
+
+                @JavascriptInterface
+                public void downloadAndInstallApk(String apkUrl, String targetVersion) {
+                    if (!isAllowedUpdateApkUrl(apkUrl)) {
+                        emitUpdateProgress("error", 0, "Blocked untrusted update URL.");
+                        return;
+                    }
+                    if (updateDownloading) return;
+                    startApkDownloadAndInstall(apkUrl, targetVersion);
+                }
             }, "ListTubeNative");
             bridgeConfigured = true;
         }
 
         flushPendingIntents(webView);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (waitingInstallPermission && pendingInstallApk != null && pendingInstallApk.exists()) {
+            waitingInstallPermission = false;
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || getPackageManager().canRequestPackageInstalls()) {
+                launchApkInstaller(pendingInstallApk);
+            } else {
+                emitUpdateProgress("needs_permission", 100, "Allow 'Install unknown apps' to finish updating.");
+            }
+        }
+    }
+
+    private boolean isAllowedUpdateApkUrl(String url) {
+        if (url == null || !url.startsWith("https://")) return false;
+        Uri parsed = Uri.parse(url);
+        String host = parsed.getHost() != null ? parsed.getHost().toLowerCase(Locale.US) : "";
+        return host.equals("github.com")
+            || host.endsWith(".github.com")
+            || host.equals("objects.githubusercontent.com")
+            || host.equals("release-assets.githubusercontent.com")
+            || host.equals("github-releases.githubusercontent.com");
+    }
+
+    private void emitUpdateProgress(String status, int progress, String message) {
+        WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+        if (webView == null) return;
+        runOnUiThread(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("status", status);
+                payload.put("progress", Math.max(0, Math.min(100, progress)));
+                if (message != null) payload.put("message", message);
+                String js = "window.__listtubeUpdateProgress && window.__listtubeUpdateProgress(" + payload.toString() + ");";
+                webView.evaluateJavascript(js, null);
+            } catch (Exception ignored) {}
+        });
+    }
+
+    private void openUnknownSourcesSettings() {
+        waitingInstallPermission = true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        }
+    }
+
+    private void handleDownloadedApkReady(File apkFile) {
+        pendingInstallApk = apkFile;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !getPackageManager().canRequestPackageInstalls()) {
+            emitUpdateProgress("needs_permission", 100, "Enable 'Allow from this source' in Android Settings to install.");
+            openUnknownSourcesSettings();
+            return;
+        }
+        launchApkInstaller(apkFile);
+    }
+
+    private void launchApkInstaller(File apkFile) {
+        try {
+            Uri contentUri = FileProvider.getUriForFile(
+                this,
+                getPackageName() + ".fileprovider",
+                apkFile
+            );
+            Intent installIntent = new Intent(Intent.ACTION_VIEW);
+            installIntent.setDataAndType(contentUri, "application/vnd.android.package-archive");
+            installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            emitUpdateProgress("installing", 100, "Opening Android package installer...");
+            startActivity(installIntent);
+        } catch (Exception e) {
+            emitUpdateProgress("error", 0, "Could not launch installer: " + e.getMessage());
+        }
+    }
+
+    private void startApkDownloadAndInstall(String initialUrl, String targetVersion) {
+        updateDownloading = true;
+        emitUpdateProgress("downloading", 1, "Connecting to GitHub Releases...");
+        new Thread(() -> {
+            HttpURLConnection conn = null;
+            try {
+                String currentUrl = initialUrl;
+                int redirects = 0;
+                while (redirects < 7) {
+                    if (!isAllowedUpdateApkUrl(currentUrl)) {
+                        throw new SecurityException("Untrusted redirect host");
+                    }
+                    conn = (HttpURLConnection) new URL(currentUrl).openConnection();
+                    conn.setInstanceFollowRedirects(false);
+                    conn.setConnectTimeout(15000);
+                    conn.setReadTimeout(30000);
+                    conn.setRequestProperty("User-Agent", "ListTube-Android-Updater");
+                    int code = conn.getResponseCode();
+                    if (code == HttpURLConnection.HTTP_MOVED_TEMP
+                        || code == HttpURLConnection.HTTP_MOVED_PERM
+                        || code == HttpURLConnection.HTTP_SEE_OTHER
+                        || code == 307
+                        || code == 308) {
+                        String nextLoc = conn.getHeaderField("Location");
+                        conn.disconnect();
+                        if (nextLoc == null || nextLoc.isEmpty()) {
+                            throw new IllegalStateException("Empty redirect location");
+                        }
+                        currentUrl = nextLoc;
+                        redirects++;
+                        continue;
+                    }
+                    break;
+                }
+
+                if (conn == null || conn.getResponseCode() < 200 || conn.getResponseCode() >= 300) {
+                    int code = conn != null ? conn.getResponseCode() : 0;
+                    throw new IllegalStateException("Download failed (HTTP " + code + ")");
+                }
+
+                long total = conn.getContentLengthLong();
+                File dir = new File(getCacheDir(), "updates");
+                if (!dir.exists()) dir.mkdirs();
+                File tmpFile = new File(dir, "ListTube-update.apk.tmp");
+                File outFile = new File(dir, "ListTube-update.apk");
+                if (tmpFile.exists()) tmpFile.delete();
+
+                byte[] buf = new byte[16384];
+                long downloaded = 0;
+                int lastPct = -1;
+                boolean headerChecked = false;
+                try (InputStream in = conn.getInputStream(); FileOutputStream out = new FileOutputStream(tmpFile)) {
+                    int n;
+                    while ((n = in.read(buf)) != -1) {
+                        if (!headerChecked && n >= 2) {
+                            if (buf[0] != 0x50 || buf[1] != 0x4B) {
+                                throw new IllegalStateException("Downloaded file is not a valid APK archive");
+                            }
+                            headerChecked = true;
+                        }
+                        out.write(buf, 0, n);
+                        downloaded += n;
+                        if (total > 0) {
+                            int pct = (int) Math.min(99, (downloaded * 100L) / total);
+                            if (pct != lastPct && (pct % 3 == 0 || pct == 99)) {
+                                lastPct = pct;
+                                emitUpdateProgress("downloading", pct, "Downloading v" + (targetVersion != null ? targetVersion : "update") + " (" + pct + "%)");
+                            }
+                        } else if (downloaded % (256 * 1024) < 16384) {
+                            emitUpdateProgress("downloading", 35, "Downloading update...");
+                        }
+                    }
+                    out.flush();
+                }
+
+                if (!headerChecked || downloaded < 200_000L) {
+                    throw new IllegalStateException("Incomplete APK download");
+                }
+                if (outFile.exists()) outFile.delete();
+                if (!tmpFile.renameTo(outFile)) {
+                    throw new IllegalStateException("Could not save downloaded APK");
+                }
+
+                runOnUiThread(() -> handleDownloadedApkReady(outFile));
+            } catch (Exception e) {
+                emitUpdateProgress("error", 0, e.getMessage() != null ? e.getMessage() : "Update download failed");
+            } finally {
+                if (conn != null) conn.disconnect();
+                updateDownloading = false;
+            }
+        }).start();
     }
 
     private static final List<String> AD_HOST_MARKERS = Arrays.asList(
