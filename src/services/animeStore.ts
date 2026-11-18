@@ -103,9 +103,30 @@ export function bootstrapMediaDb(): Promise<void> {
       try {
         const mod = await import('../data/offlineStarter.json');
         const starter = (mod.default ?? mod) as Anime[];
+        const CDN_PREFIX = 'https://s4.anilist.co/file/anilistcdn/';
+        const expandCdn = (url?: string) =>
+          url && !url.startsWith('http') ? `${CDN_PREFIX}${url}` : url;
         const toPersist: Anime[] = [];
-        for (const item of starter) {
-          if (item?.id && item?.title && !store.has(item.id)) {
+        for (const rawItem of starter) {
+          if (rawItem?.id && rawItem?.title && !store.has(rawItem.id)) {
+            const cover = expandCdn(rawItem.cover) ?? '';
+            const banner = expandCdn(rawItem.banner) ?? cover;
+            const item: Anime = {
+              ...rawItem,
+              cover,
+              banner,
+              genres: rawItem.genres ?? [],
+              tags: rawItem.tags ?? [],
+              studios: rawItem.studios ?? [],
+              streaming: rawItem.streaming ?? [],
+              similar: rawItem.similar ?? [],
+              fetchedAt: rawItem.fetchedAt ?? 0,
+              anilistId:
+                rawItem.anilistId ??
+                (rawItem.id.startsWith('anilist:')
+                  ? Number(rawItem.id.slice(8)) || undefined
+                  : undefined),
+            };
             store.set(item.id, item);
             toPersist.push(item);
             added = true;

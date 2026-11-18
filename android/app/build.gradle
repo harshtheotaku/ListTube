@@ -42,8 +42,9 @@ android {
             if (keystoreFile != null && keystoreFile.exists() && storePassVal && keyAliasVal && keyPassVal) {
                 signingConfig signingConfigs.listtube
             }
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }

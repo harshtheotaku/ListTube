@@ -21,7 +21,7 @@ function formatMembers(popularity?: number): string | null {
   return `${popularity} fans`;
 }
 
-export const AnimeCard: React.FC<AnimeCardProps> = ({
+export const AnimeCard: React.FC<AnimeCardProps> = React.memo(({
   anime,
   onOpen,
   onOpenChannel,
@@ -84,7 +84,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
   };
 
   return (
-    <div className="lt-press group relative flex w-full flex-col">
+    <div className={`lt-press group relative flex w-full flex-col ${priority ? '' : 'lt-card-cv'}`}>
       {/* Thumbnail Container: 4:5 Portrait for Manga, Full-bleed 16:9 Landscape on phones for Anime */}
       <div
         className={`relative overflow-hidden bg-[#141418] ring-1 ring-white/[0.06] ${
@@ -98,6 +98,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
             src={anime.cover}
             alt={anime.title}
             loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : 'auto'}
             decoding="async"
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
           />
@@ -106,6 +107,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
             src={officialWideBanner}
             alt={anime.title}
             loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : 'auto'}
             decoding="async"
             onError={() => setBannerFailed(true)}
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
@@ -119,6 +121,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
                   alt=""
                   aria-hidden="true"
                   loading="eager"
+                  decoding="async"
                   className="lt-ambient-blend absolute inset-0 h-full w-full scale-125 object-cover opacity-35 blur-2xl"
                 />
                 <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/15 to-black/75" />
@@ -127,6 +130,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
                     src={anime.cover}
                     alt={anime.title}
                     loading={priority ? 'eager' : 'lazy'}
+                    fetchPriority={priority ? 'high' : 'auto'}
                     decoding="async"
                     onError={() => setCoverFailed(true)}
                     className="h-full w-auto max-w-[70%] object-contain drop-shadow-[0_10px_25px_rgba(0,0,0,0.9)] transition-transform duration-300 group-hover:scale-[1.04]"
@@ -284,4 +288,4 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
       </div>
     </div>
   );
-};
+});

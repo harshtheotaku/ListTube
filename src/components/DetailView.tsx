@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   BarChart3,
@@ -73,8 +73,11 @@ import {
   resolveExternalLinksEdge,
   ResolvedReaderLink,
 } from '../services/supabase';
-import { CommentsSection } from './CommentsSection';
 import { EntityRouteTarget } from './EntityView';
+
+const CommentsSection = lazy(() =>
+  import('./CommentsSection').then((m) => ({ default: m.CommentsSection }))
+);
 import { openInAppViewer } from '../services/inAppBrowser';
 import { triggerHaptic } from '../services/haptics';
 import { useChromeVisible } from '../services/scrollChrome';
@@ -1835,11 +1838,13 @@ export const DetailView: React.FC<DetailViewProps> = ({
                   );
                 })()}
 
-                <CommentsSection
-                  anime={anime}
-                  onEditProfile={onEditProfile}
-                  onOpenUser={onOpenUser}
-                />
+                <Suspense fallback={null}>
+                  <CommentsSection
+                    anime={anime}
+                    onEditProfile={onEditProfile}
+                    onOpenUser={onOpenUser}
+                  />
+                </Suspense>
               </>
             )}
 

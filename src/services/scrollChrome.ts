@@ -71,7 +71,10 @@ function attachListener() {
 
 function applyChromeDataset(visible: boolean, autoHide: boolean) {
   if (typeof document === 'undefined') return;
-  document.documentElement.dataset.chromeHidden = autoHide && !visible ? '1' : '0';
+  const next = autoHide && !visible ? '1' : '0';
+  if (document.documentElement.dataset.chromeHidden !== next) {
+    document.documentElement.dataset.chromeHidden = next;
+  }
 }
 
 export function resetScrollChrome() {
