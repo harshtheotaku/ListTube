@@ -8,6 +8,7 @@ import {
   Newspaper,
   Search,
   Settings,
+  Smartphone,
   Sparkles,
   User,
   Users,
@@ -31,6 +32,7 @@ interface CommandPaletteModalProps {
   onOpenCollage?: () => void;
   onOpenQuiz?: () => void;
   onOpenSettings?: () => void;
+  onOpenPhonePreview?: () => void;
 }
 
 export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
@@ -45,6 +47,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   onOpenCollage,
   onOpenQuiz,
   onOpenSettings,
+  onOpenPhonePreview,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
@@ -115,6 +118,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
     ...(onOpenQuiz ? [{ label: 'Play Anime OP/ED Music Quiz', icon: <Sparkles className="h-4 w-4 text-amber-300" />, run: () => { onClose(); onOpenQuiz(); } }] : []),
     { label: 'Open 3-Way Sync Conflict Resolver', icon: <Sparkles className="h-4 w-4 text-[#3EA6FF]" />, run: () => { onClose(); onOpenConflicts(); } },
     ...(onOpenSettings ? [{ label: 'Open Themes, Liquid Glass & Settings', icon: <Settings className="h-4 w-4 text-neutral-300" />, run: () => { onClose(); onOpenSettings(); } }] : []),
+    ...(onOpenPhonePreview ? [{ label: 'Open 390px Phone Simulator (Test Mobile UI on Laptop)', icon: <Smartphone className="h-4 w-4 text-emerald-400" />, run: () => { onClose(); onOpenPhonePreview(); } }] : []),
     { label: 'Go to Explore Catalog', icon: <Compass className="h-4 w-4 text-emerald-400" />, run: () => { onClose(); onNavigate('explore'); } },
     { label: 'Go to Weekly Airing Schedule', icon: <Calendar className="h-4 w-4 text-sky-400" />, run: () => { onClose(); onNavigate('schedule'); } },
     { label: 'Go to My List & Custom Shelves', icon: <ListChecks className="h-4 w-4 text-rose-400" />, run: () => { onClose(); onNavigate('list'); } },

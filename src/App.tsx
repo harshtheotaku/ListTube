@@ -78,6 +78,9 @@ const CollageModal = lazy(() =>
 const ThemeQuizModal = lazy(() =>
   import('./components/ThemeQuizModal').then((m) => ({ default: m.ThemeQuizModal }))
 );
+const PhonePreviewModal = lazy(() =>
+  import('./components/PhonePreviewModal').then((m) => ({ default: m.PhonePreviewModal }))
+);
 const InAppBrowserModal = lazy(() =>
   import('./components/InAppBrowserModal').then((m) => ({ default: m.InAppBrowserModal }))
 );
@@ -262,6 +265,10 @@ export const App: React.FC = () => {
   const [wrappedOpen, setWrappedOpen] = useState(false);
   const [collageOpen, setCollageOpen] = useState(false);
   const [quizOpen, setQuizOpen] = useState(false);
+  const [phonePreviewOpen, setPhonePreviewOpen] = useState(false);
+  const inPhoneFrame =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('phonePreview');
   const [quickTarget, setQuickTarget] = useState<Anime | null>(null);
   const [explorePresetGenre, setExplorePresetGenre] = useState<string | null>(null);
 
@@ -1075,6 +1082,11 @@ export const App: React.FC = () => {
             onOpenCollage={() => setCollageOpen(true)}
             onOpenQuiz={() => setQuizOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
+            onOpenPhonePreview={
+              !isNativeCapacitor() && !inPhoneFrame
+                ? () => setPhonePreviewOpen(true)
+                : undefined
+            }
           />
         )}
         {wrappedOpen && (
@@ -1099,7 +1111,21 @@ export const App: React.FC = () => {
           />
         )}
         {settingsOpen && (
-          <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+          <SettingsModal
+            isOpen={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            onOpenPhonePreview={
+              !isNativeCapacitor() && !inPhoneFrame
+                ? () => setPhonePreviewOpen(true)
+                : undefined
+            }
+          />
+        )}
+        {phonePreviewOpen && (
+          <PhonePreviewModal
+            isOpen={phonePreviewOpen}
+            onClose={() => setPhonePreviewOpen(false)}
+          />
         )}
         {profileOpen && (
           <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />

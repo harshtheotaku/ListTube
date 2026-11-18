@@ -13,6 +13,7 @@ import {
   RefreshCw,
   RotateCcw,
   Shield,
+  Smartphone,
   Sparkles,
   Type,
   X,
@@ -26,6 +27,7 @@ import {
   ThemePreset,
 } from '../types';
 import { animeStore } from '../services/animeStore';
+import { isNativeCapacitor } from '../services/platform';
 import { SCORE_FORMATS } from '../services/scoring';
 import { settingsStore, useSettings } from '../services/settings';
 import { toast } from './Toast';
@@ -33,6 +35,7 @@ import { toast } from './Toast';
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenPhonePreview?: () => void;
 }
 
 type SettingsSection = 'appearance' | 'home' | 'content' | 'privacy' | 'playback';
@@ -89,9 +92,16 @@ const AppleSwitch: React.FC<{
   </button>
 );
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
+export const SettingsModal: React.FC<SettingsModalProps> = ({
+  isOpen,
+  onClose,
+  onOpenPhonePreview,
+}) => {
   const settings = useSettings();
   const [section, setSection] = useState<SettingsSection>('appearance');
+  const inPhoneFrame =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('phonePreview');
 
   if (!isOpen) return null;
 
@@ -795,6 +805,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     onChange={(v) => settingsStore.setShowCommunityLinks(v)}
                   />
                 </div>
+                {onOpenPhonePreview && !isNativeCapacitor() && !inPhoneFrame && (
+                  <div className="flex items-center justify-between gap-4 p-4">
+                    <div>
+                      <p className="text-[13px] font-bold text-white">Laptop Phone Simulator</p>
+                      <p className="text-[11px] text-[#AAAAAA]">
+                        Preview the 390px mobile UI &amp; Liquid Glass dock directly on laptop without building an APK.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenPhonePreview();
+                      }}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#3EA6FF]/15 px-3 py-1.5 text-[11.5px] font-bold text-[#3EA6FF] ring-1 ring-[#3EA6FF]/35 hover:bg-[#3EA6FF]/25"
+                    >
+                      <Smartphone className="h-3.5 w-3.5" />
+                      Launch
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-4 p-4">
                   <div>
                     <p className="text-[13px] font-bold text-white">Refresh Artwork Cache</p>

@@ -72,6 +72,10 @@ Built with React 18, TypeScript, Tailwind CSS v4, Supabase, and Capacitor Androi
 - Primary deployment: **https://listtube.vercel.app**
 - Secondary GitHub Pages mirror: **https://harshtheotaku.github.io/ListTube/**
 
+### Test Live on Laptop (No APK Download Needed)
+1. Double-click **`Start ListTube on Laptop.command`** (or run `npm run laptop`) to launch live hot-reload at **`http://localhost:5173`** AND print a Wi-Fi LAN URL (`http://<your-ip>:5173`) you can open directly in any phone browser.
+2. Press **`Cmd+K`** (or open **Settings -> Playback & Data -> Laptop Phone Simulator**) to test the real **`390×844` mobile layout & Liquid Glass dock** right on your laptop screen.
+
 <details>
 <summary>Developer Setup & Android APK Build Instructions</summary>
 
