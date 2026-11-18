@@ -253,6 +253,9 @@ export type ThemePreset = 'main' | 'dark' | 'light' | 'custom';
 export type ContentFilterLevel = 'safe' | 'balanced' | 'mature';
 export type FontStylePreset = 'default' | 'rounded' | 'serif' | 'mono';
 export type ExternalLinkMode = 'external' | 'ask' | 'inapp';
+export type TitleLanguage = 'english' | 'romaji' | 'native';
+export type CardDensity = 'comfortable' | 'compact';
+export type DefaultStartupTab = 'home' | 'explore' | 'list' | 'schedule';
 
 export interface ThemeColors {
   bg: string;
@@ -294,6 +297,14 @@ export interface AppSettings {
   notifyFolders: ListStatus[];
   notifyCommentLikes: boolean;
   profileVisibility: ProfileVisibilitySettings;
+  titleLanguage: TitleLanguage;
+  cardDensity: CardDensity;
+  confirmBeforeRemove: boolean;
+  hideSpoilers: boolean;
+  defaultMediaType: MediaType;
+  defaultTab: DefaultStartupTab;
+  defaultTrailerMuted: boolean;
+  hapticsEnabled: boolean;
 }
 
 export interface ScheduleItem {

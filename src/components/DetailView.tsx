@@ -65,7 +65,11 @@ import {
   inputToCanonical10,
   SCORE_FORMATS,
 } from '../services/scoring';
-import { useSettings } from '../services/settings';
+import {
+  formatPreferredTitle,
+  formatSecondaryTitle,
+  useSettings,
+} from '../services/settings';
 import { profileStore, useProfile } from '../services/profile';
 import {
   buildEpisodeWatchUrl,
@@ -200,6 +204,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
   const [staffLoadingId, setStaffLoadingId] = useState<number | null>(null);
   const [expandedThemeKey, setExpandedThemeKey] = useState<string | null>(null);
   const [revealSpoilerBio, setRevealSpoilerBio] = useState(false);
+  const [revealSynopsis, setRevealSynopsis] = useState(false);
   const [themes, setThemes] = useState<{ openings: ThemeSong[]; endings: ThemeSong[] }>({
     openings: [],
     endings: [],
@@ -569,7 +574,9 @@ export const DetailView: React.FC<DetailViewProps> = ({
               {anime.trailerYoutubeId && isTrailerPlaying ? (
                 <div className="relative h-full w-full">
                   <iframe
-                    src={`https://www.youtube-nocookie.com/embed/${anime.trailerYoutubeId}?autoplay=1&rel=0&modestbranding=1`}
+                    src={`https://www.youtube-nocookie.com/embed/${anime.trailerYoutubeId}?autoplay=1&rel=0&modestbranding=1${
+                      settings.defaultTrailerMuted ? '&mute=1' : ''
+                    }`}
                     title={`${anime.title} Official Trailer`}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                     allowFullScreen
@@ -655,11 +662,14 @@ export const DetailView: React.FC<DetailViewProps> = ({
             {/* Video Title */}
             <div>
               <h1 className="text-[20px] font-bold leading-snug tracking-tight text-white sm:text-[22px]">
-                {anime.title}
+                {formatPreferredTitle(anime, settings.titleLanguage)}
               </h1>
-              {anime.titleRomaji && anime.titleRomaji !== anime.title && (
-                <p className="mt-0.5 text-[12px] text-[#AAAAAA]">{anime.titleRomaji}</p>
-              )}
+              {(() => {
+                const secondary = formatSecondaryTitle(anime, settings.titleLanguage);
+                return secondary ? (
+                  <p className="mt-0.5 text-[12px] text-[#AAAAAA]">{secondary}</p>
+                ) : null;
+              })()}
             </div>
 
             {/* Channel Row + Persistent Actions */}
@@ -740,6 +750,12 @@ export const DetailView: React.FC<DetailViewProps> = ({
                           <button
                             type="button"
                             onClick={() => {
+                              if (
+                                settings.confirmBeforeRemove &&
+                                !window.confirm(`Remove "${anime.title}" from your watchlist?`)
+                              ) {
+                                return;
+                              }
                               library.remove(anime.id);
                               setListPickerOpen(false);
                               toast('Unsubscribed from series');
@@ -1325,6 +1341,16 @@ export const DetailView: React.FC<DetailViewProps> = ({
                     <div className="space-y-2 pt-1">
                       <div className="h-3 w-full animate-pulse rounded bg-white/10" />
                       <div className="h-3 w-4/5 animate-pulse rounded bg-white/10" />
+                    </div>
+                  ) : settings.hideSpoilers && !revealSynopsis && anime.description ? (
+                    <div
+                      className="rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-2.5 text-[12.5px] text-amber-200"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRevealSynopsis(true);
+                      }}
+                    >
+                      <span className="font-bold">Spoiler Guard active</span> — Tap here to reveal plot synopsis.
                     </div>
                   ) : (
                     <p

@@ -97,7 +97,9 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ onOpenAnimeId }) => {
             <div className="aspect-video w-full">
               <iframe
                 key={state.youtubeId}
-                src={`https://www.youtube-nocookie.com/embed/${state.youtubeId}?autoplay=1&rel=0`}
+                src={`https://www.youtube-nocookie.com/embed/${state.youtubeId}?autoplay=1&rel=0${
+                  settings.defaultTrailerMuted ? '&mute=1' : ''
+                }`}
                 title={state.title}
                 allow="autoplay; encrypted-media; picture-in-picture"
                 allowFullScreen

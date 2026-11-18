@@ -1,4 +1,5 @@
 import { isNativeCapacitor } from './platform';
+import { settingsStore } from './settings';
 import './inAppBrowser';
 
 export type HapticStyle = 'light' | 'medium' | 'success';
@@ -8,6 +9,7 @@ export type HapticStyle = 'light' | 'medium' | 'success';
  */
 export function triggerHaptic(style: HapticStyle = 'light'): void {
   try {
+    if (!settingsStore.getSnapshot().hapticsEnabled) return;
     if (
       isNativeCapacitor() &&
       typeof window !== 'undefined' &&

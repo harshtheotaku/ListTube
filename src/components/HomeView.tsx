@@ -11,7 +11,7 @@ import { animeStore } from '../services/animeStore';
 import { passesContentSettings } from '../services/contentFilter';
 import { searchSmart } from '../services/search';
 import { library as libraryStore } from '../services/library';
-import { useSettings } from '../services/settings';
+import { gridClassFor, useSettings } from '../services/settings';
 import { AnimeCard } from './AnimeCard';
 import { PullToRefreshWheel } from './PullToRefreshWheel';
 import { Shelf, ShelfItem } from './Shelf';
@@ -148,9 +148,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const isManga = mediaType === 'MANGA';
   const chips = isManga ? MANGA_CHIPS : ANIME_CHIPS;
   const genreOptions = isManga ? MANGA_GENRES : ANIME_GENRES;
-  const gridClass = isManga
-    ? 'grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
-    : YOUTUBE_GRID;
+  const gridClass = gridClassFor(mediaType, settings.cardDensity);
   const shelfWidth = isManga ? 'w-[155px] sm:w-[175px]' : 'w-[260px] sm:w-[290px]';
 
   useEffect(() => {

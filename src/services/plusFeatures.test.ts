@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { passesContentSettings } from './contentFilter';
 import { computePacingPlan } from './pacingGoal';
-import { settingsStore } from './settings';
+import {
+  formatPreferredTitle,
+  formatSecondaryTitle,
+  gridClassFor,
+  settingsStore,
+} from './settings';
 import {
   buildJeopardyBoard,
   buildNextInfiniteQuestion,
@@ -74,6 +79,33 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
     expect(passesContentSettings(safeShow, snap)).toBe(true);
     expect(passesContentSettings(ecchiShow, snap)).toBe(false);
     expect(passesContentSettings(blockedShow, snap)).toBe(false);
+
+    settingsStore.update({
+      titleLanguage: 'romaji',
+      cardDensity: 'compact',
+      hideSpoilers: true,
+      confirmBeforeRemove: true,
+      defaultMediaType: 'MANGA',
+      defaultTab: 'explore',
+      defaultTrailerMuted: true,
+      hapticsEnabled: false,
+    });
+    const nextSnap = settingsStore.getSnapshot();
+    expect(nextSnap.titleLanguage).toBe('romaji');
+    expect(nextSnap.cardDensity).toBe('compact');
+    expect(nextSnap.hideSpoilers).toBe(true);
+    expect(nextSnap.confirmBeforeRemove).toBe(true);
+    expect(nextSnap.defaultMediaType).toBe('MANGA');
+    expect(nextSnap.defaultTab).toBe('explore');
+    expect(nextSnap.defaultTrailerMuted).toBe(true);
+    expect(nextSnap.hapticsEnabled).toBe(false);
+
+    const aot = { title: 'Attack on Titan', titleRomaji: 'Shingeki no Kyojin', titleNative: '進撃の巨人' };
+    expect(formatPreferredTitle(aot, 'english')).toBe('Attack on Titan');
+    expect(formatPreferredTitle(aot, 'romaji')).toBe('Shingeki no Kyojin');
+    expect(formatPreferredTitle(aot, 'native')).toBe('進撃の巨人');
+    expect(formatSecondaryTitle(aot, 'romaji')).toBe('Attack on Titan');
+    expect(gridClassFor('ANIME', 'compact')).toContain('xl:grid-cols-5');
   });
 
   it('computes catch-up pacing completion days and remaining manga volumes', () => {

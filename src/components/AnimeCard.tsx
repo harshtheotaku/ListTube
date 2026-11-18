@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Bell, Check, MoreVertical, Play, Star } from 'lucide-react';
 import { Anime, ListStatus, mangaOriginLabel, statusLabel } from '../types';
 import { franchiseNameOf } from '../services/franchise';
+import { formatPreferredTitle, useSettings } from '../services/settings';
 
 interface AnimeCardProps {
   anime: Anime;
@@ -31,8 +32,10 @@ export const AnimeCard: React.FC<AnimeCardProps> = React.memo(({
   onQuickAdd,
   priority,
 }) => {
+  const settings = useSettings();
   const [bannerFailed, setBannerFailed] = useState(false);
   const [coverFailed, setCoverFailed] = useState(false);
+  const displayTitle = formatPreferredTitle(anime, settings.titleLanguage);
   const isSubscribed = Boolean(status);
   const isManga = anime.mediaType === 'MANGA';
   const total = progress?.total ?? (isManga ? anime.chapters ?? 0 : anime.episodes ?? 0);
@@ -234,7 +237,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = React.memo(({
             className="w-full text-left focus:outline-none"
           >
             <h3 className="line-clamp-2 text-[13.5px] font-semibold leading-[1.35] text-[#F1F1F1] group-hover:text-white sm:text-[14px]">
-              {anime.title}
+              {displayTitle}
             </h3>
           </button>
 

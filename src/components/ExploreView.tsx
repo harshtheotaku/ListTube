@@ -31,7 +31,7 @@ import {
 } from '../services/anilist';
 import { searchSmart } from '../services/search';
 import { passesContentSettings } from '../services/contentFilter';
-import { useSettings } from '../services/settings';
+import { gridClassFor, useSettings } from '../services/settings';
 import { AnimeCard } from './AnimeCard';
 import { Shelf } from './Shelf';
 import { GridSkeleton } from './Skeleton';
@@ -150,9 +150,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   }, [initialGenre, onConsumeInitialGenre]);
   const genres = isManga ? MANGA_GENRES : ANIME_GENRES;
 
-  const gridClass = isManga
-    ? 'grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
-    : YOUTUBE_GRID;
+  const gridClass = gridClassFor(mediaType, settings.cardDensity);
 
   const charts: { id: CatalogChartKey; label: string }[] = isManga
     ? [

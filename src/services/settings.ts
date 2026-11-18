@@ -1,14 +1,19 @@
 import { useSyncExternalStore } from 'react';
 import {
+  Anime,
   AppSettings,
+  CardDensity,
   ContentFilterLevel,
+  DefaultStartupTab,
   ExternalLinkMode,
   FontStylePreset,
   ListStatus,
+  MediaType,
   ProfileVisibilitySettings,
   ScoreFormat,
   ThemeColors,
   ThemePreset,
+  TitleLanguage,
 } from '../types';
 
 const SETTINGS_KEY = 'anitube.settings.v2';
@@ -63,6 +68,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
     hideLists: false,
     hideFavorites: false,
   },
+  titleLanguage: 'english',
+  cardDensity: 'comfortable',
+  confirmBeforeRemove: false,
+  hideSpoilers: false,
+  defaultMediaType: 'ANIME',
+  defaultTab: 'home',
+  defaultTrailerMuted: false,
+  hapticsEnabled: true,
 };
 
 function mergeSettings(raw: Partial<AppSettings>): AppSettings {
@@ -142,6 +155,24 @@ function mergeSettings(raw: Partial<AppSettings>): AppSettings {
       hideLists: Boolean(raw.profileVisibility?.hideLists),
       hideFavorites: Boolean(raw.profileVisibility?.hideFavorites),
     },
+    titleLanguage:
+      raw.titleLanguage && ['english', 'romaji', 'native'].includes(raw.titleLanguage)
+        ? (raw.titleLanguage as TitleLanguage)
+        : 'english',
+    cardDensity:
+      raw.cardDensity && ['comfortable', 'compact'].includes(raw.cardDensity)
+        ? (raw.cardDensity as CardDensity)
+        : 'comfortable',
+    confirmBeforeRemove: Boolean(raw.confirmBeforeRemove ?? false),
+    hideSpoilers: Boolean(raw.hideSpoilers ?? false),
+    defaultMediaType: raw.defaultMediaType === 'MANGA' ? 'MANGA' : 'ANIME',
+    defaultTab:
+      raw.defaultTab && ['home', 'explore', 'list', 'schedule'].includes(raw.defaultTab)
+        ? (raw.defaultTab as DefaultStartupTab)
+        : 'home',
+    defaultTrailerMuted: Boolean(raw.defaultTrailerMuted ?? false),
+    hapticsEnabled:
+      raw.hapticsEnabled !== undefined ? Boolean(raw.hapticsEnabled) : true,
   };
 }
 
@@ -274,4 +305,80 @@ export function useSettings(): AppSettings {
     settingsStore.getSnapshot,
     settingsStore.getSnapshot
   );
+}
+
+/**
+ * Formats primary & secondary title lines respecting user's English / Romaji / Native preference.
+ */
+export function formatPreferredTitle(
+  anime: Pick<Anime, 'title' | 'titleRomaji' | 'titleNative'>,
+  pref: TitleLanguage = 'english'
+): string {
+  if (pref === 'romaji') return anime.titleRomaji || anime.title;
+  if (pref === 'native') return anime.titleNative || anime.titleRomaji || anime.title;
+  return anime.title;
+}
+
+export function formatSecondaryTitle(
+  anime: Pick<Anime, 'title' | 'titleRomaji' | 'titleNative'>,
+  pref: TitleLanguage = 'english'
+): string | null {
+  const primary = formatPreferredTitle(anime, pref);
+  const alt = pref === 'english' ? anime.titleRomaji : anime.title;
+  return alt && alt !== primary ? alt : null;
+}
+
+export function gridClassFor(mediaType: MediaType, density: CardDensity): string {
+  if (mediaType === 'MANGA') {
+    return density === 'compact'
+      ? 'grid grid-cols-3 gap-x-2.5 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6'
+      : 'grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5';
+  }
+  return density === 'compact'
+    ? 'grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'
+    : 'grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
+}
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
+let deferredInstallPrompt: BeforeInstallPromptEvent | null = null;
+const pwaListeners = new Set<() => void>();
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e as BeforeInstallPromptEvent;
+    pwaListeners.forEach((l) => l());
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    pwaListeners.forEach((l) => l());
+  });
+}
+
+export function usePwaInstallPrompt() {
+  const available = useSyncExternalStore(
+    (l) => {
+      pwaListeners.add(l);
+      return () => pwaListeners.delete(l);
+    },
+    () => Boolean(deferredInstallPrompt),
+    () => false
+  );
+  return {
+    available,
+    async trigger(): Promise<'accepted' | 'dismissed' | 'unavailable'> {
+      if (!deferredInstallPrompt) return 'unavailable';
+      await deferredInstallPrompt.prompt();
+      const res = await deferredInstallPrompt.userChoice;
+      if (res.outcome === 'accepted') {
+        deferredInstallPrompt = null;
+        pwaListeners.forEach((l) => l());
+      }
+      return res.outcome;
+    },
+  };
 }

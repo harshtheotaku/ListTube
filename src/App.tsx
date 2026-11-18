@@ -12,7 +12,7 @@ import { animeStore } from './services/animeStore';
 import { fetchDetail } from './services/anilist';
 import { cloudSync } from './services/cloudSync';
 import { isNativeCapacitor } from './services/platform';
-import { useSettings } from './services/settings';
+import { settingsStore, useSettings } from './services/settings';
 import { Sidebar, AppTab } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
 import { TopBar } from './components/TopBar';
@@ -168,7 +168,7 @@ function parseCurrentRoute(): {
       ? tabParam
       : TABS.includes(tabFromState as AppTab)
         ? (tabFromState as AppTab)
-        : 'home';
+        : settingsStore.getSnapshot().defaultTab;
 
   if (raw.startsWith('anime/')) {
     return {
@@ -251,7 +251,9 @@ export const App: React.FC = () => {
   const [mediaType, setMediaType] = useState<MediaType>(() => {
     if (window.location.hash.includes('mode=manga')) return 'MANGA';
     if (window.location.hash.includes('mode=anime')) return 'ANIME';
-    return localStorage.getItem(MEDIA_TYPE_KEY) === 'MANGA' ? 'MANGA' : 'ANIME';
+    const saved = localStorage.getItem(MEDIA_TYPE_KEY);
+    if (saved === 'MANGA' || saved === 'ANIME') return saved;
+    return settingsStore.getSnapshot().defaultMediaType;
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
