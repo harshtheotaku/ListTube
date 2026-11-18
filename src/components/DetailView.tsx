@@ -74,6 +74,7 @@ import {
 import { CommentsSection } from './CommentsSection';
 import { EntityRouteTarget } from './EntityView';
 import { openInAppViewer } from '../services/inAppBrowser';
+import { triggerHaptic } from '../services/haptics';
 import { useChromeVisible } from '../services/scrollChrome';
 import { toast } from './Toast';
 import { CardSkeleton } from './Skeleton';
@@ -471,6 +472,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
   const displayScoreVal = canonical10ToDisplayValue(entry?.score, settings.scoreFormat);
 
   const handleChooseList = (status: ListStatus) => {
+    triggerHaptic('medium');
     library.setStatus(anime, status);
     setListPickerOpen(false);
     toast(`Subscribed · Added to ${statusLabel(status, anime.mediaType)}`);
@@ -778,6 +780,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
                 <button
                   type="button"
                   onClick={() => {
+                    triggerHaptic('light');
                     const nowLiked = library.toggleLike(anime);
                     toast(nowLiked ? 'Saved to Liked Titles!' : 'Removed from Liked Titles');
                   }}
@@ -889,7 +892,10 @@ export const DetailView: React.FC<DetailViewProps> = ({
                     <button
                       type="button"
                       aria-label="Decrease progress"
-                      onClick={() => library.setProgress(anime.id, Math.max(0, progress - 1))}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        library.setProgress(anime.id, Math.max(0, progress - 1));
+                      }}
                       className="p-1 text-[#AAAAAA] hover:text-white"
                     >
                       <Minus className="h-3.5 w-3.5" />
@@ -900,7 +906,10 @@ export const DetailView: React.FC<DetailViewProps> = ({
                     <button
                       type="button"
                       aria-label="Increase progress"
-                      onClick={() => library.setProgress(anime.id, progress + 1)}
+                      onClick={() => {
+                        triggerHaptic('light');
+                        library.setProgress(anime.id, progress + 1);
+                      }}
                       className="p-1 text-[#AAAAAA] hover:text-white"
                     >
                       <Plus className="h-3.5 w-3.5" />

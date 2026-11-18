@@ -10,6 +10,7 @@ import {
   Download,
   ExternalLink,
   Film,
+  Grid3X3,
   Heart,
   Loader2,
   MapPin,
@@ -48,6 +49,7 @@ interface YouViewProps {
   onOpenAnime?: (animeId: string) => void;
   onOpenSyncDiff?: () => void;
   onOpenWrapped?: () => void;
+  onOpenCollage?: () => void;
 }
 
 type ChannelTab = 'overview' | 'stats' | 'favorites' | 'about';
@@ -161,6 +163,7 @@ export const YouView: React.FC<YouViewProps> = ({
   onOpenAnime,
   onOpenSyncDiff,
   onOpenWrapped,
+  onOpenCollage,
 }) => {
   const settings = useSettings();
   const [channelTab, setChannelTab] = useState<ChannelTab>('overview');
@@ -364,6 +367,16 @@ export const YouView: React.FC<YouViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {onOpenCollage && (
+              <button
+                type="button"
+                onClick={onOpenCollage}
+                className="flex items-center gap-1.5 rounded-full bg-white/[0.08] px-3.5 py-2 text-[12px] font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/[0.14]"
+              >
+                <Grid3X3 className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                3×3 Maker
+              </button>
+            )}
             {onOpenWrapped && (
               <button
                 type="button"

@@ -1,6 +1,8 @@
 import { Anime, ListStatus } from '../types';
+import { searchAniList } from './anilist';
 import { animeStore } from './animeStore';
 import { ImportedEntry } from './jikan';
+import { library } from './library';
 import { TrackerImport } from './trackers';
 
 export interface ParsedBackupRow {
@@ -406,4 +408,37 @@ export async function importComixOrMihonFile(file: File): Promise<TrackerImport>
   }
   const sourceLabel = name.includes('mihon') || name.includes('tachiyomi') ? 'Mihon Backup' : 'Comix Backup';
   return matchRowsAgainstCatalog(rows, sourceLabel);
+}
+
+/**
+ * Resolves unmatched `backup:*` placeholder entries from Comix/Mihon imports
+ * against AniList search so niche titles receive real covers, chapters & 2-way sync IDs.
+ */
+export async function hydrateUnmatchedBackupEntries(entries: ImportedEntry[]): Promise<number> {
+  const unmatched = entries.filter((e) => e.anime.id.startsWith('backup:') && !e.anime.cover).slice(0, 25);
+  let resolvedCount = 0;
+
+  for (const item of unmatched) {
+    try {
+      const hits = await searchAniList(item.anime.title, 3, item.anime.mediaType ?? 'MANGA');
+      const best = hits[0];
+      if (!best) continue;
+      animeStore.remember(best);
+      animeStore.pin(best.id);
+      const oldEntry = library.getSnapshot().entries[item.anime.id];
+      if (oldEntry) {
+        library.setStatus(best, oldEntry.status);
+        library.updateEntryDetails(best.id, {
+          progress: oldEntry.progress,
+          score: oldEntry.score,
+          notes: oldEntry.notes,
+        });
+        library.remove(item.anime.id);
+      }
+      resolvedCount += 1;
+    } catch {
+      /* continue quietly if offline or rate-limited */
+    }
+  }
+  return resolvedCount;
 }

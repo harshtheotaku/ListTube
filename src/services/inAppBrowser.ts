@@ -19,6 +19,9 @@ declare global {
     ListTubeNative?: {
       exitApp?: () => void;
       openInAppBrowser?: (url: string, title: string) => void;
+      haptic?: (kind: string) => void;
+      scheduleAiringAlert?: (id: string, title: string, body: string, triggerAtMs: number) => void;
+      cancelAiringAlert?: (id: string) => void;
     };
   }
 }

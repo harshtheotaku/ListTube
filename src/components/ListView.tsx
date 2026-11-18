@@ -1,14 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   CheckSquare,
   Flag,
   FolderPlus,
+  LayoutList,
   Lock,
   Minus,
   Plus,
   Repeat,
   Square,
   Star,
+  Table2,
   Trash2,
   Tv,
   X,
@@ -264,8 +266,11 @@ export const ListView: React.FC<ListViewProps> = ({
   onExplore,
 }) => {
   const profile = useProfile();
+  const [hydrationTick, setHydrationTick] = useState(0);
+  useEffect(() => animeStore.subscribeHydration(() => setHydrationTick((n) => n + 1)), []);
   const [filter, setFilter] = useState<Filter>('all');
   const [sortBy, setSortBy] = useState<SortKey>('updated');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [newListDraft, setNewListDraft] = useState('');
@@ -302,7 +307,7 @@ export const ListView: React.FC<ListViewProps> = ({
           ? (anime.mediaType ?? 'ANIME') === mediaType
           : (entry.mediaType ?? 'ANIME') === mediaType;
       }),
-    [libraryState.entries, mediaType]
+    [libraryState.entries, mediaType, hydrationTick]
   );
 
   const normalizedQuery = query.trim().toLowerCase();
@@ -334,7 +339,7 @@ export const ListView: React.FC<ListViewProps> = ({
         if (sortBy === 'title') return a.anime.title.localeCompare(b.anime.title);
         return b.entry.updatedAt - a.entry.updatedAt;
       });
-  }, [entries, filter, normalizedQuery, sortBy]);
+  }, [entries, filter, normalizedQuery, sortBy, hydrationTick]);
 
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -365,7 +370,7 @@ export const ListView: React.FC<ListViewProps> = ({
       out.push({ anime, channelName: ch });
     }
     return out;
-  }, [entries]);
+  }, [entries, hydrationTick]);
 
   return (
     <div className="mx-auto min-h-screen max-w-5xl space-y-5 bg-[#0F0F0F] px-4 pb-28 pt-5 text-white sm:px-6 lg:px-8 lg:pb-16">
@@ -405,21 +410,47 @@ export const ListView: React.FC<ListViewProps> = ({
           </button>
 
           {entries.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                setSelectMode((v) => !v);
-                setSelectedIds([]);
-              }}
-              className={`flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition ${
-                selectMode
-                  ? 'bg-[#3EA6FF] text-black'
-                  : 'bg-[#272727] text-white hover:bg-[#3A3A3A]'
-              }`}
-            >
-              <CheckSquare className="h-3.5 w-3.5" />
-              <span>{selectMode ? 'Done' : 'Bulk Edit'}</span>
-            </button>
+            <>
+              <div className="flex h-9 items-center rounded-lg border border-white/[0.1] bg-[#1C1C1C] p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cards')}
+                  aria-label="Card view"
+                  className={`flex h-full items-center gap-1 rounded-md px-2.5 text-[11.5px] font-semibold transition ${
+                    viewMode === 'cards' ? 'bg-white text-black' : 'text-[#AAAAAA] hover:text-white'
+                  }`}
+                >
+                  <LayoutList className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Cards</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  aria-label="Spreadsheet table view"
+                  className={`flex h-full items-center gap-1 rounded-md px-2.5 text-[11.5px] font-semibold transition ${
+                    viewMode === 'table' ? 'bg-white text-black' : 'text-[#AAAAAA] hover:text-white'
+                  }`}
+                >
+                  <Table2 className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Table</span>
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectMode((v) => !v);
+                  setSelectedIds([]);
+                }}
+                className={`flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition ${
+                  selectMode
+                    ? 'bg-[#3EA6FF] text-black'
+                    : 'bg-[#272727] text-white hover:bg-[#3A3A3A]'
+                }`}
+              >
+                <CheckSquare className="h-3.5 w-3.5" />
+                <span>{selectMode ? 'Done' : 'Bulk Edit'}</span>
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -611,6 +642,115 @@ export const ListView: React.FC<ListViewProps> = ({
       ) : rows.length === 0 ? (
         <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-8 text-center text-[#AAAAAA]">
           <p className="text-[13px] font-semibold">No titles in this list yet.</p>
+        </div>
+      ) : viewMode === 'table' ? (
+        <div className="overflow-x-auto rounded-2xl border border-white/[0.1] bg-[#181818]">
+          <table className="w-full min-w-[660px] text-left text-[12.5px]">
+            <thead className="border-b border-white/[0.08] bg-white/[0.03] text-[10.5px] font-bold uppercase tracking-wider text-[#AAAAAA]">
+              <tr>
+                {selectMode && <th className="w-10 px-3 py-2.5" />}
+                <th className="px-3.5 py-2.5">Title</th>
+                <th className="px-3 py-2.5">Status</th>
+                <th className="px-3 py-2.5">Progress</th>
+                <th className="px-3 py-2.5">Score</th>
+                <th className="px-3 py-2.5">Format</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/[0.06]">
+              {rows.map(({ anime, entry }) => {
+                const totalCount = isManga ? anime.chapters ?? 0 : anime.episodes ?? 0;
+                const curProg = entry.progress ?? 0;
+                const isSel = selectedIds.includes(anime.id);
+                return (
+                  <tr key={anime.id} className={isSel ? 'bg-[#1E293B]/60' : 'hover:bg-white/[0.03]'}>
+                    {selectMode && (
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleSelected(anime.id)}
+                          aria-label={isSel ? 'Deselect entry' : 'Select entry'}
+                          className="text-[#3EA6FF]"
+                        >
+                          {isSel ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4 text-[#AAAAAA]" />}
+                        </button>
+                      </td>
+                    )}
+                    <td className="px-3.5 py-2">
+                      <button
+                        type="button"
+                        onClick={() => onOpen(anime)}
+                        className="flex items-center gap-2.5 text-left font-bold text-white hover:text-[#3EA6FF]"
+                      >
+                        <img
+                          src={anime.cover}
+                          alt=""
+                          loading="lazy"
+                          className="h-9 w-7 shrink-0 rounded object-cover bg-black"
+                        />
+                        <span className="max-w-[230px] truncate">{anime.title}</span>
+                      </button>
+                    </td>
+                    <td className="px-3 py-2">
+                      <select
+                        aria-label={`Status for ${anime.title}`}
+                        value={entry.status}
+                        onChange={(e) => library.setStatus(anime, e.target.value as ListStatus)}
+                        className="h-7 rounded-lg border border-white/10 bg-[#121216] px-2 text-[11.5px] font-semibold text-white outline-none"
+                      >
+                        {LIST_STATUS_ORDER.map((s) => (
+                          <option key={s} value={s}>
+                            {statusLabel(s, mediaType)}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-2 py-0.5">
+                        <button
+                          type="button"
+                          onClick={() => library.setProgress(anime.id, Math.max(0, curProg - 1))}
+                          className="p-0.5 text-[#AAAAAA] hover:text-white"
+                          aria-label={`Decrease progress for ${anime.title}`}
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <span className="min-w-[44px] text-center font-bold text-white">
+                          {totalCount > 0 ? `${curProg}/${totalCount}` : curProg}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => library.setProgress(anime.id, curProg + 1)}
+                          className="p-0.5 text-[#AAAAAA] hover:text-white"
+                          aria-label={`Increase progress for ${anime.title}`}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        aria-label={`Score for ${anime.title}`}
+                        min={0}
+                        max={10}
+                        step={0.5}
+                        value={entry.score ?? ''}
+                        placeholder="—"
+                        onChange={(e) => {
+                          const v = e.target.value === '' ? undefined : Math.max(0, Math.min(10, Number(e.target.value)));
+                          library.setScore(anime.id, v && v > 0 ? v : undefined);
+                        }}
+                        className="h-7 w-14 rounded-lg border border-white/10 bg-[#121216] px-2 text-center text-[11.5px] font-bold text-amber-300 outline-none focus:border-[#3EA6FF]"
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-[11px] font-semibold text-[#AAAAAA]">
+                      {anime.format || (isManga ? 'MANGA' : 'TV')}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       ) : (
         <div className="space-y-3">

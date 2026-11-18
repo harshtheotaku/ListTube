@@ -27,7 +27,7 @@ import {
   storeMalPkceSession,
   TrackerImport,
 } from '../services/trackers';
-import { importComixOrMihonFile } from '../services/backupImport';
+import { hydrateUnmatchedBackupEntries, importComixOrMihonFile } from '../services/backupImport';
 import { animeStore } from '../services/animeStore';
 import { library } from '../services/library';
 import { cloudSync, useCloudSync } from '../services/cloudSync';
@@ -125,6 +125,12 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
     );
     setResult(imported);
     toast(`Connected ${imported.entries.length} titles — feed & stats updated!`);
+    const unmatchedCount = imported.entries.filter((e) => e.anime.id.startsWith('backup:')).length;
+    if (unmatchedCount > 0) {
+      void hydrateUnmatchedBackupEntries(imported.entries).then((n) => {
+        if (n > 0) toast(`Matched ${n} additional titles with AniList covers & IDs!`);
+      });
+    }
   };
 
   const handleGoogleLogin = async () => {

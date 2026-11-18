@@ -1,14 +1,21 @@
 package com.listtube.app;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.AlarmManager;
 import android.app.Dialog;
+import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
@@ -33,13 +40,14 @@ import org.json.JSONObject;
 public class MainActivity extends BridgeActivity {
     private boolean bridgeConfigured = false;
     private String pendingOAuthUrl = null;
+    private String pendingShortcutTab = null;
 
     @SuppressLint("SourceLockedOrientationActivity")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         super.onCreate(savedInstanceState);
-        captureOAuthIntent(getIntent());
+        captureIncomingIntent(getIntent());
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -92,11 +100,74 @@ public class MainActivity extends BridgeActivity {
                     }
                     runOnUiThread(() -> showGuardedInAppBrowser(url, title));
                 }
+
+                @JavascriptInterface
+                public void haptic(String kind) {
+                    runOnUiThread(() -> {
+                        int feedback = HapticFeedbackConstants.KEYBOARD_TAP;
+                        if ("medium".equals(kind)) {
+                            feedback = Build.VERSION.SDK_INT >= 27
+                                ? HapticFeedbackConstants.KEYBOARD_PRESS
+                                : HapticFeedbackConstants.VIRTUAL_KEY;
+                        } else if ("success".equals(kind)) {
+                            feedback = Build.VERSION.SDK_INT >= 30
+                                ? HapticFeedbackConstants.CONFIRM
+                                : HapticFeedbackConstants.LONG_PRESS;
+                        }
+                        webView.performHapticFeedback(feedback);
+                    });
+                }
+
+                @JavascriptInterface
+                public void scheduleAiringAlert(String id, String title, String body, double triggerAtMs) {
+                    if (id == null || id.isEmpty()) return;
+                    long when = (long) triggerAtMs;
+                    if (when <= System.currentTimeMillis() + 5000L) return;
+                    runOnUiThread(() -> {
+                        if (Build.VERSION.SDK_INT >= 33 &&
+                            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 4201);
+                        }
+                        AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+                        if (am == null) return;
+                        Intent intent = new Intent(MainActivity.this, AiringAlertReceiver.class);
+                        intent.putExtra(AiringAlertReceiver.EXTRA_ALERT_ID, id);
+                        intent.putExtra(AiringAlertReceiver.EXTRA_TITLE, title);
+                        intent.putExtra(AiringAlertReceiver.EXTRA_BODY, body);
+                        PendingIntent pi = PendingIntent.getBroadcast(
+                            MainActivity.this,
+                            id.hashCode(),
+                            intent,
+                            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                        );
+                        am.set(AlarmManager.RTC_WAKEUP, when, pi);
+                    });
+                }
+
+                @JavascriptInterface
+                public void cancelAiringAlert(String id) {
+                    if (id == null || id.isEmpty()) return;
+                    runOnUiThread(() -> {
+                        AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+                        if (am == null) return;
+                        Intent intent = new Intent(MainActivity.this, AiringAlertReceiver.class);
+                        PendingIntent pi = PendingIntent.getBroadcast(
+                            MainActivity.this,
+                            id.hashCode(),
+                            intent,
+                            PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE
+                        );
+                        if (pi != null) {
+                            am.cancel(pi);
+                            pi.cancel();
+                        }
+                    });
+                }
             }, "ListTubeNative");
             bridgeConfigured = true;
         }
 
-        flushPendingOAuthUrl(webView);
+        flushPendingIntents(webView);
     }
 
     private static final List<String> AD_HOST_MARKERS = Arrays.asList(
@@ -108,6 +179,23 @@ public class MainActivity extends BridgeActivity {
         "adnxs.", "criteo.", "rubiconproject.", "pubmatic.", "openx.",
         "acscdn.", "alexametrics.", "realsrv.", "twinrdsrv.", "1xbet", "bet365"
     );
+
+    private static final List<String> ALLOWED_EMBED_HOST_MARKERS = Arrays.asList(
+        "vidstream", "megacloud", "rabbitstream", "dokicloud", "filemoon",
+        "streamtape", "mp4upload", "kwik.", "sibnet.", "sendvid.", "yourupload.",
+        "streamwish", "doodstream", "voe.", "cloudflare.", "challenges.cloudflare.",
+        "hcaptcha.", "recaptcha.", "youtube.", "youtu.be", "mangadex.", "comix.",
+        "kotoplay."
+    );
+
+    private static boolean isAllowedEmbedOrChallengeHost(String host) {
+        if (host == null) return false;
+        String lower = host.toLowerCase(Locale.US);
+        for (String marker : ALLOWED_EMBED_HOST_MARKERS) {
+            if (lower.contains(marker)) return true;
+        }
+        return false;
+    }
 
     private static boolean isAdOrTrackerHost(String host) {
         if (host == null) return false;
@@ -278,14 +366,31 @@ public class MainActivity extends BridgeActivity {
                     runOnUiThread(() -> shieldView.setText("Shield Active · " + count + " popups/ads blocked"));
                     return true;
                 }
-                // Keep navigation on the target streaming/reading domain & prevent cross-site ad hijack jumps
+                // Keep navigation on the target streaming/reading domain, allowed video embeds/CDNs, or Cloudflare/captcha challenges
                 String targetDom = baseDomain(host);
-                if (!targetDom.equals(initialDomain) && !initialDomain.isEmpty()) {
+                if (!targetDom.equals(initialDomain) && !initialDomain.isEmpty() && !isAllowedEmbedOrChallengeHost(host)) {
                     int count = blockedCount.incrementAndGet();
                     runOnUiThread(() -> shieldView.setText("Shield Active · Blocked external redirect (" + count + ")"));
                     return true;
                 }
                 return false;
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                String cosmeticCss =
+                    "ins.adsbygoogle,[id*='ad-banner'],[id*='ad_banner'],[class*='popup-ad']," +
+                    "[class*='ad-overlay'],[class*='interstitial'],[data-ad-slot]" +
+                    "{display:none!important;visibility:hidden!important;pointer-events:none!important;}";
+                String js =
+                    "(function(){try{" +
+                    "if(document.getElementById('lt-cosmetic-shield'))return;" +
+                    "var s=document.createElement('style');s.id='lt-cosmetic-shield';" +
+                    "s.textContent=" + JSONObject.quote(cosmeticCss) + ";" +
+                    "(document.head||document.documentElement).appendChild(s);" +
+                    "}catch(e){}})();";
+                view.evaluateJavascript(js, null);
             }
         });
 
@@ -330,24 +435,48 @@ public class MainActivity extends BridgeActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        captureOAuthIntent(intent);
+        captureIncomingIntent(intent);
         WebView webView = getBridge() != null ? getBridge().getWebView() : null;
         if (webView != null) {
-            flushPendingOAuthUrl(webView);
+            flushPendingIntents(webView);
         }
     }
 
-    private void captureOAuthIntent(Intent intent) {
+    private void captureIncomingIntent(Intent intent) {
         if (intent == null) return;
         Uri data = intent.getData();
         if (data == null) return;
+        String scheme = data.getScheme();
+        String host = data.getHost();
+        if ("com.listtube.app".equals(scheme) && "tab".equals(host)) {
+            String seg = data.getLastPathSegment();
+            if (seg != null && !seg.isEmpty()) {
+                pendingShortcutTab = seg;
+            }
+            return;
+        }
+        String tabQuery = data.getQueryParameter("tab");
+        if (tabQuery != null && !tabQuery.isEmpty()) {
+            pendingShortcutTab = tabQuery;
+        }
         String urlStr = data.toString();
         if (urlStr.contains("code=") || urlStr.contains("access_token=")) {
             pendingOAuthUrl = urlStr;
         }
     }
 
-    private void flushPendingOAuthUrl(WebView webView) {
+    private void flushPendingIntents(WebView webView) {
+        if (pendingShortcutTab != null) {
+            final String targetTab = pendingShortcutTab;
+            pendingShortcutTab = null;
+            webView.postDelayed(() -> {
+                String qTab = JSONObject.quote(targetTab);
+                String js =
+                    "window.__pendingListTubeTab = " + qTab + ";" +
+                    "if (window.__listtubeOpenTab) { window.__listtubeOpenTab(" + qTab + "); }";
+                webView.evaluateJavascript(js, null);
+            }, 450);
+        }
         if (pendingOAuthUrl == null) return;
         final String targetUrl = pendingOAuthUrl;
         pendingOAuthUrl = null;

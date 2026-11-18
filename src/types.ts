@@ -414,6 +414,7 @@ export interface PublicUserSummary {
   favoriteAnimeIds: string[];
   favoriteMangaIds: string[];
   favoriteCharactersData: FavoriteCharacterItem[];
+  profileVisibility?: ProfileVisibilitySettings;
   updatedAt: string;
 }
 

@@ -241,6 +241,24 @@ export const notificationsService = {
         for (const row of chosen) {
           const id = `sched-notif:${row.anime.id}:${row.episode}`;
           const isTracked = Boolean(lib.entries[row.anime.id]);
+          if (
+            isTracked &&
+            row.airingAt > nowSec &&
+            row.airingAt < nowSec + 48 * 3600 &&
+            typeof window !== 'undefined' &&
+            typeof (window as any).ListTubeNative?.scheduleAiringAlert === 'function'
+          ) {
+            try {
+              (window as any).ListTubeNative.scheduleAiringAlert(
+                id,
+                row.anime.title,
+                `Episode ${row.episode} airs now!`,
+                row.airingAt * 1000
+              );
+            } catch {
+              /* ignore Android scheduler issues */
+            }
+          }
           map.set(id, {
             id,
             kind: 'episodes',

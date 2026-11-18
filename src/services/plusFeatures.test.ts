@@ -4,6 +4,9 @@ import { computePacingPlan } from './pacingGoal';
 import { settingsStore } from './settings';
 import { buildThemeQuizRound } from './themeQuiz';
 import { computeWrappedSummary } from './wrappedStats';
+import { pickDefaultCollageSlots } from './collageGrid';
+import { animeStore } from './animeStore';
+import { UserProfile } from './profile';
 import { decodeMihonProtobufBytes, parseComixOrJsonBackup } from './backupImport';
 import { Anime, LibraryState } from '../types';
 
@@ -106,7 +109,35 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
     quiz.forEach((q) => {
       expect(q.options).toHaveLength(4);
       expect(q.options).toContain(q.correctAnswer);
+      expect(typeof q.audioQuery).toBe('string');
+      expect(q.audioQuery.length).toBeGreaterThan(2);
     });
+
+    const a1 = makeAnime({ id: 'anilist:101', title: 'Frieren', score: 9.2 });
+    const a2 = makeAnime({ id: 'anilist:102', title: 'Monster', score: 9.1 });
+    animeStore.remember(a1);
+    animeStore.remember(a2);
+    const mockProfile: UserProfile = {
+      name: 'Test',
+      handle: '@test',
+      avatarId: 'gojo',
+      avatarUrl: '',
+      bannerUrl: '',
+      favoriteAnimeIds: ['anilist:102'],
+      favoriteMangaIds: [],
+    };
+    const slots = pickDefaultCollageSlots(
+      {
+        ...lib,
+        entries: {
+          'anilist:101': { animeId: 'anilist:101', mediaType: 'ANIME', status: 'completed', progress: 28, score: 10, addedAt: 1, updatedAt: 1 },
+        },
+      },
+      mockProfile,
+      'ANIME'
+    );
+    expect(slots[0]?.id).toBe('anilist:102');
+    expect(slots.some((s) => s.id === 'anilist:101')).toBe(true);
   });
 
   it('defaults externalLinkMode to external and decodes Comix CSV/JSON & Mihon protobuf backups', () => {

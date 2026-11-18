@@ -3,6 +3,7 @@ import {
   Calendar,
   Compass,
   Dice5,
+  Grid3X3,
   ListChecks,
   Newspaper,
   Search,
@@ -27,6 +28,7 @@ interface CommandPaletteModalProps {
   onOpenAnime: (anime: Anime) => void;
   onOpenConflicts: () => void;
   onOpenWrapped?: () => void;
+  onOpenCollage?: () => void;
   onOpenQuiz?: () => void;
   onOpenSettings?: () => void;
 }
@@ -40,6 +42,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   onOpenAnime,
   onOpenConflicts,
   onOpenWrapped,
+  onOpenCollage,
   onOpenQuiz,
   onOpenSettings,
 }) => {
@@ -108,6 +111,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   const quickActions: { label: string; icon: React.ReactNode; run: () => void }[] = [
     { label: 'Spin Discovery Roulette (Pick Next Show)', icon: <Dice5 className="h-4 w-4 text-amber-300" />, run: spinRoulette },
     ...(onOpenWrapped ? [{ label: 'Open ListTube Wrapped Card', icon: <Sparkles className="h-4 w-4 text-rose-400" />, run: () => { onClose(); onOpenWrapped(); } }] : []),
+    ...(onOpenCollage ? [{ label: 'Open 3×3 Collage Grid Maker', icon: <Grid3X3 className="h-4 w-4 text-[#3EA6FF]" />, run: () => { onClose(); onOpenCollage(); } }] : []),
     ...(onOpenQuiz ? [{ label: 'Play Anime OP/ED Music Quiz', icon: <Sparkles className="h-4 w-4 text-amber-300" />, run: () => { onClose(); onOpenQuiz(); } }] : []),
     { label: 'Open 3-Way Sync Conflict Resolver', icon: <Sparkles className="h-4 w-4 text-[#3EA6FF]" />, run: () => { onClose(); onOpenConflicts(); } },
     ...(onOpenSettings ? [{ label: 'Open Themes, Liquid Glass & Settings', icon: <Settings className="h-4 w-4 text-neutral-300" />, run: () => { onClose(); onOpenSettings(); } }] : []),

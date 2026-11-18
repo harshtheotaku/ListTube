@@ -72,6 +72,9 @@ const CommandPaletteModal = lazy(() =>
 const WrappedModal = lazy(() =>
   import('./components/WrappedModal').then((m) => ({ default: m.WrappedModal }))
 );
+const CollageModal = lazy(() =>
+  import('./components/CollageModal').then((m) => ({ default: m.CollageModal }))
+);
 const ThemeQuizModal = lazy(() =>
   import('./components/ThemeQuizModal').then((m) => ({ default: m.ThemeQuizModal }))
 );
@@ -151,8 +154,14 @@ function parseCurrentRoute(): {
   pathRaw = pathRaw.replace(/^\/+|\/+$/g, '');
 
   const raw = decodeURIComponent(spaRedirect?.replace(/^\/+/, '') || hashRaw || pathRaw || '');
+  const tabParam = search.get('tab') as AppTab | null;
   const tabFromState = window.history.state?.tab as AppTab | undefined;
-  const fallback: AppTab = TABS.includes(tabFromState as AppTab) ? (tabFromState as AppTab) : 'home';
+  const fallback: AppTab =
+    tabParam && TABS.includes(tabParam)
+      ? tabParam
+      : TABS.includes(tabFromState as AppTab)
+        ? (tabFromState as AppTab)
+        : 'home';
 
   if (raw.startsWith('anime/')) {
     return {
@@ -251,6 +260,7 @@ export const App: React.FC = () => {
   const [syncDiffOpen, setSyncDiffOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [wrappedOpen, setWrappedOpen] = useState(false);
+  const [collageOpen, setCollageOpen] = useState(false);
   const [quizOpen, setQuizOpen] = useState(false);
   const [quickTarget, setQuickTarget] = useState<Anime | null>(null);
   const [explorePresetGenre, setExplorePresetGenre] = useState<string | null>(null);
@@ -725,6 +735,27 @@ export const App: React.FC = () => {
     scrollTop();
   };
 
+  useEffect(() => {
+    const win = window as unknown as {
+      __listtubeOpenTab?: (t: string) => void;
+      __pendingListTubeTab?: string | null;
+    };
+    win.__listtubeOpenTab = (nextTab: string) => {
+      if (TABS.includes(nextTab as AppTab)) {
+        resetScrollChrome();
+        navigate(nextTab as AppTab);
+      }
+    };
+    if (win.__pendingListTubeTab && TABS.includes(win.__pendingListTubeTab as AppTab)) {
+      const pending = win.__pendingListTubeTab as AppTab;
+      win.__pendingListTubeTab = null;
+      navigate(pending);
+    }
+    return () => {
+      delete win.__listtubeOpenTab;
+    };
+  }, []);
+
   const openGenreInExplore = (genre: string) => {
     setExplorePresetGenre(genre);
     navigate('explore');
@@ -997,6 +1028,7 @@ export const App: React.FC = () => {
                     onOpenAnime={openDetail}
                     onOpenSyncDiff={() => setSyncDiffOpen(true)}
                     onOpenWrapped={() => setWrappedOpen(true)}
+                    onOpenCollage={() => setCollageOpen(true)}
                   />
                 )}
               </>
@@ -1040,6 +1072,7 @@ export const App: React.FC = () => {
             onOpenAnime={openAnime}
             onOpenConflicts={() => setSyncDiffOpen(true)}
             onOpenWrapped={() => setWrappedOpen(true)}
+            onOpenCollage={() => setCollageOpen(true)}
             onOpenQuiz={() => setQuizOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
           />
@@ -1049,6 +1082,14 @@ export const App: React.FC = () => {
             isOpen={wrappedOpen}
             onClose={() => setWrappedOpen(false)}
             libraryState={libraryState}
+          />
+        )}
+        {collageOpen && (
+          <CollageModal
+            isOpen={collageOpen}
+            onClose={() => setCollageOpen(false)}
+            libraryState={libraryState}
+            mediaType={mediaType}
           />
         )}
         {quizOpen && (

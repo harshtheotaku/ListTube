@@ -15,6 +15,7 @@ import {
 import { fetchPublicAniListActivities, fetchPublicAniListReviews } from './anilist';
 import { animeStore } from './animeStore';
 import { UserProfile } from './profile';
+import { settingsStore } from './settings';
 import { supabase } from './supabase';
 
 // ============================================================================
@@ -361,6 +362,14 @@ export async function deleteActivity(activityId: string, userId: string): Promis
 // ============================================================================
 
 function mapProfileRow(row: any): PublicUserSummary {
+  const vis = row.profile_visibility && typeof row.profile_visibility === 'object'
+    ? {
+        hideActivity: Boolean(row.profile_visibility.hideActivity),
+        hideStats: Boolean(row.profile_visibility.hideStats),
+        hideLists: Boolean(row.profile_visibility.hideLists),
+        hideFavorites: Boolean(row.profile_visibility.hideFavorites),
+      }
+    : undefined;
   return {
     id: row.id,
     displayName: row.display_name || 'ListTube Viewer',
@@ -374,27 +383,38 @@ function mapProfileRow(row: any): PublicUserSummary {
     favoriteCharactersData: Array.isArray(row.favorite_characters_data)
       ? (row.favorite_characters_data as FavoriteCharacterItem[])
       : [],
+    profileVisibility: vis,
     updatedAt: row.updated_at || new Date().toISOString(),
   };
 }
 
+const PUBLIC_PROFILE_COLS_WITH_PRIVACY =
+  'id, display_name, handle, avatar_url, banner_url, bio, location, favorite_anime_ids, favorite_manga_ids, favorite_characters_data, profile_visibility, updated_at';
+const PUBLIC_PROFILE_COLS_BASE =
+  'id, display_name, handle, avatar_url, banner_url, bio, location, favorite_anime_ids, favorite_manga_ids, favorite_characters_data, updated_at';
+
 export async function fetchPublicUsers(query = '', limit = 30): Promise<PublicUserSummary[]> {
   try {
-    let req = supabase
-      .from('profiles')
-      .select(
-        'id, display_name, handle, avatar_url, banner_url, bio, location, favorite_anime_ids, favorite_manga_ids, favorite_characters_data, updated_at'
-      )
-      .order('updated_at', { ascending: false })
-      .limit(limit);
-
     const clean = query.trim();
-    if (clean) {
-      const safe = clean.replace(/[%_]/g, '');
-      req = req.or(`display_name.ilike.%${safe}%,handle.ilike.%${safe}%`);
-    }
+    const safe = clean.replace(/[%_]/g, '');
+    const buildQuery = (cols: string) => {
+      let req = supabase
+        .from('profiles')
+        .select(cols)
+        .order('updated_at', { ascending: false })
+        .limit(limit);
+      if (safe) {
+        req = req.or(`display_name.ilike.%${safe}%,handle.ilike.%${safe}%`);
+      }
+      return req;
+    };
 
-    const { data, error } = await req;
+    let { data, error } = await buildQuery(PUBLIC_PROFILE_COLS_WITH_PRIVACY);
+    if (error && /profile_visibility/i.test(error.message)) {
+      const retry = await buildQuery(PUBLIC_PROFILE_COLS_BASE);
+      data = retry.data;
+      error = retry.error;
+    }
     if (error || !data) return [];
     return (data as any[]).map(mapProfileRow);
   } catch {
@@ -406,15 +426,19 @@ export async function fetchPublicUserProfile(userIdOrHandle: string): Promise<Pu
   try {
     const clean = decodeURIComponent(userIdOrHandle).trim();
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean);
-    const req = supabase
-      .from('profiles')
-      .select(
-        'id, display_name, handle, avatar_url, banner_url, bio, location, favorite_anime_ids, favorite_manga_ids, favorite_characters_data, updated_at'
-      );
+    const runFetch = (cols: string) => {
+      const req = supabase.from('profiles').select(cols);
+      return isUuid
+        ? req.eq('id', clean).maybeSingle()
+        : req.ilike('handle', clean.startsWith('@') ? clean : `@${clean}`).maybeSingle();
+    };
 
-    const { data, error } = await (isUuid
-      ? req.eq('id', clean).maybeSingle()
-      : req.ilike('handle', clean.startsWith('@') ? clean : `@${clean}`).maybeSingle());
+    let { data, error } = await runFetch(PUBLIC_PROFILE_COLS_WITH_PRIVACY);
+    if (error && /profile_visibility/i.test(error.message)) {
+      const retry = await runFetch(PUBLIC_PROFILE_COLS_BASE);
+      data = retry.data;
+      error = retry.error;
+    }
     if (error || !data) return null;
     return mapProfileRow(data);
   } catch {
@@ -662,16 +686,19 @@ export async function fetchSocialNotifications(userId: string): Promise<SocialNo
         .limit(10),
     ]);
 
-    for (const r of (repliesRes as any).data ?? []) {
-      out.push({
-        id: `soc-reply:${r.id}`,
-        kind: 'reply',
-        title: `${r.author_name} replied to your update`,
-        subtitle: String(r.body ?? '').slice(0, 90),
-        avatar: r.author_avatar,
-        createdAt: new Date(r.created_at).getTime(),
-        targetId: r.user_id,
-      });
+    const allowReplies = settingsStore.getSnapshot().notifyCommentLikes;
+    if (allowReplies) {
+      for (const r of (repliesRes as any).data ?? []) {
+        out.push({
+          id: `soc-reply:${r.id}`,
+          kind: 'reply',
+          title: `${r.author_name} replied to your update`,
+          subtitle: String(r.body ?? '').slice(0, 90),
+          avatar: r.author_avatar,
+          createdAt: new Date(r.created_at).getTime(),
+          targetId: r.user_id,
+        });
+      }
     }
 
     const followerRows = ((followersRes as any).data ?? []) as { follower_id: string; created_at: string }[];

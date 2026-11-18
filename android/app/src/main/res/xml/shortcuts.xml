@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="open_explore"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_explore_short"
+        android:shortcutLongLabel="@string/shortcut_explore_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.listtube.app"
+            android:targetClass="com.listtube.app.MainActivity"
+            android:data="com.listtube.app://tab/explore" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="open_schedule"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_schedule_short"
+        android:shortcutLongLabel="@string/shortcut_schedule_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.listtube.app"
+            android:targetClass="com.listtube.app.MainActivity"
+            android:data="com.listtube.app://tab/schedule" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="open_list"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_list_short"
+        android:shortcutLongLabel="@string/shortcut_list_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.listtube.app"
+            android:targetClass="com.listtube.app.MainActivity"
+            android:data="com.listtube.app://tab/list" />
+    </shortcut>
+</shortcuts>

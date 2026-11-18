@@ -197,7 +197,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {!(cloud.userId === user.id && settings.profileVisibility.hideStats) && (
+            {!((cloud.userId === user.id ? settings.profileVisibility : user.profileVisibility)?.hideStats) && (
               affinity.affinity !== null ? (
                 <div
                   className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] font-bold ${
@@ -248,7 +248,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
       </div>
 
       {/* Favorites Strip */}
-      {!(cloud.userId === user.id && settings.profileVisibility.hideFavorites) && (favMedia.length > 0 || user.favoriteCharactersData.length > 0) && (
+      {!((cloud.userId === user.id ? settings.profileVisibility : user.profileVisibility)?.hideFavorites) && (favMedia.length > 0 || user.favoriteCharactersData.length > 0) && (
         <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
           <h2 className="mb-3 flex items-center gap-1.5 text-[12.5px] font-bold uppercase tracking-wider text-white">
             <Heart className="h-4 w-4 fill-rose-400 text-rose-400" />
@@ -277,9 +277,9 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
       )}
 
       {/* Public List */}
-      {cloud.userId === user.id && settings.profileVisibility.hideLists ? (
+      {(cloud.userId === user.id ? settings.profileVisibility : user.profileVisibility)?.hideLists ? (
         <div className="rounded-2xl border border-white/[0.08] bg-[#181818] p-6 text-center text-[13px] text-[#AAAAAA]">
-          Public Library hidden on your profile preview via Privacy Settings.
+          Public Library is hidden by this user&apos;s Privacy Settings.
         </div>
       ) : (
       <div className="space-y-3 rounded-2xl border border-white/[0.08] bg-[#181818] p-4">

@@ -4,9 +4,16 @@ export interface ThemeQuizQuestion {
   prompt: string;
   songTitle: string;
   artist: string;
-  youtubeQuery: string;
+  audioQuery: string;
   options: string[];
   correctAnswer: string;
+}
+
+export interface ThemeAudioTrack {
+  previewUrl: string;
+  artworkUrl?: string;
+  trackName?: string;
+  artistName?: string;
 }
 
 interface SeedTheme {
@@ -38,6 +45,7 @@ const ICONIC_THEMES: SeedTheme[] = [
 ];
 
 const HIGH_SCORE_KEY = 'listtube.themeQuiz.best.v1';
+const audioCache = new Map<string, ThemeAudioTrack | null>();
 
 export function getQuizHighScore(): number {
   if (typeof localStorage === 'undefined') return 0;
@@ -48,6 +56,49 @@ export function saveQuizHighScore(score: number): void {
   if (typeof localStorage === 'undefined') return;
   const best = getQuizHighScore();
   if (score > best) localStorage.setItem(HIGH_SCORE_KEY, String(score));
+}
+
+export async function resolveThemePreviewAudio(q: ThemeQuizQuestion): Promise<ThemeAudioTrack | null> {
+  if (audioCache.has(q.id)) return audioCache.get(q.id) ?? null;
+
+  const queries = [
+    q.audioQuery,
+    `${q.songTitle} ${q.artist.split(':')[0].split('from')[0].trim()}`,
+    q.songTitle,
+  ];
+
+  for (const term of queries) {
+    try {
+      const res = await fetch(
+        `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&limit=5`
+      );
+      if (!res.ok) continue;
+      const json = (await res.json()) as {
+        results?: {
+          previewUrl?: string;
+          artworkUrl100?: string;
+          trackName?: string;
+          artistName?: string;
+        }[];
+      };
+      const match = (json.results ?? []).find((r) => typeof r.previewUrl === 'string' && r.previewUrl.startsWith('https://'));
+      if (match?.previewUrl) {
+        const track: ThemeAudioTrack = {
+          previewUrl: match.previewUrl,
+          artworkUrl: match.artworkUrl100?.replace('100x100', '200x200'),
+          trackName: match.trackName,
+          artistName: match.artistName,
+        };
+        audioCache.set(q.id, track);
+        return track;
+      }
+    } catch {
+      /* try next query */
+    }
+  }
+
+  audioCache.set(q.id, null);
+  return null;
 }
 
 export function buildThemeQuizRound(count = 8): ThemeQuizQuestion[] {
@@ -68,7 +119,7 @@ export function buildThemeQuizRound(count = 8): ThemeQuizQuestion[] {
       prompt: `Which anime features ${item.kind}: “${item.song}”?`,
       songTitle: item.song,
       artist: item.artist,
-      youtubeQuery: `${item.song} ${item.artist} theme`,
+      audioQuery: `${item.song} ${item.artist}`,
       options,
       correctAnswer: item.anime,
     };

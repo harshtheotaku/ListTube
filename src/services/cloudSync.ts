@@ -309,30 +309,40 @@ async function pushAuthAccount(uid: string): Promise<void> {
   const profile = profileStore.getSnapshot();
   const settings = settingsStore.getSnapshot();
 
-  const { error: profErr } = await supabase.from('profiles').upsert(
+  const profilePayload = {
+    id: uid,
+    display_name: profile.name,
+    handle: profile.handle,
+    avatar_url: profile.avatarUrl,
+    avatar_id: profile.avatarId,
+    banner_url: profile.bannerUrl ?? null,
+    bio: profile.bio ?? null,
+    location: profile.location ?? null,
+    favorite_anime_ids: profile.favoriteAnimeIds ?? [],
+    favorite_manga_ids: profile.favoriteMangaIds ?? [],
+    favorite_characters: profile.favoriteCharacters ?? [],
+    favorite_characters_data: profile.favoriteCharactersData ?? [],
+    custom_list_names: profile.customListNames ?? [],
+    autoplay_trailer: settings.autoplayTrailer,
+    score_format: settings.scoreFormat,
+    show_community_links: settings.showCommunityLinks,
+    interests: lib.interests,
+    manga_interests: lib.mangaInterests ?? [],
+    updated_at: new Date().toISOString(),
+  };
+
+  let { error: profErr } = await supabase.from('profiles').upsert(
     {
-      id: uid,
-      display_name: profile.name,
-      handle: profile.handle,
-      avatar_url: profile.avatarUrl,
-      avatar_id: profile.avatarId,
-      banner_url: profile.bannerUrl ?? null,
-      bio: profile.bio ?? null,
-      location: profile.location ?? null,
-      favorite_anime_ids: profile.favoriteAnimeIds ?? [],
-      favorite_manga_ids: profile.favoriteMangaIds ?? [],
-      favorite_characters: profile.favoriteCharacters ?? [],
-      favorite_characters_data: profile.favoriteCharactersData ?? [],
-      custom_list_names: profile.customListNames ?? [],
-      autoplay_trailer: settings.autoplayTrailer,
-      score_format: settings.scoreFormat,
-      show_community_links: settings.showCommunityLinks,
-      interests: lib.interests,
-      manga_interests: lib.mangaInterests ?? [],
-      updated_at: new Date().toISOString(),
+      ...profilePayload,
+      profile_visibility: settings.profileVisibility,
+      notify_comment_likes: settings.notifyCommentLikes,
     },
     { onConflict: 'id' }
   );
+  if (profErr && /profile_visibility|notify_comment_likes/i.test(profErr.message)) {
+    const retry = await supabase.from('profiles').upsert(profilePayload, { onConflict: 'id' });
+    profErr = retry.error;
+  }
   if (profErr) throw new Error(profErr.message);
 
   const { error: prefErr } = await supabase.from('user_preferences').upsert(
@@ -481,7 +491,7 @@ async function pullAuthAccount(uid: string): Promise<void> {
     };
   }
 
-  const profRow = profRes.data;
+  const profRow = profRes.data as Record<string, any> | null;
   const prefRow = prefRes.data;
 
   if (prefRow?.anilist_token && !meta.anilistWritebackToken) {
@@ -553,6 +563,19 @@ async function pullAuthAccount(uid: string): Promise<void> {
               profRow.show_community_links !== undefined
                 ? Boolean(profRow.show_community_links)
                 : true,
+            ...(profRow.profile_visibility && typeof profRow.profile_visibility === 'object'
+              ? {
+                  profileVisibility: {
+                    hideActivity: Boolean(profRow.profile_visibility.hideActivity),
+                    hideStats: Boolean(profRow.profile_visibility.hideStats),
+                    hideLists: Boolean(profRow.profile_visibility.hideLists),
+                    hideFavorites: Boolean(profRow.profile_visibility.hideFavorites),
+                  },
+                }
+              : {}),
+            ...(typeof profRow.notify_comment_likes === 'boolean'
+              ? { notifyCommentLikes: profRow.notify_comment_likes }
+              : {}),
           }
         : undefined,
       snapshots: remoteSnapshots,
