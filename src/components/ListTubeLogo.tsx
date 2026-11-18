@@ -1,5 +1,5 @@
 import React from 'react';
-import brandAnimeImg from '../assets/brand-anime.png';
+import brandAnimeImg from '../assets/brand-anime.webp';
 
 interface ListTubeLogoProps {
   compact?: boolean;

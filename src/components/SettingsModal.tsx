@@ -1190,6 +1190,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="flex items-center justify-between gap-4 border-t border-white/[0.08] pt-3">
                     <div>
                       <p className="text-[12.5px] font-bold text-white">
+                        Daily Evening Airing Digest
+                      </p>
+                      <p className="text-[11px] text-[#AAAAAA]">
+                        Bundle tracked broadcasts releasing tonight into one digest notification card.
+                      </p>
+                    </div>
+                    <AppleSwitch
+                      label="Daily Evening Airing Digest"
+                      checked={settings.digestMode}
+                      onChange={(v) => settingsStore.update({ digestMode: v })}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-4 border-t border-white/[0.08] pt-3">
+                    <div>
+                      <p className="text-[12.5px] font-bold text-white">
+                        Notification Quiet Hours
+                      </p>
+                      <p className="text-[11px] text-[#AAAAAA]">
+                        Label late-night schedule alerts quietly for evening digest batching.
+                      </p>
+                    </div>
+                    <AppleSwitch
+                      label="Notification Quiet Hours"
+                      checked={settings.quietHoursEnabled}
+                      onChange={(v) => settingsStore.update({ quietHoursEnabled: v })}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-4 border-t border-white/[0.08] pt-3">
+                    <div>
+                      <p className="text-[12.5px] font-bold text-white">
                         Notify on comment likes &amp; replies
                       </p>
                     </div>
@@ -1602,7 +1632,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {[
                       { keys: '⌘K / Ctrl+K', action: 'Open Quick Command Palette' },
                       { keys: '/', action: 'Focus Global Search' },
-                      { keys: 'Esc', action: 'Close Modals or Search Dropdown' },
+                      { keys: '?', action: 'Open Shortcuts & Palette' },
+                      { keys: 'E', action: 'Watch Page: Log +1 Episode' },
+                      { keys: 'T', action: 'Watch Page: Toggle Theater' },
+                      { keys: 'Esc', action: 'Close Modals or Go Back' },
                     ].map((s) => (
                       <div
                         key={s.keys}

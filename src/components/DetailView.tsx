@@ -241,6 +241,27 @@ export const DetailView: React.FC<DetailViewProps> = ({
   }, [animeId, settings.autoplayTrailer]);
 
   useEffect(() => {
+    const onWatchKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      const k = e.key.toLowerCase();
+      if (k === 't') {
+        e.preventDefault();
+        setTheaterMode((v) => !v);
+      } else if (k === 'e' && anime) {
+        e.preventDefault();
+        const next = (libraryState.entries[anime.id]?.progress ?? 0) + 1;
+        triggerHaptic('light');
+        library.setProgress(anime.id, next);
+        toast(`Logged ${anime.mediaType === 'MANGA' ? `Ch ${next}` : `Ep ${next}`}`);
+      }
+    };
+    window.addEventListener('keydown', onWatchKey);
+    return () => window.removeEventListener('keydown', onWatchKey);
+  }, [anime, libraryState.entries]);
+
+  useEffect(() => {
     let cancelled = false;
     const cached = animeStore.get(animeId);
     if (cached) setAnime(cached);
@@ -1029,6 +1050,33 @@ export const DetailView: React.FC<DetailViewProps> = ({
                     </div>
                   );
                 })()}
+
+                {/* Season / Series Complete -> Next Sequel Binge Banner */}
+                {isSubscribed &&
+                  ((total > 0 && progress >= total) || entry?.status === 'completed') &&
+                  (() => {
+                    const sequel = anime.similar.find((r) => r.relation === 'SEQUEL');
+                    if (!sequel) return null;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => onOpenId(sequel.id)}
+                        className="lt-press flex w-full items-center justify-between gap-3 rounded-xl border border-[#FF0000]/35 bg-[#FF0000]/10 px-3.5 py-2.5 text-left transition hover:bg-[#FF0000]/20"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[10.5px] font-extrabold uppercase tracking-wider text-rose-300">
+                            {isManga ? 'Series Complete · Sequel Available' : 'Season Complete · Up Next'}
+                          </p>
+                          <p className="truncate text-[13px] font-bold text-white">
+                            Continue to {sequel.title}
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-[#FF0000] px-3 py-1 text-[11px] font-bold text-white">
+                          Open →
+                        </span>
+                      </button>
+                    );
+                  })()}
 
                 {/* Decimal / Multi-Scale Score Picker */}
                 <div className="flex flex-wrap items-center justify-between gap-2">

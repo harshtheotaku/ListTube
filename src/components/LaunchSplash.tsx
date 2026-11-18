@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import brandAnimeImg from '../assets/brand-anime.png';
+import brandAnimeImg from '../assets/brand-anime.webp';
 
 /**
  * Brief Apple-spring Pochita launch animation on cold start (<= 850ms total, non-blocking).

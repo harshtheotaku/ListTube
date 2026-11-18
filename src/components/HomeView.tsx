@@ -11,12 +11,14 @@ import { animeStore } from '../services/animeStore';
 import { passesContentSettings } from '../services/contentFilter';
 import { searchSmart } from '../services/search';
 import { library as libraryStore } from '../services/library';
+import { triggerHaptic } from '../services/haptics';
 import { gridClassFor, useSettings } from '../services/settings';
 import { AnimeCard } from './AnimeCard';
 import { PullToRefreshWheel } from './PullToRefreshWheel';
 import { Shelf, ShelfItem } from './Shelf';
 import { GridSkeleton } from './Skeleton';
 import { AppTab } from './Sidebar';
+import { toast } from './Toast';
 
 interface HomeViewProps {
   library: LibraryState;
@@ -198,6 +200,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
     setRefreshing(true);
     setRefreshToken((value) => value + 1);
   }, [refreshing, bundle]);
+
+  const handleQuickIncrement = useCallback((anime: Anime) => {
+    const entry = libraryStore.getSnapshot().entries[anime.id];
+    const next = (entry?.progress ?? 0) + 1;
+    triggerHaptic('light');
+    libraryStore.setProgress(anime.id, next);
+    toast(
+      `Logged ${anime.mediaType === 'MANGA' ? `Ch ${next}` : `Ep ${next}`} · ${anime.title}`
+    );
+  }, []);
 
   const trackedCount = useMemo(
     () =>
@@ -413,6 +425,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   onOpenChannel={onOpenChannel}
                   status={library.entries[anime.id]?.status}
                   onQuickAdd={onQuickAdd}
+                  onQuickIncrement={handleQuickIncrement}
                   priority={index < 8}
                 />
               ))}
@@ -520,6 +533,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   reason={item.reason}
                   status={library.entries[item.anime.id]?.status}
                   onQuickAdd={onQuickAdd}
+                  onQuickIncrement={handleQuickIncrement}
                   priority={index < 8}
                 />
               ))}
@@ -556,6 +570,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   status={entry?.status}
                   progress={entry?.progress ? { watched: entry.progress, total: totalCount } : undefined}
                   onQuickAdd={onQuickAdd}
+                  onQuickIncrement={handleQuickIncrement}
                 />
               </ShelfItem>
             );

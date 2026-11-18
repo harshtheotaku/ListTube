@@ -155,6 +155,25 @@ function buildLocalNotifications(): Omit<MalNotificationItem, 'read'>[] {
     }
   }
 
+  // 1b. Daily Airing Digest summary when digestMode is enabled
+  const snapSettings = settingsStore.getSnapshot();
+  if (snapSettings.digestMode) {
+    const airingTonight = out.filter((i) => i.kind === 'episodes' && i.timestamp <= (nowSec + 86400) * 1000);
+    if (airingTonight.length > 0) {
+      out.unshift({
+        id: `digest:${new Date().toISOString().slice(0, 10)}:${airingTonight.length}`,
+        kind: 'episodes',
+        title: `Tonight's Airing Digest (${airingTonight.length} tracked)`,
+        subtitle: airingTonight.slice(0, 3).map((x) => x.title).join(' · '),
+        image: airingTonight[0]?.image,
+        timestamp: Date.now(),
+        timeLabel: snapSettings.quietHoursEnabled ? 'Evening Digest (Quiet)' : 'Daily Digest',
+        animeId: airingTonight[0]?.animeId,
+        isTrackedMatch: true,
+      });
+    }
+  }
+
   // 3. List Milestones (MAL Achievement style)
   const completedCount = Object.values(lib.entries).filter((e) => e.status === 'completed').length;
   for (const milestone of [100, 50, 25, 10, 5]) {

@@ -12,6 +12,7 @@ interface AnimeCardProps {
   reason?: string;
   progress?: { watched: number; total?: number };
   onQuickAdd?: (anime: Anime) => void;
+  onQuickIncrement?: (anime: Anime) => void;
   priority?: boolean;
 }
 
@@ -30,6 +31,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = React.memo(({
   reason,
   progress,
   onQuickAdd,
+  onQuickIncrement,
   priority,
 }) => {
   const settings = useSettings();
@@ -266,28 +268,44 @@ export const AnimeCard: React.FC<AnimeCardProps> = React.memo(({
           )}
         </div>
 
-        {onQuickAdd && (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onQuickAdd(anime);
-            }}
-            aria-label={
-              isSubscribed
-                ? `Manage subscription: ${statusLabel(status!, anime.mediaType)}`
-                : 'Subscribe / Add to list'
-            }
-            title="Subscribe / Add to list"
-            className={`shrink-0 rounded-full p-1 transition ${
-              isSubscribed
-                ? 'text-[#FF0000] hover:bg-white/10'
-                : 'text-[#AAAAAA] hover:bg-white/10 hover:text-white'
-            }`}
-          >
-            <MoreVertical className="h-4 w-4" />
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-0.5">
+          {status === 'watching' && onQuickIncrement && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onQuickIncrement(anime);
+              }}
+              aria-label={`Log +1 ${isManga ? 'chapter' : 'episode'} for ${displayTitle}`}
+              title={`Log +1 ${isManga ? 'chapter' : 'episode'}`}
+              className="lt-press rounded-full bg-white/[0.08] px-2 py-0.5 text-[10.5px] font-extrabold text-white transition hover:bg-[#FF0000]"
+            >
+              +1
+            </button>
+          )}
+          {onQuickAdd && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onQuickAdd(anime);
+              }}
+              aria-label={
+                isSubscribed
+                  ? `Manage subscription: ${statusLabel(status!, anime.mediaType)}`
+                  : 'Subscribe / Add to list'
+              }
+              title="Subscribe / Add to list"
+              className={`shrink-0 rounded-full p-1 transition ${
+                isSubscribed
+                  ? 'text-[#FF0000] hover:bg-white/10'
+                  : 'text-[#AAAAAA] hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

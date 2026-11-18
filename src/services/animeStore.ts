@@ -98,7 +98,8 @@ export function bootstrapMediaDb(): Promise<void> {
       await idbPutMediaBatch(existingSync);
       flushFallbackPinnedToLocalStorage();
     }
-    // Seed offline curated catalog on cold start so search & recommendations work instantaneously even offline
+    // Two-stage cold-start seeding: hydrate top 250 titles immediately for 0-lag first paint,
+    // then stream the remainder into memory + IndexedDB when the main thread is idle.
     if (store.size < 100) {
       try {
         const mod = await import('../data/offlineStarter.json');
@@ -106,34 +107,55 @@ export function bootstrapMediaDb(): Promise<void> {
         const CDN_PREFIX = 'https://s4.anilist.co/file/anilistcdn/';
         const expandCdn = (url?: string) =>
           url && !url.startsWith('http') ? `${CDN_PREFIX}${url}` : url;
-        const toPersist: Anime[] = [];
-        for (const rawItem of starter) {
-          if (rawItem?.id && rawItem?.title && !store.has(rawItem.id)) {
-            const cover = expandCdn(rawItem.cover) ?? '';
-            const banner = expandCdn(rawItem.banner) ?? cover;
-            const item: Anime = {
-              ...rawItem,
-              cover,
-              banner,
-              genres: rawItem.genres ?? [],
-              tags: rawItem.tags ?? [],
-              studios: rawItem.studios ?? [],
-              streaming: rawItem.streaming ?? [],
-              similar: rawItem.similar ?? [],
-              fetchedAt: rawItem.fetchedAt ?? 0,
-              anilistId:
-                rawItem.anilistId ??
-                (rawItem.id.startsWith('anilist:')
-                  ? Number(rawItem.id.slice(8)) || undefined
-                  : undefined),
-            };
-            store.set(item.id, item);
-            toPersist.push(item);
-            added = true;
-          }
+        const hydrateItem = (rawItem: Anime): Anime => {
+          const cover = expandCdn(rawItem.cover) ?? '';
+          const banner = expandCdn(rawItem.banner) ?? cover;
+          return {
+            ...rawItem,
+            cover,
+            banner,
+            genres: rawItem.genres ?? [],
+            tags: rawItem.tags ?? [],
+            studios: rawItem.studios ?? [],
+            streaming: rawItem.streaming ?? [],
+            similar: rawItem.similar ?? [],
+            fetchedAt: rawItem.fetchedAt ?? 0,
+            anilistId:
+              rawItem.anilistId ??
+              (rawItem.id.startsWith('anilist:')
+                ? Number(rawItem.id.slice(8)) || undefined
+                : undefined),
+          };
+        };
+
+        const FIRST_BATCH = 250;
+        const firstBatch: Anime[] = [];
+        const restItems: Anime[] = [];
+        for (let i = 0; i < starter.length; i++) {
+          const rawItem = starter[i];
+          if (!rawItem?.id || !rawItem?.title || store.has(rawItem.id)) continue;
+          const item = hydrateItem(rawItem);
+          store.set(item.id, item);
+          added = true;
+          if (firstBatch.length < FIRST_BATCH) firstBatch.push(item);
+          else restItems.push(item);
         }
-        if (toPersist.length > 0) {
-          void idbPutMediaBatch(toPersist);
+
+        if (firstBatch.length > 0) {
+          void idbPutMediaBatch(firstBatch);
+        }
+
+        if (restItems.length > 0) {
+          const flushRemainder = () => {
+            void idbPutMediaBatch(restItems);
+            notifyHydration();
+          };
+          const win = typeof window !== 'undefined' ? (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }) : undefined;
+          if (win?.requestIdleCallback) {
+            win.requestIdleCallback(flushRemainder, { timeout: 1200 });
+          } else {
+            setTimeout(flushRemainder, 60);
+          }
         }
       } catch {
         /* optional starter seed */

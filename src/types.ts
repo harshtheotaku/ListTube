@@ -305,6 +305,8 @@ export interface AppSettings {
   defaultTab: DefaultStartupTab;
   defaultTrailerMuted: boolean;
   hapticsEnabled: boolean;
+  digestMode: boolean;
+  quietHoursEnabled: boolean;
 }
 
 export interface ScheduleItem {

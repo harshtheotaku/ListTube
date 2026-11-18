@@ -76,6 +76,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultTab: 'home',
   defaultTrailerMuted: false,
   hapticsEnabled: true,
+  digestMode: false,
+  quietHoursEnabled: false,
 };
 
 function mergeSettings(raw: Partial<AppSettings>): AppSettings {
@@ -173,6 +175,8 @@ function mergeSettings(raw: Partial<AppSettings>): AppSettings {
     defaultTrailerMuted: Boolean(raw.defaultTrailerMuted ?? false),
     hapticsEnabled:
       raw.hapticsEnabled !== undefined ? Boolean(raw.hapticsEnabled) : true,
+    digestMode: Boolean(raw.digestMode ?? false),
+    quietHoursEnabled: Boolean(raw.quietHoursEnabled ?? false),
   };
 }
 

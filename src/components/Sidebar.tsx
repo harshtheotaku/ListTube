@@ -107,7 +107,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               key={item.id}
               type="button"
-              onClick={() => onNavigate(item.id)}
+              onClick={() => {
+                if (isActive && typeof window !== 'undefined' && window.scrollY > 40) {
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                } else {
+                  onNavigate(item.id);
+                }
+              }}
               className={`flex w-full flex-col items-center gap-1 rounded-xl py-3 text-[10px] font-medium transition ${
                 isActive ? 'bg-[#272727] text-white' : 'text-[#AAAAAA] hover:bg-white/[0.06] hover:text-white'
               }`}
@@ -122,7 +128,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }
 
   const handleNav = (t: AppTab) => {
-    onNavigate(t);
+    if (active === t && typeof window !== 'undefined' && window.scrollY > 40) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      onNavigate(t);
+    }
     onClose?.();
   };
 
