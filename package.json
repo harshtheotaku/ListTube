@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "laptop": "vite --host --port 5173 --open",
+    "android:emulator": "bash ./scripts/run-emulator.sh",
+    "android:live": "CAP_LIVE_URL=http://10.0.2.2:5173 bash ./scripts/run-emulator.sh",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",

@@ -73,8 +73,9 @@ Built with React 18, TypeScript, Tailwind CSS v4, Supabase, and Capacitor Androi
 - Secondary GitHub Pages mirror: **https://harshtheotaku.github.io/ListTube/**
 
 ### Test Live on Laptop (No APK Download Needed)
-1. Double-click **`Start ListTube on Laptop.command`** (or run `npm run laptop`) to launch live hot-reload at **`http://localhost:5173`** AND print a Wi-Fi LAN URL (`http://<your-ip>:5173`) you can open directly in any phone browser.
-2. Press **`Cmd+K`** (or open **Settings -> Playback & Data -> Laptop Phone Simulator**) to test the real **`390×844` mobile layout & Liquid Glass dock** right on your laptop screen.
+1. **Virtual Android Phone Window (`Launch Android Phone.command` / `npm run android:emulator`):** Double-click **`Launch Android Phone.command`** to boot the Pixel Android 15 virtual phone right on your Mac, automatically build ListTube, install it, and launch it inside the emulator window.
+2. **Instant Browser Hot-Reload (`Start ListTube on Laptop.command` / `npm run laptop`):** Double-click **`Start ListTube on Laptop.command`** for instant `<200ms` live reload at **`http://localhost:5173`** (or open the printed Wi-Fi URL on your phone).
+3. **Built-in Phone Bezel Preview (`Cmd+K`):** Press **`Cmd+K`** -> **"Open 390px Phone Simulator"** inside the web app to test the `390×800` mobile layout & Liquid Glass dock without Chrome DevTools.
 
 <details>
 <summary>Developer Setup & Android APK Build Instructions</summary>
