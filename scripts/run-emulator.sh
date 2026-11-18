@@ -35,7 +35,7 @@ fi
 # Start virtual phone window if not already running
 if ! adb devices | grep -q "emulator-"; then
   echo "Booting virtual Pixel Android phone window..."
-  nohup "$EMULATOR_BIN" -avd "$AVD_NAME" -gpu host -no-snapshot-save >/tmp/listtube-emulator.log 2>&1 &
+  nohup "$EMULATOR_BIN" -avd "$AVD_NAME" -gpu host >/tmp/listtube-emulator.log 2>&1 &
 fi
 
 echo "Waiting for Android phone to finish booting..."
