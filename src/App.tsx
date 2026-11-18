@@ -91,7 +91,7 @@ import { resetScrollChrome } from './services/scrollChrome';
 import { autoMaintainStorageCache, syncSubscribedCoverCache } from './services/offlineCoverCache';
 import { checkForGitHubUpdate } from './services/appUpdater';
 
-const TABS: AppTab[] = ['home', 'explore', 'list', 'schedule', 'news', 'feed', 'you', 'quiz'];
+const TABS: AppTab[] = ['home', 'explore', 'list', 'schedule', 'news', 'feed', 'you', 'quiz', 'settings'];
 const MEDIA_TYPE_KEY = 'anitube.mediaType.v1';
 
 const EMPTY_QUERIES: Record<AppTab, string> = {
@@ -103,6 +103,7 @@ const EMPTY_QUERIES: Record<AppTab, string> = {
   feed: '',
   you: '',
   quiz: '',
+  settings: '',
 };
 
 function getWebBasePath(): string {
@@ -264,7 +265,6 @@ export const App: React.FC = () => {
     return { ...EMPTY_QUERIES, [initialRoute.tab]: initialQ };
   });
   const [trackersOpen, setTrackersOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [syncDiffOpen, setSyncDiffOpen] = useState(false);
@@ -369,6 +369,10 @@ export const App: React.FC = () => {
           title: 'Infinite Anime Quiz & Jeopardy — ListTube',
           path: '/quiz',
         },
+        settings: {
+          title: 'Settings & Preferences — ListTube',
+          path: '/settings',
+        },
         you: {
           title: 'My Channel & Taste Stats — ListTube',
           path: '/you',
@@ -430,7 +434,6 @@ export const App: React.FC = () => {
 
   const modalRef = useRef({
     quickTarget,
-    settingsOpen,
     trackersOpen,
     profileOpen,
     notificationsOpen,
@@ -443,7 +446,6 @@ export const App: React.FC = () => {
   });
   modalRef.current = {
     quickTarget,
-    settingsOpen,
     trackersOpen,
     profileOpen,
     notificationsOpen,
@@ -498,7 +500,6 @@ export const App: React.FC = () => {
   const goBackStep = (): boolean => {
     const {
       quickTarget: qt,
-      settingsOpen: so,
       trackersOpen: to,
       profileOpen: po,
       notificationsOpen: no,
@@ -543,10 +544,6 @@ export const App: React.FC = () => {
     }
     if (po) {
       setProfileOpen(false);
-      return true;
-    }
-    if (so) {
-      setSettingsOpen(false);
       return true;
     }
     if (to) {
@@ -864,13 +861,13 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!trackersOpen && !quickTarget && !settingsOpen && !profileOpen) return;
+    if (!trackersOpen && !quickTarget && !profileOpen) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previous;
     };
-  }, [trackersOpen, quickTarget, settingsOpen, profileOpen]);
+  }, [trackersOpen, quickTarget, profileOpen]);
 
   const stats = useMemo(() => {
     const entries = Object.values(libraryState.entries).filter((entry) => {
@@ -949,6 +946,7 @@ export const App: React.FC = () => {
         onOpenEntity={openEntity}
         onOpenUser={openPublicUser}
         onOpenTrackers={() => setTrackersOpen(true)}
+        onOpenSettings={() => navigate('settings')}
         onToggleSidebar={() => {
           if (isWatchMode || window.innerWidth < 1024) {
             setDrawerOpen((d) => !d);
@@ -971,7 +969,7 @@ export const App: React.FC = () => {
           onOpenAnime={openAnime}
           onOpenChannel={openChannel}
           onOpenTrackers={() => setTrackersOpen(true)}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => navigate('settings')}
           onOpenNotifications={() => setNotificationsOpen(true)}
           onOpenQuiz={() => navigate('quiz')}
           onSpinRoulette={spinRoulette}
@@ -993,7 +991,7 @@ export const App: React.FC = () => {
           onOpenAnime={openAnime}
           onOpenChannel={openChannel}
           onOpenTrackers={() => setTrackersOpen(true)}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => navigate('settings')}
           onOpenNotifications={() => setNotificationsOpen(true)}
           onOpenQuiz={() => navigate('quiz')}
           onSpinRoulette={spinRoulette}
@@ -1073,6 +1071,7 @@ export const App: React.FC = () => {
                     onOpen={openAnime}
                     onOpenChannel={openChannel}
                     onQuickAdd={quickAdd}
+                    onOpenQuiz={() => navigate('quiz')}
                   />
                 )}
                 {tab === 'list' && (
@@ -1113,13 +1112,27 @@ export const App: React.FC = () => {
                     onExplore={() => navigate('explore')}
                   />
                 )}
+                {tab === 'settings' && (
+                  <SettingsModal
+                    isOpen
+                    pageMode
+                    onClose={() => {
+                      if (!goBackStep()) navigate('home');
+                    }}
+                    onOpenPhonePreview={
+                      !isNativeCapacitor() && !inPhoneFrame
+                        ? () => setPhonePreviewOpen(true)
+                        : undefined
+                    }
+                  />
+                )}
                 {tab === 'you' && (
                   <YouView
                     libraryState={libraryState}
                     mediaType={mediaType}
                     onMediaTypeChange={handleMediaTypeChange}
                     onOpenTrackers={() => setTrackersOpen(true)}
-                    onOpenSettings={() => setSettingsOpen(true)}
+                    onOpenSettings={() => navigate('settings')}
                     onEditProfile={() => setProfileOpen(true)}
                     onOpenSchedule={() => navigate('schedule')}
                     onOpenNews={() => navigate('news')}
@@ -1174,7 +1187,7 @@ export const App: React.FC = () => {
             onOpenWrapped={() => setWrappedOpen(true)}
             onOpenCollage={() => setCollageOpen(true)}
             onOpenQuiz={() => navigate('quiz')}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={() => navigate('settings')}
             onOpenPhonePreview={
               !isNativeCapacitor() && !inPhoneFrame
                 ? () => setPhonePreviewOpen(true)
@@ -1195,17 +1208,6 @@ export const App: React.FC = () => {
             onClose={() => setCollageOpen(false)}
             libraryState={libraryState}
             mediaType={mediaType}
-          />
-        )}
-        {settingsOpen && (
-          <SettingsModal
-            isOpen={settingsOpen}
-            onClose={() => setSettingsOpen(false)}
-            onOpenPhonePreview={
-              !isNativeCapacitor() && !inPhoneFrame
-                ? () => setPhonePreviewOpen(true)
-                : undefined
-            }
           />
         )}
         {phonePreviewOpen && (

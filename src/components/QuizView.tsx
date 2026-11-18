@@ -259,6 +259,51 @@ export const QuizView: React.FC<QuizViewProps> = ({
     };
   }, []);
 
+  // Desktop keyboard controls: Space = Play/Pause, 1-4 = Choice A-D, N/Enter = Next
+  useEffect(() => {
+    const onQuizKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+
+      if (e.key === ' ') {
+        e.preventDefault();
+        void togglePlay();
+        return;
+      }
+
+      if (pageMode === 'infinite_3s') {
+        if (!picked && !typeAnswerMode && ['1', '2', '3', '4'].includes(e.key)) {
+          const opt = currentQ.options[Number(e.key) - 1];
+          if (opt) {
+            e.preventDefault();
+            submitInfiniteAnswer(opt, false);
+          }
+          return;
+        }
+        if (picked && (e.key.toLowerCase() === 'n' || e.key === 'Enter')) {
+          e.preventDefault();
+          advanceNextQuestion();
+        }
+      } else if (activeCell) {
+        if (!cellPicked && !typeAnswerMode && ['1', '2', '3', '4'].includes(e.key)) {
+          const opt = activeCell.options[Number(e.key) - 1];
+          if (opt) {
+            e.preventDefault();
+            submitJeopardyAnswer(opt, false);
+          }
+          return;
+        }
+        if (cellPicked && (e.key.toLowerCase() === 'n' || e.key === 'Escape')) {
+          e.preventDefault();
+          closeActiveCell();
+        }
+      }
+    };
+    window.addEventListener('keydown', onQuizKey);
+    return () => window.removeEventListener('keydown', onQuizKey);
+  });
+
   const togglePlay = async () => {
     const el = audioRef.current;
     if (!el || !track?.previewUrl) return;
@@ -585,7 +630,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
     <div
       role="region"
       aria-label="OP and ED Music Quiz"
-      className="mx-auto min-h-screen max-w-4xl space-y-5 bg-[#0F0F0F] px-4 pb-32 pt-5 text-white sm:px-6 lg:px-8 lg:pb-16"
+      className="mx-auto min-h-screen max-w-6xl space-y-5 bg-[#0F0F0F] px-4 pb-32 pt-5 text-white sm:px-6 lg:px-8 lg:pb-16"
     >
       {/* Dedicated Page Header */}
       <div className="liquid-glass rounded-3xl border border-white/[0.12] p-4 sm:p-5">
@@ -756,131 +801,144 @@ export const QuizView: React.FC<QuizViewProps> = ({
       />
 
       {pageMode === 'infinite_3s' ? (
-        <div className="space-y-4 rounded-3xl border border-white/[0.08] bg-[#161619] p-5 sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-[12px] font-bold text-[#3EA6FF]">
+        <div className="rounded-3xl border border-white/[0.08] bg-[#161619] p-5 sm:p-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-[12px] font-bold text-[#3EA6FF]">
             <span>
               Question #{questionNum} · Up to +{potentialPoints} pts
             </span>
-            <span className="rounded-full bg-white/[0.06] px-2.5 py-0.5 text-[11px] font-semibold text-neutral-300">
-              {currentQ.fromMyList ? 'From Your List' : currentQ.kind.replace('_', ' ').toUpperCase()}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="hidden rounded-full bg-white/[0.05] px-2.5 py-0.5 text-[10.5px] font-semibold text-[#8E8E93] lg:inline">
+                Space Play · 1-4 Pick · N Next
+              </span>
+              <span className="rounded-full bg-white/[0.06] px-2.5 py-0.5 text-[11px] font-semibold text-neutral-300">
+                {currentQ.fromMyList ? 'From Your List' : currentQ.kind.replace('_', ' ').toUpperCase()}
+              </span>
+            </div>
           </div>
 
-          {currentQ.kind === 'audio' &&
-            renderAudioCard(
-              `In-App Studio Preview · 3s Starter`,
-              blindMode && !picked
-                ? 'Mystery Theme Track'
-                : `${songDisplayTitle} · ${songDisplayArtist}`
-            )}
-
-          {currentQ.kind === 'visual_crop' && currentQ.imageUrl && (
-            <div className="relative mx-auto aspect-video w-full max-w-lg overflow-hidden rounded-2xl border border-white/[0.12] bg-black">
-              <img
-                src={currentQ.imageUrl}
-                alt="Blurred frame challenge"
-                className={`h-full w-full object-cover transition-all duration-500 ${
-                  picked
-                    ? 'scale-100 blur-0'
-                    : hintStep === 0
-                      ? 'scale-[2.3] blur-[14px]'
-                      : hintStep === 1
-                        ? 'scale-[1.6] blur-[6px]'
-                        : 'scale-110 blur-[2px]'
-                }`}
-              />
-              {!picked && (
-                <span className="absolute bottom-2.5 right-2.5 rounded-full bg-black/75 px-3 py-1 text-[10.5px] font-bold text-white">
-                  {hintStep === 0 ? 'Ultra Blur' : hintStep === 1 ? 'Half Revealed' : 'Nearly Clear'}
-                </span>
-              )}
-            </div>
-          )}
-
-          {!picked && (
-            <div className="flex flex-wrap items-center gap-2">
-              {currentQ.kind === 'audio' && snippetStep < ladder.length - 1 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSnippetStep((s) => Math.min(ladder.length - 1, s + 1));
-                    if (audioRef.current && track?.previewUrl) {
-                      audioRef.current.currentTime = 0;
-                      void audioRef.current.play().then(() => setPlaying(true)).catch(() => {});
-                    }
-                  }}
-                  className="lt-press inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3.5 py-1.5 text-[12px] font-bold text-amber-200 ring-1 ring-amber-400/30 hover:bg-amber-500/25"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Extend Clip to {ladder[snippetStep + 1]}s (-50 pts)
-                </button>
-              )}
-
-              {currentQ.clues.length > hintStep && (
-                <button
-                  type="button"
-                  onClick={() => setHintStep((h) => h + 1)}
-                  className="lt-press inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-3.5 py-1.5 text-[12px] font-bold text-[#CCCCCC] hover:bg-white/[0.15]"
-                >
-                  <HelpCircle className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                  {currentQ.kind === 'visual_crop'
-                    ? `Unblur & Clue ${hintStep + 1} (-40 pts)`
-                    : `Reveal Clue ${hintStep + 1} (-40 pts)`}
-                </button>
-              )}
-            </div>
-          )}
-
-          {(hintStep > 0 || currentQ.kind === 'riddle_trivia') && (
-            <div className="space-y-1.5 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3.5 text-[13px] text-neutral-200">
-              {currentQ.clues
-                .slice(0, currentQ.kind === 'riddle_trivia' ? Math.max(1, hintStep + 1) : hintStep)
-                .map((c, ci) => (
-                  <p key={ci}>
-                    <span className="font-bold text-[#3EA6FF]">Clue {ci + 1}:</span> {c}
-                  </p>
-                ))}
-            </div>
-          )}
-
-          <p className="text-[16px] font-extrabold leading-snug text-white sm:text-[18px]">
-            {currentQ.kind === 'audio' && blindMode && !picked
-              ? 'Listen to the 3s clip — which anime is this theme from?'
-              : currentQ.prompt}
-          </p>
-
-          {renderBigAnswerGrid(
-            currentQ.options,
-            currentQ.correctAnswer,
-            picked,
-            (opt) => submitInfiniteAnswer(opt, false),
-            (val) => submitInfiniteAnswer(val, true),
-            currentQ.aliases
-          )}
-
-          {picked && (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-4">
-              <div className="text-[13px] font-bold">
-                {picked === currentQ.correctAnswer ? (
-                  <span className="text-emerald-300">
-                    Correct! {currentQ.animeTitle}
-                    {currentQ.songTitle ? ` — "${currentQ.songTitle}"` : ''}
-                  </span>
-                ) : (
-                  <span className="text-rose-300">
-                    Answer: {currentQ.correctAnswer} ({currentQ.animeTitle})
-                  </span>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
+            {/* Desktop Left Column: Audio / Visual Challenge + Hints */}
+            <div className="space-y-4 lg:col-span-5">
+              {currentQ.kind === 'audio' &&
+                renderAudioCard(
+                  `In-App Studio Preview · 3s Starter`,
+                  blindMode && !picked
+                    ? 'Mystery Theme Track'
+                    : `${songDisplayTitle} · ${songDisplayArtist}`
                 )}
-              </div>
-              <button
-                type="button"
-                onClick={advanceNextQuestion}
-                className="lt-press rounded-full bg-[#FF0000] px-6 py-2.5 text-[13.5px] font-bold text-white shadow-lg hover:bg-[#D90000]"
-              >
-                Next Unseen Question &rarr;
-              </button>
+
+              {currentQ.kind === 'visual_crop' && currentQ.imageUrl && (
+                <div className="relative mx-auto aspect-video w-full overflow-hidden rounded-2xl border border-white/[0.12] bg-black">
+                  <img
+                    src={currentQ.imageUrl}
+                    alt="Blurred frame challenge"
+                    className={`h-full w-full object-cover transition-all duration-500 ${
+                      picked
+                        ? 'scale-100 blur-0'
+                        : hintStep === 0
+                          ? 'scale-[2.3] blur-[14px]'
+                          : hintStep === 1
+                            ? 'scale-[1.6] blur-[6px]'
+                            : 'scale-110 blur-[2px]'
+                    }`}
+                  />
+                  {!picked && (
+                    <span className="absolute bottom-2.5 right-2.5 rounded-full bg-black/75 px-3 py-1 text-[10.5px] font-bold text-white">
+                      {hintStep === 0 ? 'Ultra Blur' : hintStep === 1 ? 'Half Revealed' : 'Nearly Clear'}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {!picked && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {currentQ.kind === 'audio' && snippetStep < ladder.length - 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSnippetStep((s) => Math.min(ladder.length - 1, s + 1));
+                        if (audioRef.current && track?.previewUrl) {
+                          audioRef.current.currentTime = 0;
+                          void audioRef.current.play().then(() => setPlaying(true)).catch(() => {});
+                        }
+                      }}
+                      className="lt-press inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3.5 py-1.5 text-[12px] font-bold text-amber-200 ring-1 ring-amber-400/30 hover:bg-amber-500/25"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Extend Clip to {ladder[snippetStep + 1]}s (-50 pts)
+                    </button>
+                  )}
+
+                  {currentQ.clues.length > hintStep && (
+                    <button
+                      type="button"
+                      onClick={() => setHintStep((h) => h + 1)}
+                      className="lt-press inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-3.5 py-1.5 text-[12px] font-bold text-[#CCCCCC] hover:bg-white/[0.15]"
+                    >
+                      <HelpCircle className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                      {currentQ.kind === 'visual_crop'
+                        ? `Unblur & Clue ${hintStep + 1} (-40 pts)`
+                        : `Reveal Clue ${hintStep + 1} (-40 pts)`}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {(hintStep > 0 || currentQ.kind === 'riddle_trivia') && (
+                <div className="space-y-1.5 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3.5 text-[13px] text-neutral-200">
+                  {currentQ.clues
+                    .slice(0, currentQ.kind === 'riddle_trivia' ? Math.max(1, hintStep + 1) : hintStep)
+                    .map((c, ci) => (
+                      <p key={ci}>
+                        <span className="font-bold text-[#3EA6FF]">Clue {ci + 1}:</span> {c}
+                      </p>
+                    ))}
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Desktop Right Column: Question + Big Answer Grid + Feedback */}
+            <div className="space-y-4 lg:col-span-7">
+              <p className="text-[16px] font-extrabold leading-snug text-white sm:text-[19px]">
+                {currentQ.kind === 'audio' && blindMode && !picked
+                  ? 'Listen to the 3s clip — which anime is this theme from?'
+                  : currentQ.prompt}
+              </p>
+
+              {renderBigAnswerGrid(
+                currentQ.options,
+                currentQ.correctAnswer,
+                picked,
+                (opt) => submitInfiniteAnswer(opt, false),
+                (val) => submitInfiniteAnswer(val, true),
+                currentQ.aliases
+              )}
+
+              {picked && (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-4">
+                  <div className="text-[13px] font-bold">
+                    {picked === currentQ.correctAnswer ? (
+                      <span className="text-emerald-300">
+                        Correct! {currentQ.animeTitle}
+                        {currentQ.songTitle ? ` — "${currentQ.songTitle}"` : ''}
+                      </span>
+                    ) : (
+                      <span className="text-rose-300">
+                        Answer: {currentQ.correctAnswer} ({currentQ.animeTitle})
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={advanceNextQuestion}
+                    className="lt-press rounded-full bg-[#FF0000] px-6 py-2.5 text-[13.5px] font-bold text-white shadow-lg hover:bg-[#D90000]"
+                  >
+                    Next Unseen Question &rarr;
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       ) : activeCell ? (
         <div className="space-y-4 rounded-3xl border border-white/[0.08] bg-[#161619] p-5 sm:p-6">

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Building2, Menu, Search, Star, User, Users, X } from 'lucide-react';
+import { ArrowLeft, Building2, Menu, Search, Settings, Star, User, Users, X } from 'lucide-react';
 import {
   Anime,
   FavoriteCharacterItem,
@@ -27,6 +27,7 @@ interface TopBarProps {
   onOpenEntity?: (target: EntityRouteTarget) => void;
   onOpenUser?: (userIdOrHandle: string) => void;
   onOpenTrackers?: () => void;
+  onOpenSettings?: () => void;
   onToggleSidebar?: () => void;
   mediaType: MediaType;
   trackers?: TrackerAccount[];
@@ -40,6 +41,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenAnime,
   onOpenEntity,
   onOpenUser,
+  onOpenSettings,
   onToggleSidebar,
   mediaType,
 }) => {
@@ -169,8 +171,8 @@ export const TopBar: React.FC<TopBarProps> = ({
               </button>
             </div>
 
-            {/* YouTube-Clean Right: Search Icon Button Only (Account moved to You tab!) */}
-            <div className="flex shrink-0 items-center">
+            {/* YouTube-Clean Right: Search + Direct Settings Page Gear */}
+            <div className="flex shrink-0 items-center gap-1">
               <button
                 type="button"
                 onClick={() => {
@@ -182,6 +184,17 @@ export const TopBar: React.FC<TopBarProps> = ({
               >
                 <Search className="h-[21px] w-[21px]" />
               </button>
+              {onOpenSettings && (
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  aria-label="Open settings"
+                  title="Settings"
+                  className="lt-press flex h-10 w-10 items-center justify-center rounded-full text-[#CCCCCC] transition hover:bg-white/[0.1] hover:text-white"
+                >
+                  <Settings className="h-[19px] w-[19px]" />
+                </button>
+              )}
             </div>
           </>
         ) : (

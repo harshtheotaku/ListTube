@@ -24,7 +24,7 @@ import { franchiseNameOf } from '../services/franchise';
 import { useNotifications } from '../services/notifications';
 import { ListTubeLogo } from './ListTubeLogo';
 
-export type AppTab = 'home' | 'explore' | 'list' | 'schedule' | 'news' | 'feed' | 'you' | 'quiz';
+export type AppTab = 'home' | 'explore' | 'list' | 'schedule' | 'news' | 'feed' | 'you' | 'quiz' | 'settings';
 
 interface SidebarProps {
   active: AppTab;
@@ -91,11 +91,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const miniNav: { id: AppTab; label: string; icon: React.ElementType }[] = [
       { id: 'home', label: 'Home', icon: Home },
       { id: 'explore', label: 'Explore', icon: Compass },
+      { id: 'quiz', label: 'Quiz', icon: Music },
       { id: 'feed', label: 'Feed', icon: Users },
       { id: 'schedule', label: 'Schedule', icon: Calendar },
       { id: 'news', label: 'News', icon: Newspaper },
       { id: 'list', label: 'Subs', icon: Tv },
       { id: 'you', label: 'You', icon: User },
+      { id: 'settings', label: 'Settings', icon: Settings },
     ];
 
     return (
@@ -198,12 +200,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           active={active === 'explore'}
           onClick={() => handleNav('explore')}
         />
-        <SidebarItem
-          icon={Sparkles}
-          label="For You"
-          active={active === 'feed'}
-          onClick={() => handleNav('feed')}
-        />
         {onOpenQuiz && (
           <SidebarItem
             icon={Music}
@@ -215,6 +211,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }}
           />
         )}
+        <SidebarItem
+          icon={Sparkles}
+          label="For You"
+          active={active === 'feed'}
+          onClick={() => handleNav('feed')}
+        />
         {onSpinRoulette && (
           <SidebarItem
             icon={Dice5}
@@ -364,7 +366,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <SidebarItem
             icon={Settings}
             label="Settings"
-            active={false}
+            active={active === 'settings'}
             onClick={() => {
               onClose?.();
               onOpenSettings();

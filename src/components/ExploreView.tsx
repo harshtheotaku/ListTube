@@ -69,6 +69,7 @@ interface ExploreViewProps {
   onOpen: (anime: Anime) => void;
   onOpenChannel: (anime: Anime) => void;
   onQuickAdd: (anime: Anime) => void;
+  onOpenQuiz?: () => void;
 }
 
 interface CatalogShelfData {
@@ -99,6 +100,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   onOpen,
   onOpenChannel,
   onQuickAdd,
+  onOpenQuiz,
 }) => {
   const settings = useSettings();
   const defaultSeason = useMemo(() => currentSeason(), []);
@@ -808,6 +810,29 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           })}
         </div>
       </div>
+
+      {/* Quiz & Jeopardy Dedicated Page Launcher right below Explore Bar */}
+      {onOpenQuiz && (
+        <section className="mx-4 sm:mx-6 lg:mx-8">
+          <button
+            type="button"
+            onClick={onOpenQuiz}
+            className="lt-press flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#FF0000]/30 bg-gradient-to-r from-[#FF0000]/15 via-[#18181B] to-[#3EA6FF]/15 px-4 py-3 text-left transition hover:border-[#FF0000]/55"
+          >
+            <div>
+              <p className="text-[13.5px] font-extrabold text-white">
+                Anime OP/ED 3-Second Quiz &amp; Jeopardy Arena
+              </p>
+              <p className="text-[11px] text-[#AAAAAA]">
+                Test your opening/ending ear, Cursed Crops, and 4×4 Jeopardy board in its own full-page arena
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full bg-[#FF0000] px-4 py-1.5 text-[11.5px] font-bold text-white shadow">
+              Play Full Page &rarr;
+            </span>
+          </button>
+        </section>
+      )}
 
       {/* Multi-Axis Advanced Filter Engine (Genres + Format + Country + Year + Score + Sort + Exclude List) */}
       {advancedOpen && (

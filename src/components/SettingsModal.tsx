@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowLeft,
   Bell,
   BellRing,
   Check,
@@ -63,6 +64,7 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenPhonePreview?: () => void;
+  pageMode?: boolean;
 }
 
 type SettingsSection = 'appearance' | 'home' | 'content' | 'privacy' | 'playback' | 'system';
@@ -181,6 +183,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   onOpenPhonePreview,
+  pageMode = false,
 }) => {
   const settings = useSettings();
   const lib = useLibrary();
@@ -322,24 +325,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div
-      className="lt-backdrop-in fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-4"
-      role="dialog"
-      aria-modal="true"
+      className={
+        pageMode
+          ? 'mx-auto min-h-screen max-w-6xl px-4 pb-28 pt-5 text-white sm:px-6 lg:px-8 lg:pb-16'
+          : 'lt-backdrop-in fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-4'
+      }
+      role={pageMode ? 'region' : 'dialog'}
+      aria-modal={pageMode ? undefined : 'true'}
       aria-labelledby="settings-title"
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (!pageMode && event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="liquid-glass lt-sheet-up flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-[30px] border border-white/[0.16] text-white sm:h-[82vh] sm:max-h-[780px] sm:max-w-4xl sm:flex-row sm:rounded-[28px]">
+      <div
+        className={
+          pageMode
+            ? 'liquid-glass flex flex-col overflow-hidden rounded-[26px] border border-white/[0.12] text-white sm:min-h-[78vh] sm:flex-row'
+            : 'liquid-glass lt-sheet-up flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-[30px] border border-white/[0.16] text-white sm:h-[82vh] sm:max-h-[780px] sm:max-w-4xl sm:flex-row sm:rounded-[28px]'
+        }
+      >
         {/* Desktop App Left Sidebar */}
         <aside className="hidden w-64 shrink-0 flex-col border-r border-white/[0.08] bg-black/25 p-4 sm:flex">
-          <div className="mb-3 px-1">
-            <h2 id="settings-title" className="text-[20px] font-extrabold tracking-tight text-white">
-              Settings
-            </h2>
-            <p className="text-[11px] text-[#AAAAAA]">
-              Synced automatically · App &amp; Web
-            </p>
+          <div className="mb-3 flex items-center justify-between px-1">
+            <div>
+              <h2 id="settings-title" className="text-[20px] font-extrabold tracking-tight text-white">
+                Settings
+              </h2>
+              <p className="text-[11px] text-[#AAAAAA]">
+                Synced automatically · App &amp; Web
+              </p>
+            </div>
+            {pageMode && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Back"
+                className="lt-press flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.08] text-[#CCCCCC] hover:bg-white/[0.16] hover:text-white"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+            )}
           </div>
 
           {/* Search box */}
