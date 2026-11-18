@@ -391,8 +391,34 @@ export const App: React.FC = () => {
   });
   routeRef.current = { tab, detailId, channelAnime, publicUser, entityTarget };
 
-  const modalRef = useRef({ quickTarget, settingsOpen, trackersOpen, profileOpen, notificationsOpen, drawerOpen });
-  modalRef.current = { quickTarget, settingsOpen, trackersOpen, profileOpen, notificationsOpen, drawerOpen };
+  const modalRef = useRef({
+    quickTarget,
+    settingsOpen,
+    trackersOpen,
+    profileOpen,
+    notificationsOpen,
+    drawerOpen,
+    quizOpen,
+    collageOpen,
+    wrappedOpen,
+    syncDiffOpen,
+    paletteOpen,
+    phonePreviewOpen,
+  });
+  modalRef.current = {
+    quickTarget,
+    settingsOpen,
+    trackersOpen,
+    profileOpen,
+    notificationsOpen,
+    drawerOpen,
+    quizOpen,
+    collageOpen,
+    wrappedOpen,
+    syncDiffOpen,
+    paletteOpen,
+    phonePreviewOpen,
+  };
 
   const scrollTop = () => window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
 
@@ -442,9 +468,39 @@ export const App: React.FC = () => {
       profileOpen: po,
       notificationsOpen: no,
       drawerOpen: dw,
+      quizOpen: qo,
+      collageOpen: co,
+      wrappedOpen: wo,
+      syncDiffOpen: sdo,
+      paletteOpen: pao,
+      phonePreviewOpen: ppo,
     } = modalRef.current;
     if (qt) {
       setQuickTarget(null);
+      return true;
+    }
+    if (ppo) {
+      setPhonePreviewOpen(false);
+      return true;
+    }
+    if (pao) {
+      setPaletteOpen(false);
+      return true;
+    }
+    if (qo) {
+      setQuizOpen(false);
+      return true;
+    }
+    if (co) {
+      setCollageOpen(false);
+      return true;
+    }
+    if (wo) {
+      setWrappedOpen(false);
+      return true;
+    }
+    if (sdo) {
+      setSyncDiffOpen(false);
       return true;
     }
     if (dw) {

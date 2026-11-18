@@ -4,6 +4,8 @@ import { useSettings } from '../services/settings';
 import { useChromeVisible } from '../services/scrollChrome';
 import { useProfile } from '../services/profile';
 import { useCloudSync } from '../services/cloudSync';
+import { triggerHaptic } from '../services/haptics';
+import { resetScrollChrome } from '../services/scrollChrome';
 import { AppTab } from './Sidebar';
 
 interface BottomNavProps {
@@ -73,7 +75,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({ active, onNavigate }) => {
               <button
                 key={item.id}
                 type="button"
-                onClick={() => onNavigate(item.id)}
+                onClick={() => {
+                  triggerHaptic('light');
+                  if (isActive && window.scrollY > 40) {
+                    resetScrollChrome();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  } else {
+                    onNavigate(item.id);
+                  }
+                }}
                 aria-current={isActive ? 'page' : undefined}
                 className={`lt-press flex flex-1 flex-col items-center gap-0.5 rounded-[22px] py-1.5 text-[10px] font-semibold transition-all duration-200 ${
                   isActive
@@ -103,7 +113,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({ active, onNavigate }) => {
             <button
               key={item.id}
               type="button"
-              onClick={() => onNavigate(item.id)}
+              onClick={() => {
+                triggerHaptic('light');
+                if (isActive && window.scrollY > 40) {
+                  resetScrollChrome();
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                } else {
+                  onNavigate(item.id);
+                }
+              }}
               aria-current={isActive ? 'page' : undefined}
               className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-semibold transition ${
                 isActive ? 'text-white' : 'text-[#AAAAAA]'

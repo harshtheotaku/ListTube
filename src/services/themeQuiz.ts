@@ -1,7 +1,6 @@
 import { Anime } from '../types';
 import { animeStore } from './animeStore';
 
-export type QuizDifficultyTier = 'chill' | 'heralen' | 'impossible';
 export type JeopardyCellKind = 'audio' | 'visual_crop' | 'riddle_trivia' | 'studio_year';
 
 export interface ThemeQuizQuestion {
@@ -392,7 +391,7 @@ const HERALEN_RIDDLES: SeedRiddle[] = [
     anime: 'Code Geass',
     aliases: ['geass', 'code geass'],
     tier: 'easy',
-    prompt: 'Name this 2006 Sunrise classic using Heralen’s 3-clue ladder:',
+    prompt: 'Name this 2006 Sunrise classic using the 3-clue ladder:',
     clues: [
       'Clue 1: Funded heavily by Pizza Hut product placement inside the anime.',
       'Clue 2: The protagonist plays high-stakes chess wearing a dramatic mask.',
@@ -442,10 +441,9 @@ const HIGH_SCORE_KEY = 'listtube.themeQuiz.best.v1';
 const JEOPARDY_HIGH_SCORE_KEY = 'listtube.jeopardy.best.v1';
 const audioCache = new Map<string, ThemeAudioTrack | null>();
 
+export type QuizDifficultyTier = 'three_sec';
 export const SNIPPET_LADDER: Record<QuizDifficultyTier, number[]> = {
-  chill: [30],
-  heralen: [3, 8, 16, 28],
-  impossible: [1.2, 3, 7, 18],
+  three_sec: [3, 7, 15, 28],
 };
 
 export function getQuizHighScore(): number {
@@ -593,8 +591,8 @@ function buildOptionsForTitle(targetTitle: string, poolTitles: string[]): string
 }
 
 /**
- * Generates an interactive 4x4 Heralen-style Anime Jeopardy Board across
- * Impossible OP/ED Blitz, Cursed Visual Crop, 3-Clue Riddles, and Studio & Stats Trivia.
+ * Generates an interactive 4x4 Anime Jeopardy Board across
+ * OP/ED Blitz (3s–12s), Cursed Visual Crop, 3-Clue Riddles, and Studio & Year Trivia.
  */
 export function buildJeopardyBoard(catalogInput?: Anime[]): JeopardyCategory[] {
   const storeCatalog = (catalogInput ?? animeStore.all()).filter(
@@ -605,12 +603,12 @@ export function buildJeopardyBoard(catalogInput?: Anime[]): JeopardyCategory[] {
     new Set([...storeCatalog.slice(0, 80).map((a) => a.title), ...fallbackTitles])
   );
 
-  // Category 1: Impossible OP/ED Audio Blitz (100 -> 200 -> 400 -> 600)
+  // Category 1: OP/ED Audio Blitz (10s -> 6s -> 3s)
   const tiers: Array<{ tier: SeedTheme['tier']; points: number; clipSec: number }> = [
-    { tier: 'easy', points: 100, clipSec: 12 },
+    { tier: 'easy', points: 100, clipSec: 10 },
     { tier: 'medium', points: 200, clipSec: 6 },
-    { tier: 'hard', points: 400, clipSec: 2.5 },
-    { tier: 'impossible', points: 600, clipSec: 1.2 },
+    { tier: 'hard', points: 400, clipSec: 3 },
+    { tier: 'impossible', points: 600, clipSec: 3 },
   ];
 
   const usedSongs = new Set<string>();
@@ -760,7 +758,7 @@ export function buildJeopardyBoard(catalogInput?: Anime[]): JeopardyCategory[] {
     {
       id: 'audio',
       title: 'OP/ED Blitz',
-      subtitle: '1.2s–12s Audio',
+      subtitle: '3s–10s Audio',
       cells: audioCells,
     },
     {
@@ -772,7 +770,7 @@ export function buildJeopardyBoard(catalogInput?: Anime[]): JeopardyCategory[] {
     {
       id: 'riddle',
       title: '3-Clue Riddle',
-      subtitle: 'Heralen Lore',
+      subtitle: 'Anime Lore',
       cells: riddleCells,
     },
     {

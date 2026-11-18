@@ -112,7 +112,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
           />
         ) : (
           <div className="absolute inset-0 overflow-hidden bg-[#121216]">
-            {!coverFailed && anime.cover && (
+            {!coverFailed && anime.cover ? (
               <>
                 <img
                   src={anime.cover}
@@ -133,6 +133,12 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
                   />
                 </div>
               </>
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#231820] via-[#171923] to-[#0f0f13] px-6 text-center">
+                <span className="line-clamp-2 text-[14px] font-black tracking-tight text-white/75">
+                  {anime.title}
+                </span>
+              </div>
             )}
           </div>
         )}

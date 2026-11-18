@@ -85,6 +85,7 @@ public class MainActivity extends BridgeActivity {
         settings.setUseWideViewPort(false);
         settings.setLoadWithOverviewMode(false);
         settings.setTextZoom(100);
+        settings.setMediaPlaybackRequiresUserGesture(false);
 
         if (!bridgeConfigured) {
             webView.addJavascriptInterface(new Object() {

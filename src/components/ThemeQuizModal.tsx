@@ -31,7 +31,6 @@ import {
   getQuizHighScore,
   JeopardyCategory,
   JeopardyCell,
-  QuizDifficultyTier,
   resolveThemePreviewAudio,
   saveJeopardyHighScore,
   saveQuizHighScore,
@@ -57,7 +56,6 @@ function fmtSec(sec: number): string {
 
 export const ThemeQuizModal: React.FC<ThemeQuizModalProps> = ({ isOpen, onClose }) => {
   const [gameMode, setGameMode] = useState<ModalGameMode>('impossible_op');
-  const [difficulty, setDifficulty] = useState<QuizDifficultyTier>('heralen');
   const [typeAnswerMode, setTypeAnswerMode] = useState(false);
   const [typedGuess, setTypedGuess] = useState('');
   const [blindMode, setBlindMode] = useState(true);
@@ -109,7 +107,7 @@ export const ThemeQuizModal: React.FC<ThemeQuizModalProps> = ({ isOpen, onClose 
   // Determine active audio query + snippet time limit based on current mode/tile
   const activeAudioTarget = useMemo(() => {
     if (gameMode === 'impossible_op' && activeOpQuestion) {
-      const ladder = SNIPPET_LADDER[difficulty];
+      const ladder = SNIPPET_LADDER.three_sec;
       const maxClip = picked
         ? 30
         : ladder[Math.min(snippetStep, ladder.length - 1)] ?? 30;
@@ -133,7 +131,7 @@ export const ThemeQuizModal: React.FC<ThemeQuizModalProps> = ({ isOpen, onClose 
       };
     }
     return null;
-  }, [gameMode, activeOpQuestion, difficulty, snippetStep, picked, activeCell, cellClipBoost, cellPicked]);
+  }, [gameMode, activeOpQuestion, snippetStep, picked, activeCell, cellClipBoost, cellPicked]);
 
   useEffect(() => {
     if (!isOpen || !activeAudioTarget) {
@@ -204,9 +202,9 @@ export const ThemeQuizModal: React.FC<ThemeQuizModalProps> = ({ isOpen, onClose 
     }
   };
 
-  // --- Impossible OP Mode handlers ---
-  const ladder = SNIPPET_LADDER[difficulty];
-  const baseOpPoints = difficulty === 'impossible' ? 400 : difficulty === 'heralen' ? 250 : 120;
+  // --- 3 sec OP/ED Blitz handlers ---
+  const ladder = SNIPPET_LADDER.three_sec;
+  const baseOpPoints = 250;
   const potentialOpPoints = Math.max(
     50,
     baseOpPoints - snippetStep * 60 - hintStep * 50 + streak * 25
@@ -452,7 +450,7 @@ export const ThemeQuizModal: React.FC<ThemeQuizModalProps> = ({ isOpen, onClose 
             </button>
           </div>
           <p className="text-[10.5px] text-neutral-400">
-            Pro Heralen mode: forgiving spelling &amp; acronyms supported.
+            Pro Type-In mode: forgiving spelling &amp; acronyms supported.
           </p>
         </form>
       );
@@ -595,7 +593,7 @@ export const ThemeQuizModal: React.FC<ThemeQuizModalProps> = ({ isOpen, onClose 
               }`}
             >
               <Flame className="h-3.5 w-3.5 text-[#FF0000]" />
-              Impossible OP/ED
+              3 sec OP/ED
             </button>
             <button
               type="button"
@@ -616,31 +614,9 @@ export const ThemeQuizModal: React.FC<ThemeQuizModalProps> = ({ isOpen, onClose 
           </div>
 
           {gameMode === 'impossible_op' ? (
-            <div className="flex items-center gap-1 rounded-full bg-white/[0.06] p-1 text-[10.5px] font-bold">
-              {(
-                [
-                  { id: 'chill', label: 'Chill (30s)' },
-                  { id: 'heralen', label: 'Heralen (3s)' },
-                  { id: 'impossible', label: 'Impossible (1.2s)' },
-                ] as { id: QuizDifficultyTier; label: string }[]
-              ).map((tier) => (
-                <button
-                  key={tier.id}
-                  type="button"
-                  onClick={() => {
-                    setDifficulty(tier.id);
-                    setSnippetStep(0);
-                  }}
-                  className={`rounded-full px-2.5 py-1 transition ${
-                    difficulty === tier.id
-                      ? 'bg-[#FF0000] text-white'
-                      : 'text-[#AAAAAA] hover:text-white'
-                  }`}
-                >
-                  {tier.label}
-                </button>
-              ))}
-            </div>
+            <span className="rounded-full bg-[#FF0000]/15 px-3 py-1 text-[10.5px] font-bold text-rose-200 ring-1 ring-[#FF0000]/30">
+              3 sec Blitz
+            </span>
           ) : (
             <button
               type="button"
