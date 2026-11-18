@@ -54,6 +54,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showHomeDiscoveryShelves: true,
   homeStatusFolders: ['watching'],
   autoLoadComments: true,
+  autoClearCache: true,
   notifyFolders: ['watching', 'planned'],
   notifyCommentLikes: true,
   profileVisibility: {
@@ -129,6 +130,8 @@ function mergeSettings(raw: Partial<AppSettings>): AppSettings {
         : ['watching'],
     autoLoadComments:
       raw.autoLoadComments !== undefined ? Boolean(raw.autoLoadComments) : true,
+    autoClearCache:
+      raw.autoClearCache !== undefined ? Boolean(raw.autoClearCache) : true,
     notifyFolders:
       Array.isArray(raw.notifyFolders) ? raw.notifyFolders : ['watching', 'planned'],
     notifyCommentLikes:

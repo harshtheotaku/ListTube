@@ -290,6 +290,7 @@ export interface AppSettings {
   showHomeDiscoveryShelves: boolean;
   homeStatusFolders: ListStatus[];
   autoLoadComments: boolean;
+  autoClearCache: boolean;
   notifyFolders: ListStatus[];
   notifyCommentLikes: boolean;
   profileVisibility: ProfileVisibilitySettings;

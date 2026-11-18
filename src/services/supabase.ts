@@ -1,9 +1,31 @@
 import { createClient } from '@supabase/supabase-js';
 import { isNativeCapacitor } from './platform';
 
-export const SUPABASE_URL = 'https://kypafzhjdwnhsiyltndw.supabase.co';
+export const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL || 'https://kypafzhjdwnhsiyltndw.supabase.co';
 export const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_p-5p3ZhELAxfZu7IaaC2rA_1vCIv22R';
 export const EDGE_API_BASE = `${SUPABASE_URL}/functions/v1/listtube-api`;
+
+/**
+ * Builds a direct episode-targeted URL for KotoPlay / streaming destinations when clicking an episode tile.
+ */
+export function buildEpisodeWatchUrl(baseUrl: string, siteKey: string, episodeNumber: number): string {
+  try {
+    const u = new URL(baseUrl);
+    if (siteKey === 'kotoplay' && /\/watch\//i.test(u.pathname)) {
+      u.searchParams.set('ep', String(episodeNumber));
+      return u.toString();
+    }
+    if (siteKey === 'kotoplay' && !u.searchParams.has('ep')) {
+      u.searchParams.set('ep', String(episodeNumber));
+    } else if (siteKey === 'reanime') {
+      u.searchParams.set('ep', String(episodeNumber));
+    }
+    return u.toString();
+  } catch {
+    return baseUrl;
+  }
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {

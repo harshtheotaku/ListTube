@@ -118,6 +118,30 @@ export async function idbPruneExcess(limit = MAX_IDB_RECORDS): Promise<void> {
   }
 }
 
+export async function idbPruneOlderThanDays(days = 14): Promise<number> {
+  const p = getDb();
+  if (!p) return 0;
+  try {
+    const db = await p;
+    const all = await idbLoadAllMedia();
+    const cutoff = Date.now() - days * 86_400_000;
+    const stale = all.filter((a) => !a.pinned && (a.fetchedAt ?? 0) > 0 && a.fetchedAt < cutoff);
+    if (stale.length === 0) return 0;
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      for (const item of stale) {
+        store.delete(item.id);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+    return stale.length;
+  } catch {
+    return 0;
+  }
+}
+
 export async function idbClearAllMedia(): Promise<void> {
   const p = getDb();
   if (!p) return;

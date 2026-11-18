@@ -24,6 +24,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/sb/(.*)",
+      "destination": "https://kypafzhjdwnhsiyltndw.supabase.co/$1"
+    },
+    {
       "source": "/proxy/mal/(.*)",
       "destination": "https://myanimelist.net/$1"
     },

@@ -24,7 +24,7 @@ import { franchiseNameOf } from '../services/franchise';
 import { useNotifications } from '../services/notifications';
 import { ListTubeLogo } from './ListTubeLogo';
 
-export type AppTab = 'home' | 'explore' | 'list' | 'schedule' | 'news' | 'feed' | 'you';
+export type AppTab = 'home' | 'explore' | 'list' | 'schedule' | 'news' | 'feed' | 'you' | 'quiz';
 
 interface SidebarProps {
   active: AppTab;
@@ -198,7 +198,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <SidebarItem
             icon={Music}
             label="OP/ED Quiz"
-            active={false}
+            active={active === 'quiz'}
             onClick={() => {
               onClose?.();
               onOpenQuiz();

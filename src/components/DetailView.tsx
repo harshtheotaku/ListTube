@@ -58,6 +58,7 @@ import { computePacingPlan, getSavedDailyPace, saveDailyPace } from '../services
 import { getSimilar } from '../services/recommender';
 import { franchiseNameOf } from '../services/franchise';
 import { buildWatchOrderGuide } from '../services/watchOrder';
+import { getEpisodeClassification } from '../services/fillerGuide';
 import {
   canonical10ToDisplayValue,
   formatUserScore,
@@ -67,6 +68,7 @@ import {
 import { useSettings } from '../services/settings';
 import { profileStore, useProfile } from '../services/profile';
 import {
+  buildEpisodeWatchUrl,
   buildSharePreviewUrl,
   resolveExternalLinksEdge,
   ResolvedReaderLink,
@@ -204,6 +206,10 @@ export const DetailView: React.FC<DetailViewProps> = ({
   const [dailyPace, setDailyPace] = useState<number>(() => getSavedDailyPace(animeId, 3));
   const [customShelfDraft, setCustomShelfDraft] = useState('');
   const [theaterMode, setTheaterMode] = useState(false);
+  const [epPage, setEpPage] = useState(0);
+  const [selectedEpisode, setSelectedEpisode] = useState<number>(() =>
+    Math.max(1, (libraryState.entries[animeId]?.progress ?? 0) + 1)
+  );
   const chromeVisible = useChromeVisible();
   const profile = useProfile();
 
@@ -221,6 +227,9 @@ export const DetailView: React.FC<DetailViewProps> = ({
     setExpandedThemeKey(null);
     setRevealSpoilerBio(false);
     setDailyPace(getSavedDailyPace(animeId, animeId.includes('manga') ? 5 : 2));
+    const curProg = libraryState.entries[animeId]?.progress ?? 0;
+    setSelectedEpisode(Math.max(1, curProg + 1));
+    setEpPage(Math.floor(Math.max(0, curProg) / 25));
   }, [animeId, settings.autoplayTrailer]);
 
   useEffect(() => {
@@ -1663,6 +1672,165 @@ export const DetailView: React.FC<DetailViewProps> = ({
                           </div>
                         </div>
                       )}
+                    </div>
+                  );
+                })()}
+
+                {/* Interactive Clickable Episode / Chapter Tiles with Direct Watch Links */}
+                {(() => {
+                  const totalUnits = isManga
+                    ? anime.chapters ?? Math.max(progress + 6, 12)
+                    : anime.episodes ?? (anime.nextEpisode ? anime.nextEpisode.number : 12);
+                  const cappedUnits = Math.min(Math.max(1, totalUnits), 500);
+                  const pageSize = 25;
+                  const pageCount = Math.ceil(cappedUnits / pageSize);
+                  const safePage = Math.min(epPage, Math.max(0, pageCount - 1));
+                  const startEp = safePage * pageSize + 1;
+                  const endEp = Math.min(cappedUnits, startEp + pageSize - 1);
+                  const epNumbers = Array.from({ length: endEp - startEp + 1 }, (_, i) => startEp + i);
+
+                  const q = encodeURIComponent(anime.title);
+                  const primarySite: ResolvedReaderLink =
+                    externalLinks.find((l) => l.recommended) ??
+                    externalLinks[0] ??
+                    (isManga
+                      ? { site: 'Comix.to', key: 'comix', url: `https://comix.to/browse?keyword=${q}`, isDirect: false }
+                      : { site: 'KotoPlay', key: 'kotoplay', url: `https://kotoplay.to/search?keyword=${q}`, isDirect: false });
+
+                  const activeEp = Math.min(cappedUnits, Math.max(1, selectedEpisode));
+                  const activeEpUrl = buildEpisodeWatchUrl(primarySite.url, primarySite.key, activeEp);
+                  const activeEpFiller = !isManga ? getEpisodeClassification(anime, activeEp) : null;
+
+                  return (
+                    <div className="space-y-3 rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="flex items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-white">
+                            {isManga ? <BookOpen className="h-4 w-4 text-[#FF0000]" /> : <Play className="h-4 w-4 text-[#FF0000]" />}
+                            {isManga ? `Chapters (${cappedUnits})` : `Episodes (${cappedUnits})`}
+                          </h3>
+                          <p className="text-[11px] text-[#AAAAAA]">
+                            Tap any {isManga ? 'chapter' : 'episode'} tile to open its direct {primarySite.site} link or update progress
+                          </p>
+                        </div>
+
+                        {pageCount > 1 && (
+                          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+                            {Array.from({ length: Math.min(pageCount, 8) }, (_, pIdx) => {
+                              const pStart = pIdx * pageSize + 1;
+                              const pEnd = Math.min(cappedUnits, pStart + pageSize - 1);
+                              return (
+                                <button
+                                  key={pIdx}
+                                  type="button"
+                                  onClick={() => setEpPage(pIdx)}
+                                  className={`shrink-0 rounded-lg px-2 py-1 text-[10.5px] font-bold transition ${
+                                    safePage === pIdx
+                                      ? 'bg-[#FF0000] text-white'
+                                      : 'bg-[#262626] text-[#AAAAAA] hover:text-white'
+                                  }`}
+                                >
+                                  {pStart}-{pEnd}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-8 md:grid-cols-9">
+                        {epNumbers.map((ep) => {
+                          const isWatched = ep <= progress;
+                          const isSelected = ep === activeEp;
+                          const tag = !isManga ? getEpisodeClassification(anime, ep) : null;
+                          const isFiller = tag === 'FILLER' || tag === 'RECAP';
+                          const tileUrl = buildEpisodeWatchUrl(primarySite.url, primarySite.key, ep);
+                          return (
+                            <button
+                              key={ep}
+                              type="button"
+                              data-episode={ep}
+                              data-direct-url={tileUrl}
+                              title={`${isManga ? 'Chapter' : 'Episode'} ${ep}${tag ? ` · ${tag}` : ''} — Open on ${primarySite.site}`}
+                              onClick={() => {
+                                triggerHaptic('light');
+                                setSelectedEpisode(ep);
+                              }}
+                              className={`lt-press relative flex h-11 flex-col items-center justify-center rounded-xl border text-[12px] font-bold transition ${
+                                isSelected
+                                  ? 'border-[#3EA6FF] bg-[#3EA6FF]/20 text-white ring-1 ring-[#3EA6FF]/50'
+                                  : isWatched
+                                    ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-200'
+                                    : isFiller
+                                      ? 'border-amber-500/35 bg-amber-500/10 text-amber-200'
+                                      : 'border-white/[0.08] bg-[#222226] text-neutral-200 hover:border-white/25 hover:bg-[#2C2C32]'
+                              }`}
+                            >
+                              <span>{ep}</span>
+                              {tag && tag !== 'CANON' && (
+                                <span className="text-[8px] font-black uppercase leading-none text-amber-300">
+                                  {tag === 'MIXED' ? 'MIX' : 'FIL'}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/[0.08] bg-black/30 px-3.5 py-2.5">
+                        <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                          <span className="font-extrabold text-white">
+                            {isManga ? `Chapter ${activeEp}` : `Episode ${activeEp}`}
+                          </span>
+                          {activeEpFiller && (
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase ${
+                                activeEpFiller === 'FILLER' || activeEpFiller === 'RECAP'
+                                  ? 'bg-amber-500/20 text-amber-300'
+                                  : activeEpFiller === 'MIXED'
+                                    ? 'bg-sky-500/20 text-sky-300'
+                                    : 'bg-emerald-500/20 text-emerald-300'
+                              }`}
+                            >
+                              {activeEpFiller}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              triggerHaptic('medium');
+                              if (!entry) {
+                                library.setStatus(anime, 'watching');
+                              }
+                              library.setProgress(anime.id, activeEp);
+                              toast(`Marked watched up to ${isManga ? 'Ch' : 'Ep'} ${activeEp}`);
+                            }}
+                            className="lt-press rounded-full bg-white/[0.08] px-3 py-1.5 text-[11.5px] font-bold text-white hover:bg-white/[0.16]"
+                          >
+                            Mark Watched
+                          </button>
+                          <button
+                            type="button"
+                            data-direct-url={activeEpUrl}
+                            onClick={() =>
+                              openInAppViewer({
+                                url: activeEpUrl,
+                                title: `${anime.title} · ${isManga ? 'Ch' : 'Ep'} ${activeEp}`,
+                                sourceName: primarySite.site,
+                                mediaType: anime.mediaType,
+                              })
+                            }
+                            className="lt-press inline-flex items-center gap-1.5 rounded-full bg-[#FF0000] px-4 py-1.5 text-[11.5px] font-bold text-white shadow hover:bg-[#D90000]"
+                          >
+                            {isManga ? <BookOpen className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 fill-current" />}
+                            <span>{isManga ? `Read Ch ${activeEp}` : `Watch Ep ${activeEp}`} on {primarySite.site}</span>
+                            <ExternalLink className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   );
                 })()}

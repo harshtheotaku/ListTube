@@ -2,9 +2,18 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { passesContentSettings } from './contentFilter';
 import { computePacingPlan } from './pacingGoal';
 import { settingsStore } from './settings';
-import { buildJeopardyBoard, buildThemeQuizRound, doesTypedGuessMatch } from './themeQuiz';
+import {
+  buildJeopardyBoard,
+  buildNextInfiniteQuestion,
+  buildThemeQuizRound,
+  doesTypedGuessMatch,
+  getSeenQuizCount,
+  markQuizQuestionSeen,
+  resetSeenQuizHistory,
+} from './themeQuiz';
 import { computeWrappedSummary } from './wrappedStats';
-import { pickDefaultCollageSlots } from './collageGrid';
+import { pickDefaultCollageSlots, pickDefaultTierBuckets } from './collageGrid';
+import { buildEpisodeWatchUrl } from './supabase';
 import { animeStore } from './animeStore';
 import { UserProfile } from './profile';
 import { decodeMihonProtobufBytes, parseComixOrJsonBackup } from './backupImport';
@@ -144,6 +153,30 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
     );
     expect(slots[0]?.id).toBe('anilist:102');
     expect(slots.some((s) => s.id === 'anilist:101')).toBe(true);
+
+    // Infinite non-repeating quiz + My List scope + Tier List + Episode direct link
+    resetSeenQuizHistory();
+    const exclude = new Set<string>();
+    const q1 = buildNextInfiniteQuestion({ scope: 'all', sessionExclude: exclude });
+    exclude.add(q1.signature);
+    markQuizQuestionSeen(q1.signature);
+    const q2 = buildNextInfiniteQuestion({ scope: 'all', sessionExclude: exclude });
+    expect(q2.signature).not.toBe(q1.signature);
+    expect(getSeenQuizCount()).toBe(1);
+
+    const tiers = pickDefaultTierBuckets(
+      {
+        ...lib,
+        entries: {
+          'anilist:101': { animeId: 'anilist:101', mediaType: 'ANIME', status: 'completed', progress: 28, score: 10, addedAt: 1, updatedAt: 1 },
+        },
+      },
+      'ANIME'
+    );
+    expect(tiers.S.some((a) => a.id === 'anilist:101')).toBe(true);
+
+    const epUrl = buildEpisodeWatchUrl('https://kotoplay.to/watch/naruto-123', 'kotoplay', 42);
+    expect(epUrl).toContain('ep=42');
   });
 
   it('defaults externalLinkMode to external and decodes Comix CSV/JSON & Mihon protobuf backups', () => {

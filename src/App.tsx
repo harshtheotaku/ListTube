@@ -12,6 +12,7 @@ import { animeStore } from './services/animeStore';
 import { fetchDetail } from './services/anilist';
 import { cloudSync } from './services/cloudSync';
 import { isNativeCapacitor } from './services/platform';
+import { useSettings } from './services/settings';
 import { Sidebar, AppTab } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
 import { TopBar } from './components/TopBar';
@@ -75,8 +76,8 @@ const WrappedModal = lazy(() =>
 const CollageModal = lazy(() =>
   import('./components/CollageModal').then((m) => ({ default: m.CollageModal }))
 );
-const ThemeQuizModal = lazy(() =>
-  import('./components/ThemeQuizModal').then((m) => ({ default: m.ThemeQuizModal }))
+const QuizView = lazy(() =>
+  import('./components/QuizView').then((m) => ({ default: m.QuizView }))
 );
 const PhonePreviewModal = lazy(() =>
   import('./components/PhonePreviewModal').then((m) => ({ default: m.PhonePreviewModal }))
@@ -87,8 +88,9 @@ const InAppBrowserModal = lazy(() =>
 import { MiniPlayer } from './components/MiniPlayer';
 import { LaunchSplash } from './components/LaunchSplash';
 import { resetScrollChrome } from './services/scrollChrome';
+import { autoMaintainStorageCache, syncSubscribedCoverCache } from './services/offlineCoverCache';
 
-const TABS: AppTab[] = ['home', 'explore', 'list', 'schedule', 'news', 'feed', 'you'];
+const TABS: AppTab[] = ['home', 'explore', 'list', 'schedule', 'news', 'feed', 'you', 'quiz'];
 const MEDIA_TYPE_KEY = 'anitube.mediaType.v1';
 
 const EMPTY_QUERIES: Record<AppTab, string> = {
@@ -99,6 +101,7 @@ const EMPTY_QUERIES: Record<AppTab, string> = {
   news: '',
   feed: '',
   you: '',
+  quiz: '',
 };
 
 function getWebBasePath(): string {
@@ -234,6 +237,7 @@ function parseCurrentRoute(): {
 
 export const App: React.FC = () => {
   const libraryState = useLibrary();
+  const settings = useSettings();
   const [, setHydrationTick] = useState(0);
   const [initialRoute] = useState(parseCurrentRoute);
   const [tab, setTab] = useState<AppTab>(initialRoute.tab);
@@ -264,7 +268,6 @@ export const App: React.FC = () => {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [wrappedOpen, setWrappedOpen] = useState(false);
   const [collageOpen, setCollageOpen] = useState(false);
-  const [quizOpen, setQuizOpen] = useState(false);
   const [phonePreviewOpen, setPhonePreviewOpen] = useState(false);
   const inPhoneFrame =
     typeof window !== 'undefined' &&
@@ -352,6 +355,10 @@ export const App: React.FC = () => {
           title: 'My Anime & Manga Watchlist — ListTube',
           path: '/list',
         },
+        quiz: {
+          title: 'Infinite Anime Quiz & Jeopardy — ListTube',
+          path: '/quiz',
+        },
         you: {
           title: 'My Channel & Taste Stats — ListTube',
           path: '/you',
@@ -391,6 +398,19 @@ export const App: React.FC = () => {
   });
   routeRef.current = { tab, detailId, channelAnime, publicUser, entityTarget };
 
+  useEffect(() => {
+    const covers: string[] = [];
+    for (const id of Object.keys(libraryState.entries)) {
+      const a = animeStore.get(id);
+      if (a?.cover) covers.push(a.cover);
+    }
+    const t = setTimeout(() => {
+      if (covers.length > 0) void syncSubscribedCoverCache(covers);
+      if (settings.autoClearCache) void autoMaintainStorageCache(false);
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [libraryState.entries, settings.autoClearCache]);
+
   const modalRef = useRef({
     quickTarget,
     settingsOpen,
@@ -398,7 +418,6 @@ export const App: React.FC = () => {
     profileOpen,
     notificationsOpen,
     drawerOpen,
-    quizOpen,
     collageOpen,
     wrappedOpen,
     syncDiffOpen,
@@ -412,7 +431,6 @@ export const App: React.FC = () => {
     profileOpen,
     notificationsOpen,
     drawerOpen,
-    quizOpen,
     collageOpen,
     wrappedOpen,
     syncDiffOpen,
@@ -468,7 +486,6 @@ export const App: React.FC = () => {
       profileOpen: po,
       notificationsOpen: no,
       drawerOpen: dw,
-      quizOpen: qo,
       collageOpen: co,
       wrappedOpen: wo,
       syncDiffOpen: sdo,
@@ -485,10 +502,6 @@ export const App: React.FC = () => {
     }
     if (pao) {
       setPaletteOpen(false);
-      return true;
-    }
-    if (qo) {
-      setQuizOpen(false);
       return true;
     }
     if (co) {
@@ -943,7 +956,7 @@ export const App: React.FC = () => {
           onOpenTrackers={() => setTrackersOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenNotifications={() => setNotificationsOpen(true)}
-          onOpenQuiz={() => setQuizOpen(true)}
+          onOpenQuiz={() => navigate('quiz')}
           onSpinRoulette={spinRoulette}
           trackers={libraryState.trackers}
           stats={stats}
@@ -965,7 +978,7 @@ export const App: React.FC = () => {
           onOpenTrackers={() => setTrackersOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenNotifications={() => setNotificationsOpen(true)}
-          onOpenQuiz={() => setQuizOpen(true)}
+          onOpenQuiz={() => navigate('quiz')}
           onSpinRoulette={spinRoulette}
           trackers={libraryState.trackers}
           stats={stats}
@@ -1030,7 +1043,7 @@ export const App: React.FC = () => {
                     onNavigate={navigate}
                     onOpenTrackers={() => setTrackersOpen(true)}
                     onQuickAdd={quickAdd}
-                    onOpenQuiz={() => setQuizOpen(true)}
+                    onOpenQuiz={() => navigate('quiz')}
                   />
                 )}
                 {tab === 'explore' && (
@@ -1074,6 +1087,13 @@ export const App: React.FC = () => {
                     onOpenAnime={openDetail}
                     onOpenUser={openPublicUser}
                     onOpenTrackers={() => setTrackersOpen(true)}
+                  />
+                )}
+                {tab === 'quiz' && (
+                  <QuizView
+                    libraryState={libraryState}
+                    mediaType={mediaType}
+                    onExplore={() => navigate('explore')}
                   />
                 )}
                 {tab === 'you' && (
@@ -1136,7 +1156,7 @@ export const App: React.FC = () => {
             onOpenConflicts={() => setSyncDiffOpen(true)}
             onOpenWrapped={() => setWrappedOpen(true)}
             onOpenCollage={() => setCollageOpen(true)}
-            onOpenQuiz={() => setQuizOpen(true)}
+            onOpenQuiz={() => navigate('quiz')}
             onOpenSettings={() => setSettingsOpen(true)}
             onOpenPhonePreview={
               !isNativeCapacitor() && !inPhoneFrame
@@ -1158,12 +1178,6 @@ export const App: React.FC = () => {
             onClose={() => setCollageOpen(false)}
             libraryState={libraryState}
             mediaType={mediaType}
-          />
-        )}
-        {quizOpen && (
-          <ThemeQuizModal
-            isOpen={quizOpen}
-            onClose={() => setQuizOpen(false)}
           />
         )}
         {settingsOpen && (

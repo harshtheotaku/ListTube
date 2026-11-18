@@ -6,6 +6,7 @@ import {
   fetchMangaReleaseSchedule,
   MangaScheduleItem,
 } from '../services/anilist';
+import { getEpisodeClassification } from '../services/fillerGuide';
 import { franchiseNameOf } from '../services/franchise';
 
 interface ScheduleViewProps {
@@ -357,13 +358,30 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                         >
                           {franchiseNameOf(item.anime.title)}
                         </button>
-                        <p className="mt-1 flex items-center gap-1.5 text-[11.5px] text-[#AAAAAA]">
+                        <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11.5px] text-[#AAAAAA]">
                           <Clock className="h-3 w-3 text-[#FF0000]" />
                           <span>{formatTime(item.airingAt)}</span>
                           <span>•</span>
                           <span className="font-semibold text-emerald-400">
                             {formatCountdown(item.airingAt)}
                           </span>
+                          {(() => {
+                            const tag = getEpisodeClassification(item.anime, item.episode);
+                            if (!tag) return null;
+                            return (
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase tracking-wide ${
+                                  tag === 'FILLER' || tag === 'RECAP'
+                                    ? 'bg-amber-500/20 text-amber-300'
+                                    : tag === 'MIXED'
+                                      ? 'bg-sky-500/20 text-sky-300'
+                                      : 'bg-emerald-500/20 text-emerald-300'
+                                }`}
+                              >
+                                {tag}
+                              </span>
+                            );
+                          })()}
                         </p>
                       </div>
 

@@ -28,6 +28,7 @@ import {
 } from '../types';
 import { animeStore } from '../services/animeStore';
 import { isNativeCapacitor } from '../services/platform';
+import { autoMaintainStorageCache } from '../services/offlineCoverCache';
 import { SCORE_FORMATS } from '../services/scoring';
 import { settingsStore, useSettings } from '../services/settings';
 import { toast } from './Toast';
@@ -828,21 +829,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
                 <div className="flex items-center justify-between gap-4 p-4">
                   <div>
-                    <p className="text-[13px] font-bold text-white">Refresh Artwork Cache</p>
+                    <p className="text-[13px] font-bold text-white">Auto Cache Clear</p>
                     <p className="text-[11px] text-[#AAAAAA]">
-                      Clear unpinned IndexedDB posters while keeping your list intact.
+                      Automatically evict stale unpinned records (&gt;14d) &amp; old offline caches while preserving your Watchlist.
+                    </p>
+                  </div>
+                  <AppleSwitch
+                    label="Auto Cache Clear"
+                    checked={settings.autoClearCache}
+                    onChange={(v) => settingsStore.update({ autoClearCache: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4 p-4">
+                  <div>
+                    <p className="text-[13px] font-bold text-white">Clean &amp; Refresh Cache Now</p>
+                    <p className="text-[11px] text-[#AAAAAA]">
+                      Sweep stale IndexedDB &amp; Cache Storage entries immediately while keeping your list intact.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
                       animeStore.clearUnpinned();
-                      toast('IndexedDB cache refreshed');
+                      void autoMaintainStorageCache(true).then((res) => {
+                        toast(
+                          `Cleaned cache (${res.prunedRecords} stale items, ${res.removedOldCaches} old buckets)`
+                        );
+                      });
                     }}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.1] px-3 py-1.5 text-[11.5px] font-bold text-white hover:bg-white/[0.18]"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/[0.1] px-3 py-1.5 text-[11.5px] font-bold text-white hover:bg-white/[0.18]"
                   >
                     <RefreshCw className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                    Refresh
+                    Clean Now
                   </button>
                 </div>
               </div>

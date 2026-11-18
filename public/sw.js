@@ -1,4 +1,5 @@
 const CACHE_VERSION = 'listtube-pwa-v1';
+const SUBSCRIBED_COVER_CACHE = 'listtube-subscribed-covers-v1';
 const STATIC_ASSETS = ['/manifest.webmanifest', '/site.webmanifest', '/favicon.svg', '/'];
 
 self.addEventListener('install', (event) => {
@@ -11,11 +12,12 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
+  const keep = new Set([CACHE_VERSION, SUBSCRIBED_COVER_CACHE]);
   event.waitUntil(
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k)))
+        Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)))
       )
       .then(() => self.clients.claim())
   );
@@ -26,7 +28,17 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
 
   const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin) {
+    // Serve cached subscribed anime/manga covers seamlessly when offline
+    if (req.destination === 'image' || /\.(?:png|jpe?g|webp)$/i.test(url.pathname)) {
+      event.respondWith(
+        fetch(req).catch(() =>
+          caches.open(SUBSCRIBED_COVER_CACHE).then((c) => c.match(req.url) || c.match(req))
+        )
+      );
+    }
+    return;
+  }
   if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return;
   if (url.pathname.startsWith('/api/') || url.searchParams.has('code') || url.searchParams.has('state')) {
     return;

@@ -1,7 +1,28 @@
-import { Anime } from '../types';
+import { Anime, ListEntry, MediaType } from '../types';
 import { animeStore } from './animeStore';
+import { fetchAnimeThemes } from './jikan';
 
 export type JeopardyCellKind = 'audio' | 'visual_crop' | 'riddle_trivia' | 'studio_year';
+export type QuizPoolScope = 'all' | 'mylist';
+
+export interface InfiniteQuizQuestion {
+  id: string;
+  signature: string;
+  kind: JeopardyCellKind;
+  animeTitle: string;
+  malId?: number;
+  prompt: string;
+  clues: string[];
+  imageUrl?: string;
+  songTitle?: string;
+  artist?: string;
+  audioQuery?: string;
+  initialClipSec?: number;
+  options: string[];
+  correctAnswer: string;
+  aliases?: string[];
+  fromMyList?: boolean;
+}
 
 export interface ThemeQuizQuestion {
   id: string;
@@ -439,7 +460,68 @@ const HERALEN_RIDDLES: SeedRiddle[] = [
 
 const HIGH_SCORE_KEY = 'listtube.themeQuiz.best.v1';
 const JEOPARDY_HIGH_SCORE_KEY = 'listtube.jeopardy.best.v1';
+const SEEN_QUESTIONS_KEY = 'listtube.quiz.seen.v1';
 const audioCache = new Map<string, ThemeAudioTrack | null>();
+
+export function getSeenQuizKeys(): Set<string> {
+  if (typeof localStorage === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(SEEN_QUESTIONS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? new Set(arr.filter((x): x is string => typeof x === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function getSeenQuizCount(): number {
+  return getSeenQuizKeys().size;
+}
+
+export function markQuizQuestionSeen(signature: string): void {
+  if (typeof localStorage === 'undefined' || !signature) return;
+  try {
+    const set = getSeenQuizKeys();
+    set.add(signature);
+    const trimmed = Array.from(set).slice(-3500);
+    localStorage.setItem(SEEN_QUESTIONS_KEY, JSON.stringify(trimmed));
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
+export function resetSeenQuizHistory(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.removeItem(SEEN_QUESTIONS_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function discoverDynamicAnimeTheme(malId?: number): Promise<{
+  songTitle: string;
+  artist: string;
+  audioQuery: string;
+} | null> {
+  if (!malId || malId <= 0) return null;
+  try {
+    const themes = await fetchAnimeThemes(malId);
+    const list = [...(themes.openings ?? []), ...(themes.endings ?? [])];
+    const first = list[0];
+    if (!first?.title) return null;
+    const songTitle = first.title.trim();
+    const artist = (first.artists ?? '').trim();
+    return {
+      songTitle,
+      artist: artist || 'Theme Song',
+      audioQuery: `${songTitle} ${artist}`.trim(),
+    };
+  } catch {
+    return null;
+  }
+}
 
 export type QuizDifficultyTier = 'three_sec';
 export const SNIPPET_LADDER: Record<QuizDifficultyTier, number[]> = {
@@ -780,4 +862,217 @@ export function buildJeopardyBoard(catalogInput?: Anime[]): JeopardyCategory[] {
       cells: studioCells,
     },
   ];
+}
+
+function maskTitleWords(text: string, title: string): string {
+  if (!text) return '';
+  const clean = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const words = title
+    .split(/[^a-zA-Z0-9]+/)
+    .filter((w) => w.length >= 4)
+    .slice(0, 4);
+  let out = clean;
+  for (const w of words) {
+    out = out.replace(new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), '███');
+  }
+  return out.length > 150 ? `${out.slice(0, 147)}…` : out;
+}
+
+/**
+ * Generates an endless, non-repeating quiz question across Audio OPs/EDs,
+ * Cursed Crops, 3-Clue Riddles, and Studio/Year trivia. Supports filtering strictly
+ * to the user's own Anime/Manga Watchlist (`scope: 'mylist'`).
+ */
+export function buildNextInfiniteQuestion(opts: {
+  scope: QuizPoolScope;
+  entries?: Record<string, ListEntry>;
+  mediaType?: MediaType;
+  sessionExclude?: Set<string>;
+  preferKind?: JeopardyCellKind;
+}): InfiniteQuizQuestion {
+  const seen = getSeenQuizKeys();
+  const exclude = opts.sessionExclude ?? new Set<string>();
+  const allCatalog = animeStore
+    .all()
+    .filter((a) => a.cover && a.title && a.title.length <= 52);
+
+  const listItems: Anime[] = opts.entries
+    ? Object.values(opts.entries)
+        .map((e) => animeStore.get(e.animeId))
+        .filter((a): a is Anime => Boolean(a && a.cover && a.title))
+    : [];
+
+  const pool =
+    opts.scope === 'mylist' && listItems.length >= 2
+      ? listItems
+      : allCatalog.filter((a) => (opts.mediaType ? a.mediaType === opts.mediaType : true));
+
+  const fallbackTitles = ICONIC_THEMES.map((t) => t.anime);
+  const distractorTitles = Array.from(
+    new Set([
+      ...allCatalog.slice(0, 140).map((a) => a.title),
+      ...fallbackTitles,
+    ])
+  );
+
+  // Build candidate question generators (curated audio + dynamic catalog items)
+  const candidates: InfiniteQuizQuestion[] = [];
+
+  for (const theme of ICONIC_THEMES) {
+    const matchesMyList =
+      listItems.length > 0 &&
+      listItems.some(
+        (m) =>
+          m.title.toLowerCase().includes(theme.anime.toLowerCase()) ||
+          theme.anime.toLowerCase().includes(m.title.toLowerCase())
+      );
+    if (opts.scope === 'mylist' && listItems.length >= 2 && !matchesMyList) continue;
+
+    const sig = `audio:${theme.song.toLowerCase()}`;
+    if (exclude.has(sig)) continue;
+    candidates.push({
+      id: `${sig}-${Math.random().toString(36).slice(2, 7)}`,
+      signature: sig,
+      kind: 'audio',
+      animeTitle: theme.anime,
+      prompt: `3s Audio Blitz — which anime features ${theme.kind}: “${theme.song}”?`,
+      clues: [
+        `Premiere: ${theme.year} · Studio: ${theme.studio}`,
+        theme.clue1,
+        theme.clue2,
+      ],
+      songTitle: theme.song,
+      artist: theme.artist,
+      audioQuery: `${theme.song} ${theme.artist}`,
+      initialClipSec: 3,
+      options: buildOptionsForTitle(theme.anime, distractorTitles),
+      correctAnswer: theme.anime,
+      aliases: theme.aliases,
+      fromMyList: matchesMyList,
+    });
+  }
+
+  // Dynamic questions across hundreds of catalog / user list titles
+  const shuffledPool = [...pool].sort(() => Math.random() - 0.5).slice(0, 60);
+  for (const anime of shuffledPool) {
+    const isInList = Boolean(opts.entries?.[anime.id]);
+    const yearStr = anime.year ? String(anime.year) : undefined;
+    const studio = anime.studios?.[0];
+    const synopsisHint = maskTitleWords(anime.description ?? '', anime.title);
+    const kindPool: JeopardyCellKind[] = [];
+    if (anime.cover) kindPool.push('visual_crop');
+    if (synopsisHint.length >= 25 || studio) kindPool.push('riddle_trivia');
+    if (studio || yearStr) kindPool.push('studio_year');
+    if ((anime.mediaType ?? 'ANIME') === 'ANIME' && anime.malId) kindPool.push('audio');
+
+    const chosenKind =
+      opts.preferKind && kindPool.includes(opts.preferKind)
+        ? opts.preferKind
+        : kindPool[Math.floor(Math.random() * kindPool.length)] ?? 'visual_crop';
+
+    const sig = `${chosenKind}:${anime.id}`;
+    if (exclude.has(sig)) continue;
+
+    if (chosenKind === 'audio' && anime.malId) {
+      candidates.push({
+        id: `${sig}-${Math.random().toString(36).slice(2, 7)}`,
+        signature: sig,
+        kind: 'audio',
+        animeTitle: anime.title,
+        malId: anime.malId,
+        prompt: `Mystery 3s Opening/Ending — identify this series!`,
+        clues: [
+          `Genres: ${(anime.genres ?? []).slice(0, 3).join(', ') || 'Anime'}`,
+          `${studio ? `Studio: ${studio}` : 'Series'}${yearStr ? ` (${yearStr})` : ''}`,
+          synopsisHint || `${anime.episodes ?? '?'} episodes`,
+        ],
+        initialClipSec: 3,
+        options: buildOptionsForTitle(anime.title, distractorTitles),
+        correctAnswer: anime.title,
+        fromMyList: isInList,
+      });
+    } else if (chosenKind === 'visual_crop') {
+      candidates.push({
+        id: `${sig}-${Math.random().toString(36).slice(2, 7)}`,
+        signature: sig,
+        kind: 'visual_crop',
+        animeTitle: anime.title,
+        prompt: `Blurred Poster Frame — which ${anime.mediaType === 'MANGA' ? 'manga' : 'anime'} is this?`,
+        clues: [
+          `Genres: ${(anime.genres ?? []).slice(0, 3).join(', ') || 'Action'}`,
+          `${studio ? `Studio: ${studio}` : anime.format ?? 'Series'}${yearStr ? ` · ${yearStr}` : ''}`,
+          synopsisHint || `Score ${anime.score ? anime.score.toFixed(1) : 'N/A'}★`,
+        ],
+        imageUrl: anime.cover,
+        options: buildOptionsForTitle(anime.title, distractorTitles),
+        correctAnswer: anime.title,
+        fromMyList: isInList,
+      });
+    } else if (chosenKind === 'riddle_trivia') {
+      candidates.push({
+        id: `${sig}-${Math.random().toString(36).slice(2, 7)}`,
+        signature: sig,
+        kind: 'riddle_trivia',
+        animeTitle: anime.title,
+        prompt: `3-Clue Lore Challenge — name this title!`,
+        clues: [
+          `Clue 1: Genres — ${(anime.genres ?? []).slice(0, 3).join(', ') || 'Mystery'}`,
+          `Clue 2: ${studio ? `Animated by ${studio}` : 'Released'}${yearStr ? ` in ${yearStr}` : ''}`,
+          `Clue 3: ${synopsisHint || `${anime.episodes ?? '?'} episodes`}`,
+        ],
+        options: buildOptionsForTitle(anime.title, distractorTitles),
+        correctAnswer: anime.title,
+        fromMyList: isInList,
+      });
+    } else if (studio) {
+      const studioChoices = Array.from(
+        new Set([studio, 'MAPPA', 'Madhouse', 'Bones', 'ufotable', 'Wit Studio', 'Pierrot', 'A-1 Pictures', 'Kyoto Animation'])
+      )
+        .filter((s) => s !== studio)
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 3);
+      candidates.push({
+        id: `${sig}-${Math.random().toString(36).slice(2, 7)}`,
+        signature: sig,
+        kind: 'studio_year',
+        animeTitle: anime.title,
+        prompt: `Which studio produced ${anime.title}${yearStr ? ` (${yearStr})` : ''}?`,
+        clues: [
+          `Genres: ${(anime.genres ?? []).slice(0, 3).join(', ')}`,
+          `Format: ${anime.format ?? 'TV'} (${anime.episodes ?? '?'} ep)`,
+          synopsisHint || `Community score ${anime.score ? anime.score.toFixed(1) : '8.0'}★`,
+        ],
+        options: [studio, ...studioChoices].sort(() => Math.random() - 0.5),
+        correctAnswer: studio,
+        fromMyList: isInList,
+      });
+    }
+  }
+
+  // Strictly prioritize never-before-seen questions first!
+  const unseen = candidates.filter((c) => !seen.has(c.signature));
+  const preferredList = unseen.length > 0 ? unseen : candidates;
+  const finalPool = preferredList.length > 0 ? preferredList : [candidates[0]].filter(Boolean);
+
+  if (finalPool.length > 0) {
+    return finalPool[Math.floor(Math.random() * finalPool.length)];
+  }
+
+  // Guaranteed safe fallback if catalog hasn't hydrated yet
+  const t = ICONIC_THEMES[Math.floor(Math.random() * ICONIC_THEMES.length)];
+  return {
+    id: `fallback-${Date.now()}`,
+    signature: `audio:${t.song.toLowerCase()}`,
+    kind: 'audio',
+    animeTitle: t.anime,
+    prompt: `3s Audio Blitz — which anime features ${t.kind}: “${t.song}”?`,
+    clues: [`${t.year} · ${t.studio}`, t.clue1, t.clue2],
+    songTitle: t.song,
+    artist: t.artist,
+    audioQuery: `${t.song} ${t.artist}`,
+    initialClipSec: 3,
+    options: buildOptionsForTitle(t.anime, fallbackTitles),
+    correctAnswer: t.anime,
+    aliases: t.aliases,
+  };
 }
