@@ -160,8 +160,8 @@
   .liquid-glass {
     background: linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.13) 0%,
-      rgba(24, 24, 30, 0.62) 100%
+      rgba(255, 255, 255, var(--lt-glass-top, 0.13)) 0%,
+      rgba(24, 24, 30, var(--lt-glass-bot, 0.62)) 100%
     );
     -webkit-backdrop-filter: blur(30px) saturate(195%);
     backdrop-filter: blur(30px) saturate(195%);
@@ -173,8 +173,8 @@
   html[data-theme="light"] .liquid-glass {
     background: linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.84) 0%,
-      rgba(242, 244, 250, 0.7) 100%
+      rgba(255, 255, 255, var(--lt-glass-light-top, 0.84)) 0%,
+      rgba(242, 244, 250, var(--lt-glass-light-bot, 0.7)) 100%
     );
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.95),

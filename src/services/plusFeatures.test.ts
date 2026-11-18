@@ -89,6 +89,7 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
       defaultTab: 'explore',
       defaultTrailerMuted: true,
       hapticsEnabled: false,
+      liquidGlassOpacity: 35,
     });
     const nextSnap = settingsStore.getSnapshot();
     expect(nextSnap.titleLanguage).toBe('romaji');
@@ -99,6 +100,12 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
     expect(nextSnap.defaultTab).toBe('explore');
     expect(nextSnap.defaultTrailerMuted).toBe(true);
     expect(nextSnap.hapticsEnabled).toBe(false);
+    expect(nextSnap.liquidGlassOpacity).toBe(35);
+
+    settingsStore.update({ liquidGlassOpacity: 200 });
+    expect(settingsStore.getSnapshot().liquidGlassOpacity).toBe(95);
+    settingsStore.update({ liquidGlassOpacity: 0 });
+    expect(settingsStore.getSnapshot().liquidGlassOpacity).toBe(15);
 
     const aot = { title: 'Attack on Titan', titleRomaji: 'Shingeki no Kyojin', titleNative: '進撃の巨人' };
     expect(formatPreferredTitle(aot, 'english')).toBe('Attack on Titan');

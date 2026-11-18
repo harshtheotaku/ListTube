@@ -275,6 +275,7 @@ export interface AppSettings {
   scoreFormat: ScoreFormat;
   showCommunityLinks: boolean;
   liquidGlass: boolean;
+  liquidGlassOpacity: number;
   themePreset: ThemePreset;
   themeColors: ThemeColors;
   fontFamily: FontStylePreset;

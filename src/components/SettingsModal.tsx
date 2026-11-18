@@ -69,7 +69,7 @@ const CATEGORY_META: {
     label: 'Themes & Glass',
     desc: 'Theme, fonts, density & glass',
     icon: Palette,
-    keywords: 'theme obsidian oled daylight custom accent font density blur motion blend liquid glass',
+    keywords: 'theme obsidian oled daylight custom accent font density blur motion blend liquid glass opacity translucency frosted',
   },
   {
     id: 'home',
@@ -696,6 +696,62 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         toast(v ? 'Liquid Glass Navigation enabled' : 'Classic Navigation enabled');
                       }}
                     />
+                  </div>
+
+                  {/* Liquid Glass Opacity Slider + Presets */}
+                  <div className="space-y-3 px-4 py-3.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[13.5px] font-semibold text-white">Liquid Glass Opacity</p>
+                        <p className="text-[11.5px] text-[#8E8E93]">
+                          {settings.reduceBlur
+                            ? 'Turn off Reduce dynamic blur to see translucent glass tinting'
+                            : 'Control translucency of glass headers, docks & sheets'}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-0.5 font-mono text-[11.5px] font-bold text-white">
+                        {settings.liquidGlassOpacity}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      aria-label="Liquid Glass Opacity"
+                      min={15}
+                      max={95}
+                      step={5}
+                      value={settings.liquidGlassOpacity}
+                      onChange={(e) =>
+                        settingsStore.update({ liquidGlassOpacity: Number(e.target.value) })
+                      }
+                      className="w-full cursor-pointer accent-[#3EA6FF]"
+                    />
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[
+                        { label: 'Clear', value: 25 },
+                        { label: 'Crystal', value: 45 },
+                        { label: 'Balanced', value: 65 },
+                        { label: 'Frosted', value: 85 },
+                      ].map((preset) => {
+                        const active = Math.abs(settings.liquidGlassOpacity - preset.value) <= 4;
+                        return (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() => {
+                              settingsStore.update({ liquidGlassOpacity: preset.value });
+                              toast(`Glass opacity: ${preset.label} (${preset.value}%)`);
+                            }}
+                            className={`lt-press rounded-full py-1 text-[11px] font-semibold transition ${
+                              active
+                                ? 'bg-white text-black shadow'
+                                : 'bg-white/[0.07] text-[#CCCCCC] hover:bg-white/[0.14]'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 

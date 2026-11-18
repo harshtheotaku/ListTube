@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   scoreFormat: 'POINT_10_DECIMAL',
   showCommunityLinks: true,
   liquidGlass: true,
+  liquidGlassOpacity: 65,
   themePreset: 'main',
   themeColors: { ...PRESET_THEME_COLORS.main },
   fontFamily: 'default',
@@ -107,6 +108,9 @@ function mergeSettings(raw: Partial<AppSettings>): AppSettings {
         : DEFAULT_SETTINGS.showCommunityLinks,
     liquidGlass:
       raw.liquidGlass !== undefined ? Boolean(raw.liquidGlass) : DEFAULT_SETTINGS.liquidGlass,
+    liquidGlassOpacity: Number.isFinite(Number(raw.liquidGlassOpacity))
+      ? Math.max(15, Math.min(95, Math.round(Number(raw.liquidGlassOpacity))))
+      : DEFAULT_SETTINGS.liquidGlassOpacity,
     themePreset: preset,
     themeColors: {
       bg: baseColors.bg || PRESET_THEME_COLORS.main.bg,
@@ -195,12 +199,23 @@ function loadSettings(): AppSettings {
 export function applyThemeToDocument(s: AppSettings): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
+  const glassPct = Math.max(15, Math.min(95, Math.round(s.liquidGlassOpacity ?? 65)));
+  const darkTop = (0.04 + (glassPct / 100) * 0.14).toFixed(3);
+  const darkBot = (0.14 + (glassPct / 100) * 0.74).toFixed(3);
+  const lightTop = (0.44 + (glassPct / 100) * 0.54).toFixed(3);
+  const lightBot = (0.28 + (glassPct / 100) * 0.64).toFixed(3);
+
   root.style.setProperty('--lt-bg', s.themeColors.bg);
   root.style.setProperty('--lt-text', s.themeColors.text);
   root.style.setProperty('--lt-accent', s.themeColors.accent);
+  root.style.setProperty('--lt-glass-top', darkTop);
+  root.style.setProperty('--lt-glass-bot', darkBot);
+  root.style.setProperty('--lt-glass-light-top', lightTop);
+  root.style.setProperty('--lt-glass-light-bot', lightBot);
   root.style.setProperty('--font-sans', FONT_STACKS[s.fontFamily] ?? FONT_STACKS.default);
   root.dataset.theme = s.themePreset === 'light' ? 'light' : 'dark';
   root.dataset.liquidGlass = s.liquidGlass ? '1' : '0';
+  root.dataset.glassOpacity = String(glassPct);
   root.dataset.reduceMotion = s.reduceMotion ? '1' : '0';
   root.dataset.reduceBlur = s.reduceBlur ? '1' : '0';
   root.dataset.disableBlend = s.disableBlend ? '1' : '0';
