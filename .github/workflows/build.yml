@@ -60,15 +60,15 @@ jobs:
         with:
           name: ListTube-android-apk
           path: ListTube-android.apk
-      - name: Update Latest Beta APK Release
+      - name: Publish Latest APK Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if gh release view v1.2.0-beta.1 >/dev/null 2>&1; then
-            gh release upload v1.2.0-beta.1 ListTube-android.apk --clobber
+          if gh release view v1.2.0 >/dev/null 2>&1; then
+            gh release upload v1.2.0 ListTube-android.apk --clobber
           else
-            gh release create v1.2.0-beta.1 ListTube-android.apk --title "ListTube v1.2.0-beta.1 (Beta)" --prerelease --notes "ListTube v1.2.0-beta.1 Beta release — signed Android APK (ListTube-android.apk)."
+            gh release create v1.2.0 ListTube-android.apk --latest --title "ListTube v1.2.0" --notes "ListTube v1.2.0 — signed Android APK (ListTube-android.apk) for direct install & Obtainium auto-updates."
           fi
           gh release delete-asset v1.0.0 AniTube-android.apk -y >/dev/null 2>&1 || true
           if gh release view v1.0.0 >/dev/null 2>&1; then

@@ -89,6 +89,7 @@ import { MiniPlayer } from './components/MiniPlayer';
 import { LaunchSplash } from './components/LaunchSplash';
 import { resetScrollChrome } from './services/scrollChrome';
 import { autoMaintainStorageCache, syncSubscribedCoverCache } from './services/offlineCoverCache';
+import { checkForGitHubUpdate } from './services/appUpdater';
 
 const TABS: AppTab[] = ['home', 'explore', 'list', 'schedule', 'news', 'feed', 'you', 'quiz'];
 const MEDIA_TYPE_KEY = 'anitube.mediaType.v1';
@@ -407,6 +408,13 @@ export const App: React.FC = () => {
     const t = setTimeout(() => {
       if (covers.length > 0) void syncSubscribedCoverCache(covers);
       if (settings.autoClearCache) void autoMaintainStorageCache(false);
+      if (isNativeCapacitor()) {
+        void checkForGitHubUpdate(false).then((info) => {
+          if (info?.updateAvailable) {
+            toast(`ListTube v${info.latestVersion} is out! Download in Settings -> App Updates.`);
+          }
+        });
+      }
     }, 1500);
     return () => clearTimeout(t);
   }, [libraryState.entries, settings.autoClearCache]);

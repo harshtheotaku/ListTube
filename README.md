@@ -2,19 +2,20 @@
 
 <img src="src/assets/brand-anime.png" alt="ListTube Mascot Icon" width="88" style="border-radius: 20px;" />
 
-# ListTube (`v1.2.0-beta.1`)
+# ListTube (`v1.2.0`)
 
 **A YouTube-Inspired Anime & Manga Discovery, Franchise Channel, and 2-Way Sync Platform**
 
 Built with React 18, TypeScript, Tailwind CSS v4, Supabase, and Capacitor Android — combining YouTube's clean mobile navigation and auto-hiding fullscreen chrome with Apple Liquid Glass surfaces, BitChord-inspired theme customization, a `1,950`-title offline starter catalog, and 2-way **AniList**, **MyAnimeList**, **Google**, **Comix**, and **Mihon** tracking.
 
-[![Beta Version](https://img.shields.io/badge/Version-v1.2.0--beta.1-orange?style=for-the-badge)](https://github.com/harshtheotaku/ListTube/releases)
+[![Version](https://img.shields.io/badge/Version-v1.2.0-FF0000?style=for-the-badge)](https://github.com/harshtheotaku/ListTube/releases/latest)
 [![Live Website](https://img.shields.io/badge/Live%20Website-ListTube.vercel.app-FF0000?style=for-the-badge&logo=vercel&logoColor=white)](https://listtube.vercel.app/)
 [![Download Android APK](https://img.shields.io/badge/Download-ListTube--android.apk-3DDC84?style=for-the-badge&logo=android&logoColor=black)](https://github.com/harshtheotaku/ListTube/releases/latest/download/ListTube-android.apk)
+[![Obtainium Auto-Updates](https://img.shields.io/badge/Auto--Update-Obtainium-6C5CE7?style=for-the-badge&logo=android&logoColor=white)](https://obtainium.imranr.dev/)
 [![Build Web & Android](https://github.com/harshtheotaku/ListTube/actions/workflows/build.yml/badge.svg)](https://github.com/harshtheotaku/ListTube/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
-[**Launch Web App**](https://listtube.vercel.app/) · [**Download `ListTube-android.apk`**](https://github.com/harshtheotaku/ListTube/releases/latest/download/ListTube-android.apk) · [**Report an Issue**](https://github.com/harshtheotaku/ListTube/issues)
+[**Launch Web App**](https://listtube.vercel.app/) · [**Download `ListTube-android.apk`**](https://github.com/harshtheotaku/ListTube/releases/latest/download/ListTube-android.apk) · [**All Releases**](https://github.com/harshtheotaku/ListTube/releases) · [**Report an Issue**](https://github.com/harshtheotaku/ListTube/issues)
 
 </div>
 
@@ -63,10 +64,10 @@ Built with React 18, TypeScript, Tailwind CSS v4, Supabase, and Capacitor Androi
 
 ## Quick Download & Install
 
-### Android App (`ListTube-android.apk`)
-1. Download [**`ListTube-android.apk`**](https://github.com/harshtheotaku/ListTube/releases/latest/download/ListTube-android.apk) (Android 7.0+).
-2. Open the APK file and tap **Install** (enable "Install unknown apps" if prompted).
-3. Launch **ListTube** — offline catalog search, themes, tracking, and Comix/Mihon backup import work immediately without signing in.
+### Android App (`ListTube-android.apk`) — Direct Install & Auto-Updates (\$0)
+1. **Direct Download:** Download [**`ListTube-android.apk`**](https://github.com/harshtheotaku/ListTube/releases/latest/download/ListTube-android.apk) (Android 7.0+) and tap **Install**.
+2. **Automatic Updates via Obtainium (Recommended):** Install [Obtainium](https://obtainium.imranr.dev/), tap **Add App**, and paste `https://github.com/harshtheotaku/ListTube` — Obtainium will automatically pull signed updates straight from GitHub Releases.
+3. **In-App Update Checker:** Tap **Settings -> Playback & Data -> App Updates -> Check Now** inside ListTube anytime to grab new builds in one tap.
 
 ### Web App
 - Primary deployment: **https://listtube.vercel.app**

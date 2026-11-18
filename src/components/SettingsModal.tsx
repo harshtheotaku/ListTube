@@ -4,6 +4,7 @@ import {
   Check,
   ChevronRight,
   Contrast,
+  Download,
   Droplets,
   Eye,
   Gauge,
@@ -27,6 +28,7 @@ import {
   ThemePreset,
 } from '../types';
 import { animeStore } from '../services/animeStore';
+import { APP_VERSION, AppUpdateInfo, checkForGitHubUpdate } from '../services/appUpdater';
 import { isNativeCapacitor } from '../services/platform';
 import { autoMaintainStorageCache } from '../services/offlineCoverCache';
 import { SCORE_FORMATS } from '../services/scoring';
@@ -100,6 +102,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const settings = useSettings();
   const [section, setSection] = useState<SettingsSection>('appearance');
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
   const inPhoneFrame =
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).has('phonePreview');
@@ -862,6 +866,58 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <RefreshCw className="h-3.5 w-3.5 text-[#3EA6FF]" />
                     Clean Now
                   </button>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+                  <div>
+                    <p className="text-[13px] font-bold text-white">
+                      App Updates (v{APP_VERSION})
+                    </p>
+                    <p className="text-[11px] text-[#AAAAAA]">
+                      {updateInfo
+                        ? updateInfo.updateAvailable
+                          ? `Update v${updateInfo.latestVersion} ready on GitHub Releases!`
+                          : `You are running the latest version (v${updateInfo.latestVersion}).`
+                        : 'Check GitHub Releases directly (also works automatically with Obtainium).'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {updateInfo?.updateAvailable && (
+                      <a
+                        href={updateInfo.apkUrl}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1.5 text-[11.5px] font-bold text-black hover:bg-emerald-400"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Download v{updateInfo.latestVersion}
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      disabled={checkingUpdate}
+                      onClick={() => {
+                        setCheckingUpdate(true);
+                        void checkForGitHubUpdate(true)
+                          .then((res) => {
+                            if (res) {
+                              setUpdateInfo(res);
+                              toast(
+                                res.updateAvailable
+                                  ? `ListTube v${res.latestVersion} available!`
+                                  : `Up to date (v${res.latestVersion})`
+                              );
+                            } else {
+                              toast('Could not reach GitHub Releases');
+                            }
+                          })
+                          .finally(() => setCheckingUpdate(false));
+                      }}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/[0.1] px-3 py-1.5 text-[11.5px] font-bold text-white hover:bg-white/[0.18] disabled:opacity-50"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 text-[#3EA6FF] ${checkingUpdate ? 'animate-spin' : ''}`} />
+                      {checkingUpdate ? 'Checking…' : 'Check Now'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </>

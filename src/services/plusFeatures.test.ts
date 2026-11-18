@@ -14,6 +14,7 @@ import {
 import { computeWrappedSummary } from './wrappedStats';
 import { pickDefaultCollageSlots, pickDefaultTierBuckets } from './collageGrid';
 import { buildEpisodeWatchUrl } from './supabase';
+import { compareSemver } from './appUpdater';
 import { animeStore } from './animeStore';
 import { UserProfile } from './profile';
 import { decodeMihonProtobufBytes, parseComixOrJsonBackup } from './backupImport';
@@ -177,6 +178,10 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
 
     const epUrl = buildEpisodeWatchUrl('https://kotoplay.to/watch/naruto-123', 'kotoplay', 42);
     expect(epUrl).toContain('ep=42');
+
+    expect(compareSemver('v1.2.1', '1.2.0')).toBeGreaterThan(0);
+    expect(compareSemver('1.2.0', '1.2.0-beta.1')).toBeGreaterThan(0);
+    expect(compareSemver('1.2.0', '1.2.0')).toBe(0);
   });
 
   it('defaults externalLinkMode to external and decodes Comix CSV/JSON & Mihon protobuf backups', () => {
