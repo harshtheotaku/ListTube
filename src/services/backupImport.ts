@@ -1,4 +1,4 @@
-import { Anime, ListStatus } from '../types';
+import { Anime, LibraryState, ListStatus } from '../types';
 import { searchAniList } from './anilist';
 import { animeStore } from './animeStore';
 import { ImportedEntry } from './jikan';
@@ -441,4 +441,88 @@ export async function hydrateUnmatchedBackupEntries(entries: ImportedEntry[]): P
     }
   }
   return resolvedCount;
+}
+
+export async function gunzipFileToText(file: File): Promise<string> {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const raw = await maybeGunzip(buf);
+  return new TextDecoder('utf-8').decode(raw);
+}
+
+function escapeXml(raw: string): string {
+  return raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function toMalStatus(status: ListStatus, isManga: boolean): string {
+  if (status === 'watching') return isManga ? 'Reading' : 'Watching';
+  if (status === 'completed') return 'Completed';
+  if (status === 'on_hold') return 'On-Hold';
+  if (status === 'dropped') return 'Dropped';
+  return isManga ? 'Plan to Read' : 'Plan to Watch';
+}
+
+/**
+ * Exports tracked anime entries as MyAnimeList-compatible XML (`myanimelist`).
+ */
+export function exportMalXml(libraryState?: LibraryState): string {
+  const lib = libraryState ?? library.getSnapshot();
+  const entries = Object.values(lib.entries);
+  const animeItems: string[] = [];
+  let counts = { total: 0, watching: 0, completed: 0, onHold: 0, dropped: 0, ptw: 0 };
+
+  for (const e of entries) {
+    const anime = animeStore.get(e.animeId);
+    const isManga = (anime?.mediaType ?? e.mediaType ?? 'ANIME') === 'MANGA';
+    if (isManga) continue;
+    counts.total += 1;
+    if (e.status === 'watching') counts.watching += 1;
+    else if (e.status === 'completed') counts.completed += 1;
+    else if (e.status === 'on_hold') counts.onHold += 1;
+    else if (e.status === 'dropped') counts.dropped += 1;
+    else counts.ptw += 1;
+
+    const malId = anime?.malId ?? (e.animeId.startsWith('mal:') ? Number(e.animeId.slice(4)) || 0 : 0);
+    const title = escapeXml(anime?.title || e.animeId);
+    const seriesType = escapeXml(anime?.format || 'TV');
+    const totalEps = anime?.episodes ?? 0;
+    const score = e.score ? Math.round(e.score) : 0;
+    const comments = escapeXml(e.notes || '');
+
+    animeItems.push(
+      `  <anime>\n` +
+        `    <series_animedb_id>${malId}</series_animedb_id>\n` +
+        `    <series_title><![CDATA[${title}]]></series_title>\n` +
+        `    <series_type>${seriesType}</series_type>\n` +
+        `    <series_episodes>${totalEps}</series_episodes>\n` +
+        `    <my_watched_episodes>${e.progress ?? 0}</my_watched_episodes>\n` +
+        `    <my_score>${score}</my_score>\n` +
+        `    <my_status>${toMalStatus(e.status, false)}</my_status>\n` +
+        `    <my_times_watched>${e.repeat ?? 0}</my_times_watched>\n` +
+        `    <my_comments><![CDATA[${comments}]]></my_comments>\n` +
+        `    <update_on_import>1</update_on_import>\n` +
+      `  </anime>`
+    );
+  }
+
+  return (
+    `<?xml version="1.0" encoding="UTF-8" ?>\n` +
+    `<myanimelist>\n` +
+    `  <myinfo>\n` +
+    `    <user_export_type>1</user_export_type>\n` +
+    `    <user_total_anime>${counts.total}</user_total_anime>\n` +
+    `    <user_total_watching>${counts.watching}</user_total_watching>\n` +
+    `    <user_total_completed>${counts.completed}</user_total_completed>\n` +
+    `    <user_total_onhold>${counts.onHold}</user_total_onhold>\n` +
+    `    <user_total_dropped>${counts.dropped}</user_total_dropped>\n` +
+    `    <user_total_plantowatch>${counts.ptw}</user_total_plantowatch>\n` +
+    `  </myinfo>\n` +
+    animeItems.join('\n') +
+    (animeItems.length ? '\n' : '') +
+    `</myanimelist>\n`
+  );
 }

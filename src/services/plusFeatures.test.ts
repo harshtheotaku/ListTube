@@ -22,11 +22,13 @@ import { buildEpisodeWatchUrl } from './supabase';
 import { compareSemver } from './appUpdater';
 import { animeStore } from './animeStore';
 import { UserProfile } from './profile';
-import { decodeMihonProtobufBytes, parseComixOrJsonBackup } from './backupImport';
+import { decodeMihonProtobufBytes, exportMalXml, parseComixOrJsonBackup } from './backupImport';
+import { fetchEpisodeReactions, postEpisodeReaction } from './communityStats';
 import { Anime, LibraryState } from '../types';
 
 const makeAnime = (p: Partial<Anime> & { id: string }): Anime => ({
   id: p.id,
+  malId: p.malId,
   mediaType: p.mediaType ?? 'ANIME',
   source: 'anilist',
   title: p.title ?? p.id,
@@ -252,5 +254,45 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
     const decoded = decodeMihonProtobufBytes(rootMsg);
     expect(decoded).toHaveLength(1);
     expect(decoded[0]).toMatchObject({ title: 'Vagabond', mediaType: 'MANGA', status: 'watching' });
+  });
+
+  it('exports valid MyAnimeList XML and saves local episode check-in reactions', async () => {
+    animeStore.remember(makeAnime({ id: 'anilist:16498', malId: 16498, title: 'Attack on Titan', episodes: 25 }));
+    const xml = exportMalXml({
+      entries: {
+        'anilist:16498': {
+          animeId: 'anilist:16498',
+          mediaType: 'ANIME',
+          status: 'completed',
+          progress: 25,
+          score: 10,
+          addedAt: 1,
+          updatedAt: 2,
+        },
+      },
+      likedIds: [],
+      notInterested: [],
+      events: [],
+      trackers: [],
+      interests: [],
+      updatedAt: 2,
+    });
+    expect(xml).toContain('<myanimelist>');
+    expect(xml).toContain('<series_animedb_id>16498</series_animedb_id>');
+    expect(xml).toContain('<my_watched_episodes>25</my_watched_episodes>');
+
+    const rx = await postEpisodeReaction({
+      animeId: 'anilist:16498',
+      episode: 5,
+      authorName: 'Harsh',
+      authorHandle: '@harsh',
+      rating: 5,
+      body: 'Legendary transformation episode!',
+      isSpoiler: true,
+    });
+    expect(rx.episode).toBe(5);
+    expect(rx.isSpoiler).toBe(true);
+    const list = await fetchEpisodeReactions('anilist:16498', 5);
+    expect(list.some((x) => x.body.includes('Legendary transformation'))).toBe(true);
   });
 });

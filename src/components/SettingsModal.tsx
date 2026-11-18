@@ -13,6 +13,7 @@ import {
   FileUp,
   Gauge,
   HardDrive,
+  KeyRound,
   Keyboard,
   Layout,
   Palette,
@@ -42,7 +43,16 @@ import {
 } from '../types';
 import { animeStore } from '../services/animeStore';
 import { APP_VERSION, AppUpdateInfo, checkForGitHubUpdate } from '../services/appUpdater';
+import { exportMalXml } from '../services/backupImport';
+import {
+  createUserApiKey,
+  listUserApiKeys,
+  revokeUserApiKey,
+  UserApiKeySummary,
+} from '../services/communityStats';
+import { useCloudSync } from '../services/cloudSync';
 import { library, useLibrary } from '../services/library';
+import { EDGE_API_BASE } from '../services/supabase';
 import { isNativeCapacitor } from '../services/platform';
 import { autoMaintainStorageCache } from '../services/offlineCoverCache';
 import { SCORE_FORMATS } from '../services/scoring';
@@ -174,12 +184,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const settings = useSettings();
   const lib = useLibrary();
+  const cloud = useCloudSync();
   const pwaInstall = usePwaInstallPrompt();
   const [section, setSection] = useState<SettingsSection>('appearance');
   const [searchQuery, setSearchQuery] = useState('');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
   const [storageEst, setStorageEst] = useState<{ usage: number; quota: number } | null>(null);
+  const [apiKeys, setApiKeys] = useState<UserApiKeySummary[]>([]);
+  const [newApiToken, setNewApiToken] = useState<string | null>(null);
+  const [apiBusy, setApiBusy] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | 'unsupported'>(() =>
     typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
   );
@@ -202,7 +216,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (typeof Notification !== 'undefined') {
       setNotifPermission(Notification.permission);
     }
-  }, [isOpen]);
+    if (cloud.isLinked) {
+      void listUserApiKeys()
+        .then(setApiKeys)
+        .catch(() => {});
+    }
+  }, [isOpen, cloud.isLinked]);
 
   const matchingCategories = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -1648,7 +1667,113 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <FileUp className="h-3.5 w-3.5 text-[#AAAAAA]" />
                       Import Settings Preset
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const xml = exportMalXml(lib);
+                        const blob = new Blob([xml], { type: 'application/xml' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `listtube-mal-export-${new Date().toISOString().slice(0, 10)}.xml`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        toast('Exported MAL XML backup');
+                      }}
+                      className="lt-press sm:col-span-2 flex items-center justify-center gap-2 rounded-xl border border-white/[0.1] bg-white/[0.07] px-3 py-2.5 text-[12px] font-bold text-white hover:bg-white/[0.14]"
+                    >
+                      <Download className="h-3.5 w-3.5 text-amber-300" />
+                      Export MyAnimeList (.xml)
+                    </button>
                   </div>
+                </div>
+
+                {/* Scoped Tracker API & Browser Auto-Tracker Companion */}
+                <div className="space-y-3 rounded-2xl border border-white/[0.1] bg-white/[0.04] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="flex items-center gap-1.5 text-[13px] font-bold text-white">
+                        <KeyRound className="h-4 w-4 text-[#3EA6FF]" />
+                        Tracker API &amp; Browser Auto-Tracker Companion
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-[#AAAAAA]">
+                        Generate a scoped <code>lt_...</code> API key for third-party apps or the{' '}
+                        <code>companion-extension/</code> Chrome/Edge scrobbler.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={apiBusy || !cloud.isLinked}
+                      onClick={() => {
+                        setApiBusy(true);
+                        void createUserApiKey('Browser Scrobbler')
+                          .then((res) => {
+                            setNewApiToken(res.token);
+                            setApiKeys((prev) => [res.key, ...prev]);
+                            toast('Generated new Tracker API Key');
+                          })
+                          .catch((err) => {
+                            toast(err instanceof Error ? err.message : 'Sign in first or deploy migration');
+                          })
+                          .finally(() => setApiBusy(false));
+                      }}
+                      className="lt-press rounded-full bg-[#3EA6FF] px-3.5 py-1.5 text-[11.5px] font-bold text-black disabled:opacity-40"
+                    >
+                      {apiBusy ? 'Creating…' : cloud.isLinked ? '+ Create API Key' : 'Sign in Required'}
+                    </button>
+                  </div>
+
+                  <p className="rounded-xl bg-black/35 px-3 py-2 font-mono text-[10.5px] text-[#AAAAAA] select-all">
+                    Endpoint: {EDGE_API_BASE}/v1
+                  </p>
+
+                  {newApiToken && (
+                    <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-[11.5px]">
+                      <code className="truncate font-mono font-bold text-emerald-200 select-all">
+                        {newApiToken}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(newApiToken);
+                          toast('Copied API key');
+                        }}
+                        className="shrink-0 rounded-lg bg-emerald-400 px-2.5 py-1 text-[10.5px] font-bold text-black"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  )}
+
+                  {apiKeys.length > 0 && (
+                    <div className="space-y-1.5">
+                      {apiKeys.map((k) => (
+                        <div
+                          key={k.id}
+                          className="flex items-center justify-between rounded-xl bg-black/30 px-3 py-2 text-[11.5px]"
+                        >
+                          <div>
+                            <span className="font-bold text-white">{k.label}</span>
+                            <span className="ml-2 font-mono text-[10.5px] text-[#8E8E93]">
+                              {k.token_prefix}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void revokeUserApiKey(k.id).then(() => {
+                                setApiKeys((prev) => prev.filter((x) => x.id !== k.id));
+                                toast('API key revoked');
+                              });
+                            }}
+                            className="text-[11px] font-bold text-rose-400 hover:underline"
+                          >
+                            Revoke
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Desktop PWA Install + Keyboard Shortcuts */}

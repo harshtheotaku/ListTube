@@ -31,6 +31,7 @@ import {
 } from '../services/anilist';
 import { searchSmart } from '../services/search';
 import { passesContentSettings } from '../services/contentFilter';
+import { fetchListTubeTopRanked } from '../services/communityStats';
 import { gridClassFor, useSettings } from '../services/settings';
 import { AnimeCard } from './AnimeCard';
 import { Shelf } from './Shelf';
@@ -38,6 +39,7 @@ import { GridSkeleton } from './Skeleton';
 
 type CatalogChartKey =
   | 'mal_home'
+  | 'listtube_top'
   | 'trending'
   | 'top'
   | 'popular'
@@ -155,6 +157,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   const charts: { id: CatalogChartKey; label: string }[] = isManga
     ? [
         { id: 'mal_home', label: 'MAL Catalog' },
+        { id: 'listtube_top', label: 'ListTube Top' },
         { id: 'publishing', label: 'Top Publishing' },
         { id: 'manga_jp', label: 'Top Manga (JP)' },
         { id: 'manhwa_kr', label: 'Top Manhwa (KR)' },
@@ -168,6 +171,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       ]
     : [
         { id: 'mal_home', label: 'MAL Catalog' },
+        { id: 'listtube_top', label: 'ListTube Top' },
         { id: 'seasonal', label: `${SEASON_LABEL[defaultSeason.season]} ${defaultSeason.year}` },
         { id: 'top_airing', label: 'Top Airing' },
         { id: 'upcoming', label: 'Top Upcoming' },
@@ -439,6 +443,14 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             case 'top':
               result = await fetchTopRated(24, mediaType, targetPage);
               break;
+            case 'listtube_top': {
+              const ranked = await fetchListTubeTopRanked(mediaType, 24);
+              result = ranked.map((r) => r.anime);
+              if (result.length === 0) {
+                result = await fetchTopRated(24, mediaType, targetPage);
+              }
+              break;
+            }
             case 'popular':
               result = await fetchPopular(24, mediaType, targetPage);
               break;

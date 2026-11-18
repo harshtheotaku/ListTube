@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "ListTube Auto-Tracker Companion",
+  "version": "1.0.0",
+  "description": "Automatically sync anime episodes you finish watching across sites directly into your ListTube Tracker via your scoped API key.",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "https://kypafzhjdwnhsiyltndw.supabase.co/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ListTube Tracker Companion"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.crunchyroll.com/*",
+        "https://www.youtube.com/watch*",
+        "https://www.netflix.com/watch/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

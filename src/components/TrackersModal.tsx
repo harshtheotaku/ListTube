@@ -27,7 +27,12 @@ import {
   storeMalPkceSession,
   TrackerImport,
 } from '../services/trackers';
-import { hydrateUnmatchedBackupEntries, importComixOrMihonFile } from '../services/backupImport';
+import {
+  exportMalXml,
+  gunzipFileToText,
+  hydrateUnmatchedBackupEntries,
+  importComixOrMihonFile,
+} from '../services/backupImport';
 import { animeStore } from '../services/animeStore';
 import { library } from '../services/library';
 import { cloudSync, useCloudSync } from '../services/cloudSync';
@@ -244,6 +249,12 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
     setError(null);
     try {
       const lower = file.name.toLowerCase();
+      if (lower.endsWith('.xml.gz')) {
+        const xmlText = await gunzipFileToText(file);
+        const imported = await importFromExportFile(xmlText);
+        commitImport(imported);
+        return;
+      }
       if (lower.endsWith('.tachibk') || lower.endsWith('.proto.gz') || lower.endsWith('.gz') || lower.endsWith('.csv')) {
         const imported = await importComixOrMihonFile(file);
         commitImport(imported);
@@ -718,6 +729,34 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
                   >
                     <FileUp className="h-3.5 w-3.5 text-[#3EA6FF]" />
                     Mihon (.tachibk)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Import MAL XML"
+                    className="lt-press flex items-center justify-center gap-1.5 rounded-xl border border-white/[0.12] bg-white/[0.08] py-2.5 text-[12px] font-bold text-white hover:bg-white/[0.15] disabled:opacity-40"
+                  >
+                    <FileUp className="h-3.5 w-3.5 text-emerald-400" />
+                    MAL (.xml / .xml.gz)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const xml = exportMalXml(library.getSnapshot());
+                      const blob = new Blob([xml], { type: 'application/xml' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `listtube-mal-export-${new Date().toISOString().slice(0, 10)}.xml`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                      toast('Exported MAL XML backup');
+                    }}
+                    className="lt-press flex items-center justify-center gap-1.5 rounded-xl border border-white/[0.12] bg-white/[0.08] py-2.5 text-[12px] font-bold text-white hover:bg-white/[0.15]"
+                  >
+                    <Download className="h-3.5 w-3.5 text-[#AAAAAA]" />
+                    Export MAL (.xml)
                   </button>
                 </div>
               </div>

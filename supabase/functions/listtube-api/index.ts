@@ -1227,6 +1227,211 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // =========================================================================
+    // ListTube Standalone Tracker API: Community Stats, Rankings & Scoped /v1/*
+    // =========================================================================
+
+    if (path === "/stats" && req.method === "GET") {
+      const animeId = String(url.searchParams.get("animeId") || "").trim();
+      if (!animeId) return jsonResponse({ error: "Missing animeId" }, 400);
+      const { data: rows } = await supabase
+        .from("library_entries")
+        .select("status, score, score_decimal")
+        .eq("anime_id", animeId)
+        .eq("is_private", false)
+        .limit(2500);
+
+      let members = 0;
+      let watching = 0;
+      let completed = 0;
+      let planned = 0;
+      let scoreSum = 0;
+      let scoreCount = 0;
+      for (const r of rows ?? []) {
+        members += 1;
+        if (r.status === "watching") watching += 1;
+        else if (r.status === "completed") completed += 1;
+        else if (r.status === "planned") planned += 1;
+        const sc = Number(r.score_decimal ?? r.score ?? 0);
+        if (sc > 0) {
+          scoreSum += sc;
+          scoreCount += 1;
+        }
+      }
+      return jsonResponse({
+        animeId,
+        members,
+        watching,
+        completed,
+        planned,
+        meanScore: scoreCount > 0 ? Math.round((scoreSum / scoreCount) * 10) / 10 : null,
+        ratedCount: scoreCount,
+      });
+    }
+
+    if (path === "/rankings" && req.method === "GET") {
+      const mediaType = String(url.searchParams.get("mediaType") || "ANIME").toUpperCase() === "MANGA" ? "MANGA" : "ANIME";
+      const limit = Math.min(60, Math.max(1, Number(url.searchParams.get("limit") || 40)));
+      const { data: rows } = await supabase
+        .from("library_entries")
+        .select("anime_id, score, score_decimal, status, media_snapshot")
+        .eq("media_type", mediaType)
+        .eq("is_private", false)
+        .limit(4000);
+
+      const agg = new Map<string, { animeId: string; members: number; scoreSum: number; scoreCount: number; snapshot: any }>();
+      for (const r of rows ?? []) {
+        const cur = agg.get(r.anime_id) ?? { animeId: r.anime_id, members: 0, scoreSum: 0, scoreCount: 0, snapshot: r.media_snapshot };
+        cur.members += 1;
+        if (!cur.snapshot && r.media_snapshot) cur.snapshot = r.media_snapshot;
+        const sc = Number(r.score_decimal ?? r.score ?? 0);
+        if (sc > 0) {
+          cur.scoreSum += sc;
+          cur.scoreCount += 1;
+        }
+        agg.set(r.anime_id, cur);
+      }
+      const ranked = Array.from(agg.values())
+        .map((x) => {
+          const mean = x.scoreCount > 0 ? Math.round((x.scoreSum / x.scoreCount) * 10) / 10 : null;
+          return { ...x, meanScore: mean };
+        })
+        .sort((a, b) => (b.members - a.members) || ((b.meanScore ?? 0) - (a.meanScore ?? 0)))
+        .slice(0, limit);
+      return jsonResponse({ mediaType, items: ranked });
+    }
+
+    if (path.startsWith("/v1/")) {
+      const authHeader = req.headers.get("authorization") || "";
+      const bearer = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+      if (path === "/v1/keys" && req.method === "POST") {
+        if (!bearer || bearer.startsWith("lt_")) {
+          return jsonResponse({ error: "User JWT required to manage API keys" }, 401);
+        }
+        const { data: authUser, error: authErr } = await supabase.auth.getUser(bearer);
+        if (authErr || !authUser?.user?.id) {
+          return jsonResponse({ error: "Invalid session token" }, 401);
+        }
+        const uid = authUser.user.id;
+        const body = await req.json().catch(() => ({}));
+        const op = String(body.action || "list");
+
+        if (op === "list") {
+          const { data: keys } = await supabase
+            .from("user_api_keys")
+            .select("id, label, token_prefix, last_used_at, created_at")
+            .eq("user_id", uid)
+            .order("created_at", { ascending: false });
+          return jsonResponse({ keys: keys ?? [] });
+        }
+
+        if (op === "revoke") {
+          const id = String(body.id || "").trim();
+          if (!id) return jsonResponse({ error: "Missing key id" }, 400);
+          await supabase.from("user_api_keys").delete().eq("id", id).eq("user_id", uid);
+          return jsonResponse({ ok: true });
+        }
+
+        if (op === "create") {
+          const rawBytes = new Uint8Array(24);
+          crypto.getRandomValues(rawBytes);
+          const hex = Array.from(rawBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+          const rawToken = `lt_${hex}`;
+          const tokenHash = await sha256Hex(rawToken);
+          const label = String(body.label || "Browser Scrobbler").trim().slice(0, 48);
+          const { data: created, error: createErr } = await supabase
+            .from("user_api_keys")
+            .insert({
+              user_id: uid,
+              label,
+              token_hash: tokenHash,
+              token_prefix: `${rawToken.slice(0, 10)}...`,
+            })
+            .select("id, label, token_prefix, created_at")
+            .single();
+          if (createErr) return jsonResponse({ error: createErr.message }, 400);
+          return jsonResponse({ ok: true, token: rawToken, key: created });
+        }
+        return jsonResponse({ error: "Unsupported key action" }, 400);
+      }
+
+      // Scoped API Key auth for /v1/me, /v1/list, /v1/progress
+      if (!bearer.startsWith("lt_")) {
+        return jsonResponse({ error: "Missing Bearer lt_... API key" }, 401);
+      }
+      const tokenHash = await sha256Hex(bearer);
+      const { data: keyRow } = await supabase
+        .from("user_api_keys")
+        .select("id, user_id")
+        .eq("token_hash", tokenHash)
+        .maybeSingle();
+      if (!keyRow?.user_id) {
+        return jsonResponse({ error: "Invalid or revoked API key" }, 401);
+      }
+      void supabase
+        .from("user_api_keys")
+        .update({ last_used_at: new Date().toISOString() })
+        .eq("id", keyRow.id);
+
+      const uid = keyRow.user_id;
+
+      if (path === "/v1/me" && req.method === "GET") {
+        const [{ data: profile }, { count }] = await Promise.all([
+          supabase.from("profiles").select("display_name, handle, avatar_url").eq("id", uid).maybeSingle(),
+          supabase.from("library_entries").select("id", { count: "exact", head: true }).eq("user_id", uid),
+        ]);
+        return jsonResponse({ userId: uid, profile: profile ?? null, trackedCount: count ?? 0 });
+      }
+
+      if (path === "/v1/list" && req.method === "GET") {
+        const mediaTypeFilter = url.searchParams.get("mediaType");
+        const statusFilter = url.searchParams.get("status");
+        let query = supabase
+          .from("library_entries")
+          .select("anime_id, media_type, status, score, score_decimal, progress, updated_at, media_snapshot")
+          .eq("user_id", uid)
+          .order("updated_at", { ascending: false })
+          .limit(500);
+        if (mediaTypeFilter === "ANIME" || mediaTypeFilter === "MANGA") {
+          query = query.eq("media_type", mediaTypeFilter);
+        }
+        if (statusFilter) query = query.eq("status", statusFilter);
+        const { data: items, error } = await query;
+        if (error) return jsonResponse({ error: error.message }, 400);
+        return jsonResponse({ items: items ?? [] });
+      }
+
+      if (path === "/v1/progress" && req.method === "POST") {
+        const body = await req.json().catch(() => ({}));
+        const animeId = String(body.animeId || "").trim();
+        if (!animeId) return jsonResponse({ error: "Missing animeId" }, 400);
+        const nowMs = Date.now();
+        const mediaType = String(body.mediaType || (animeId.includes("manga") ? "MANGA" : "ANIME")).toUpperCase() === "MANGA" ? "MANGA" : "ANIME";
+        const payload: Record<string, unknown> = {
+          user_id: uid,
+          anime_id: animeId,
+          media_type: mediaType,
+          status: String(body.status || "watching"),
+          updated_at: nowMs,
+        };
+        if (typeof body.progress === "number" && body.progress >= 0) {
+          payload.progress = Math.floor(body.progress);
+        }
+        if (typeof body.score === "number" && body.score >= 0 && body.score <= 10) {
+          payload.score = Math.round(body.score);
+          payload.score_decimal = Math.round(body.score * 10) / 10;
+        }
+        const { data: saved, error } = await supabase
+          .from("library_entries")
+          .upsert(payload, { onConflict: "user_id,anime_id" })
+          .select("anime_id, status, progress, score_decimal, updated_at")
+          .single();
+        if (error) return jsonResponse({ error: error.message }, 400);
+        return jsonResponse({ ok: true, entry: saved });
+      }
+    }
+
     return jsonResponse({ error: "Not found" }, 404);
   } catch (err: any) {
     return jsonResponse({ error: err?.message || "Internal server error" }, 500);

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ListTube Tracker Companion</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; width: 320px; margin: 0; padding: 14px; background: #0f0f12; color: #f1f1f1; }
+      h1 { font-size: 15px; margin: 0 0 6px; }
+      p { font-size: 11.5px; color: #a1a1aa; margin: 0 0 10px; line-height: 1.4; }
+      label { display: block; font-size: 11px; font-weight: 700; margin: 8px 0 4px; color: #d4d4d8; }
+      input { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.16); background: #18181b; color: #fff; font-size: 12px; }
+      .row { display: flex; gap: 6px; margin-top: 10px; }
+      button { flex: 1; border: 0; border-radius: 999px; padding: 8px 12px; font-size: 12px; font-weight: 700; cursor: pointer; background: #ff0000; color: #fff; }
+      button.sec { background: #27272a; color: #fff; }
+      #status { margin-top: 10px; font-size: 11.5px; color: #3ea6ff; min-height: 16px; }
+    </style>
+  </head>
+  <body>
+    <h1>ListTube Tracker Companion</h1>
+    <p>Paste your scoped <code>lt_...</code> API key from ListTube Settings → Backup, Storage &amp; Keys to auto-scrobble progress.</p>
+    <label for="apiKey">Scoped ListTube API Key</label>
+    <input id="apiKey" type="password" placeholder="lt_..." />
+    <div class="row">
+      <button id="saveBtn">Save &amp; Verify</button>
+      <button id="syncBtn" class="sec">+1 Detected Ep</button>
+    </div>
+    <div id="status"></div>
+    <script src="popup.js"></script>
+  </body>
+</html>

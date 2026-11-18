@@ -77,6 +77,14 @@ import {
   resolveExternalLinksEdge,
   ResolvedReaderLink,
 } from '../services/supabase';
+import {
+  EpisodeReactionItem,
+  fetchEpisodeReactions,
+  fetchListTubeMediaStats,
+  ListTubeMediaStats,
+  postEpisodeReaction,
+} from '../services/communityStats';
+import { useCloudSync } from '../services/cloudSync';
 import { EntityRouteTarget } from './EntityView';
 
 const CommentsSection = lazy(() =>
@@ -220,6 +228,14 @@ export const DetailView: React.FC<DetailViewProps> = ({
   );
   const chromeVisible = useChromeVisible();
   const profile = useProfile();
+  const cloud = useCloudSync();
+  const [ltStats, setLtStats] = useState<ListTubeMediaStats | null>(null);
+  const [epReactions, setEpReactions] = useState<EpisodeReactionItem[]>([]);
+  const [epRatingDraft, setEpRatingDraft] = useState<number>(0);
+  const [epReactionDraft, setEpReactionDraft] = useState('');
+  const [epSpoilerDraft, setEpSpoilerDraft] = useState(false);
+  const [epRevealSpoilers, setEpRevealSpoilers] = useState(false);
+  const [postingEpReaction, setPostingEpReaction] = useState(false);
 
   const entry = libraryState.entries[animeId];
   const isLiked = (libraryState.likedIds ?? []).includes(animeId);
@@ -238,7 +254,31 @@ export const DetailView: React.FC<DetailViewProps> = ({
     const curProg = libraryState.entries[animeId]?.progress ?? 0;
     setSelectedEpisode(Math.max(1, curProg + 1));
     setEpPage(Math.floor(Math.max(0, curProg) / 25));
+    setEpRatingDraft(0);
+    setEpReactionDraft('');
+    setEpSpoilerDraft(false);
+    setEpRevealSpoilers(false);
   }, [animeId, settings.autoplayTrailer]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchListTubeMediaStats(animeId, libraryState).then((s) => {
+      if (!cancelled) setLtStats(s);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [animeId, libraryState.entries[animeId]?.status, libraryState.entries[animeId]?.score]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchEpisodeReactions(animeId, selectedEpisode, cloud.userId).then((rows) => {
+      if (!cancelled) setEpReactions(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [animeId, selectedEpisode, cloud.userId]);
 
   useEffect(() => {
     const onWatchKey = (e: KeyboardEvent) => {
@@ -1361,6 +1401,12 @@ export const DetailView: React.FC<DetailViewProps> = ({
                         {anime.score.toFixed(1)}/10
                       </span>
                     ) : null}
+                    {ltStats && ltStats.members > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.08] px-2.5 py-0.5 text-[11px] font-bold text-[#3EA6FF]">
+                        ListTube: {ltStats.meanScore ? `★ ${ltStats.meanScore.toFixed(1)} · ` : ''}
+                        {ltStats.members.toLocaleString()} {ltStats.members === 1 ? 'member' : 'members'}
+                      </span>
+                    )}
                     <span>{meta}</span>
                     <button
                       type="button"
@@ -1907,6 +1953,121 @@ export const DetailView: React.FC<DetailViewProps> = ({
                             <ExternalLink className="h-3 w-3" />
                           </button>
                         </div>
+                      </div>
+
+                      {/* Episode / Chapter Check-In Rating & Reaction Bar */}
+                      <div className="space-y-2.5 rounded-xl border border-white/[0.07] bg-black/25 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-[11.5px] font-bold text-white">
+                            Rate &amp; Check In · {isManga ? `Chapter ${activeEp}` : `Episode ${activeEp}`}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                type="button"
+                                aria-label={`Rate ${isManga ? 'Chapter' : 'Episode'} ${activeEp} ${star} stars`}
+                                onClick={() => setEpRatingDraft(star === epRatingDraft ? 0 : star)}
+                                className={`p-0.5 transition ${
+                                  star <= epRatingDraft ? 'text-amber-300 scale-110' : 'text-neutral-600 hover:text-neutral-300'
+                                }`}
+                              >
+                                <Star className={`h-3.5 w-3.5 ${star <= epRatingDraft ? 'fill-current' : ''}`} />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            setPostingEpReaction(true);
+                            void postEpisodeReaction({
+                              userId: cloud.userId,
+                              animeId: anime.id,
+                              episode: activeEp,
+                              authorName: profile.name,
+                              authorHandle: profile.handle,
+                              authorAvatar: profile.avatarUrl,
+                              rating: epRatingDraft || undefined,
+                              body: epReactionDraft,
+                              isSpoiler: epSpoilerDraft,
+                            })
+                              .then((saved) => {
+                                setEpReactions((prev) => [
+                                  saved,
+                                  ...prev.filter((x) => x.id !== saved.id && !(saved.isOwn && x.isOwn)),
+                                ]);
+                                setEpReactionDraft('');
+                                toast(`Checked in ${isManga ? 'Ch' : 'Ep'} ${activeEp}`);
+                              })
+                              .catch((err) => {
+                                toast(err instanceof Error ? err.message : 'Check-in failed');
+                              })
+                              .finally(() => setPostingEpReaction(false));
+                          }}
+                          className="flex flex-wrap items-center gap-2"
+                        >
+                          <input
+                            type="text"
+                            maxLength={280}
+                            value={epReactionDraft}
+                            onChange={(e) => setEpReactionDraft(e.target.value)}
+                            placeholder={`Quick reaction to ${isManga ? 'Ch' : 'Ep'} ${activeEp}…`}
+                            className="h-8 min-w-[180px] flex-1 rounded-lg border border-white/10 bg-[#121215] px-2.5 text-[11.5px] text-white placeholder-[#77777A] outline-none focus:border-[#3EA6FF]"
+                          />
+                          <label className="flex cursor-pointer items-center gap-1 text-[11px] text-[#AAAAAA]">
+                            <input
+                              type="checkbox"
+                              checked={epSpoilerDraft}
+                              onChange={(e) => setEpSpoilerDraft(e.target.checked)}
+                              className="h-3.5 w-3.5 accent-amber-400"
+                            />
+                            Spoiler
+                          </label>
+                          <button
+                            type="submit"
+                            disabled={postingEpReaction || (!epReactionDraft.trim() && epRatingDraft === 0)}
+                            className="lt-press h-8 rounded-lg bg-[#3EA6FF] px-3 text-[11px] font-bold text-black disabled:opacity-40"
+                          >
+                            Check In
+                          </button>
+                        </form>
+
+                        {epReactions.length > 0 && (
+                          <div className="space-y-1.5 border-t border-white/[0.06] pt-2">
+                            {epReactions.slice(0, 4).map((rx) => (
+                              <div
+                                key={rx.id}
+                                className="flex items-start justify-between gap-2 rounded-lg bg-white/[0.03] px-2.5 py-1.5 text-[11.5px]"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 font-bold text-white">
+                                    <span>{rx.authorName}</span>
+                                    <span className="text-[10px] font-normal text-[#8E8E93]">{rx.authorHandle}</span>
+                                    {rx.rating && (
+                                      <span className="inline-flex items-center gap-0.5 text-[10.5px] text-amber-300">
+                                        · <Star className="h-2.5 w-2.5 fill-current" />
+                                        {rx.rating}/5
+                                      </span>
+                                    )}
+                                  </div>
+                                  {rx.isSpoiler && !epRevealSpoilers ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setEpRevealSpoilers(true)}
+                                      className="mt-0.5 text-[11px] font-semibold text-amber-300 hover:underline"
+                                    >
+                                      Spoiler hidden — Tap to reveal
+                                    </button>
+                                  ) : (
+                                    <p className="mt-0.5 text-neutral-300">{rx.body}</p>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

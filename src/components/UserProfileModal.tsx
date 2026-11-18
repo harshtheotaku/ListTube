@@ -83,6 +83,35 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
     [entries, listFilter]
   );
 
+  const sharedComparisons = useMemo(() => {
+    const out: {
+      animeId: string;
+      title: string;
+      cover?: string;
+      mine: ListEntry;
+      theirs: ListEntry;
+      diffAbs: number;
+    }[] = [];
+    for (const e of entries) {
+      const mine = myLibrary.entries[e.animeId];
+      if (!mine) continue;
+      const anime = animeStore.get(e.animeId);
+      const mySc = mine.score ?? 0;
+      const theirSc = e.score ?? 0;
+      out.push({
+        animeId: e.animeId,
+        title: anime?.title || e.animeId,
+        cover: anime?.cover,
+        mine,
+        theirs: e,
+        diffAbs: mySc > 0 && theirSc > 0 ? Math.abs(mySc - theirSc) : 99,
+      });
+    }
+    return out
+      .sort((a, b) => a.diffAbs - b.diffAbs || b.theirs.updatedAt - a.theirs.updatedAt)
+      .slice(0, 12);
+  }, [entries, myLibrary.entries]);
+
   const favMedia = useMemo(
     () =>
       [...(user?.favoriteAnimeIds ?? []), ...(user?.favoriteMangaIds ?? [])]
@@ -275,6 +304,64 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Side-by-Side Shared Taste Comparison */}
+      {!((cloud.userId === user.id ? settings.profileVisibility : user.profileVisibility)?.hideLists) &&
+        cloud.userId !== user.id &&
+        sharedComparisons.length > 0 && (
+          <div className="space-y-3 rounded-2xl border border-white/[0.08] bg-[#181818] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="flex items-center gap-1.5 text-[13px] font-bold uppercase tracking-wider text-white">
+                <Sparkles className="h-4 w-4 text-[#3EA6FF]" />
+                Side-by-Side List Comparison ({sharedComparisons.length} shared)
+              </h2>
+              <span className="text-[11px] text-[#AAAAAA]">
+                You vs {user.displayName}
+              </span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {sharedComparisons.map((row) => (
+                <button
+                  key={`cmp-${row.animeId}`}
+                  type="button"
+                  onClick={() => onOpenAnime(row.animeId)}
+                  className="lt-press flex items-center gap-3 rounded-xl border border-white/[0.06] bg-black/25 p-2.5 text-left hover:border-white/20"
+                >
+                  {row.cover ? (
+                    <img src={row.cover} alt={row.title} className="h-12 w-9 shrink-0 rounded-lg object-cover" />
+                  ) : (
+                    <div className="h-12 w-9 shrink-0 rounded-lg bg-white/10" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12.5px] font-bold text-white">{row.title}</p>
+                    <p className="mt-0.5 text-[11px] text-[#AAAAAA]">
+                      You:{' '}
+                      <span className="font-semibold text-white">
+                        {row.mine.score ? formatUserScore(row.mine.score, settings.scoreFormat) : statusLabel(row.mine.status, row.mine.mediaType)}
+                      </span>
+                      {' · '}
+                      Them:{' '}
+                      <span className="font-semibold text-[#3EA6FF]">
+                        {row.theirs.score ? formatUserScore(row.theirs.score, settings.scoreFormat) : statusLabel(row.theirs.status, row.theirs.mediaType)}
+                      </span>
+                    </p>
+                  </div>
+                  {row.diffAbs < 99 && (
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+                        row.diffAbs <= 1
+                          ? 'bg-emerald-500/20 text-emerald-300'
+                          : 'bg-amber-500/20 text-amber-300'
+                      }`}
+                    >
+                      {row.diffAbs <= 1 ? 'Same Vibe' : `±${row.diffAbs.toFixed(1)}`}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
       {/* Public List */}
       {(cloud.userId === user.id ? settings.profileVisibility : user.profileVisibility)?.hideLists ? (
