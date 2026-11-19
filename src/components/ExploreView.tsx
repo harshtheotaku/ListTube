@@ -703,7 +703,13 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   return (
     <div className="min-h-screen space-y-6 bg-[#0F0F0F] pb-24 text-white lg:pb-16">
       {/* Sticky MAL Chart & Directory Bar */}
-      <div className="sticky top-14 z-30 space-y-2.5 border-b border-white/[0.06] bg-[#0F0F0F]/95 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8">
+      <div
+        className={`sticky top-14 z-30 space-y-2.5 border-b px-4 py-3 sm:px-6 lg:px-8 ${
+          settings.liquidGlass
+            ? 'liquid-glass border-white/[0.15]'
+            : 'border-white/[0.06] bg-[#0F0F0F]/95 backdrop-blur-xl'
+        }`}
+      >
         {/* Row 1: MAL Ranking Charts */}
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
           {charts.map((c) => {

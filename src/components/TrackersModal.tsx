@@ -307,7 +307,7 @@ export const TrackersModal: React.FC<TrackersModalProps> = ({
 
   return (
     <div
-      className="lt-backdrop-in fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-4"
+      className="lt-backdrop-in fixed inset-0 z-[70] flex items-end justify-center bg-black/35 p-0 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="tracker-title"

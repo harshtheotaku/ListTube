@@ -113,7 +113,7 @@ export const CollageModal: React.FC<CollageModalProps> = ({
 
   return (
     <div
-      className="lt-backdrop-in fixed inset-0 z-[85] flex items-end justify-center bg-black/80 p-0 backdrop-blur-md sm:items-center sm:p-4"
+      className="lt-backdrop-in fixed inset-0 z-[85] flex items-end justify-center bg-black/35 p-0 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label="3x3 Collage Grid Builder"

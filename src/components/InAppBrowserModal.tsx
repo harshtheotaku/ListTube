@@ -121,7 +121,7 @@ export const InAppBrowserModal: React.FC = () => {
         if (e.target === e.currentTarget) closeInAppViewer();
       }}
     >
-      <div className="liquid-glass lt-sheet-up flex h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-[28px] border border-white/[0.16] bg-[#0B0B0E] text-white shadow-2xl sm:h-[88vh] sm:rounded-[24px]">
+      <div className="liquid-glass lt-sheet-up flex h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-[28px] border border-white/[0.16] text-white shadow-2xl sm:h-[88vh] sm:rounded-[24px]">
         <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] bg-[#141418] px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">

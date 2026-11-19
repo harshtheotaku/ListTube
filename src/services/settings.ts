@@ -204,12 +204,13 @@ export function applyThemeToDocument(s: AppSettings): void {
   const root = document.documentElement;
   const glassPct = Math.max(15, Math.min(95, Math.round(s.liquidGlassOpacity ?? 65)));
   const norm = (glassPct - 15) / 80;
-  const darkTop = (0.02 + norm * 0.22).toFixed(3);
-  const darkBot = (0.04 + Math.pow(norm, 1.3) * 0.88).toFixed(3);
-  const lightTop = (0.14 + norm * 0.82).toFixed(3);
-  const lightBot = (0.08 + Math.pow(norm, 1.2) * 0.86).toFixed(3);
-  const blurPx = Math.round(3 + Math.pow(norm, 1.1) * 33);
-  const satPct = Math.round(115 + norm * 100);
+  // Genuine transparent Apple Liquid Glass: 96% see-through at Clear, ~78% see-through at Balanced, ~60% at Frosted
+  const darkTop = (0.02 + norm * 0.10).toFixed(3);
+  const darkBot = (0.02 + Math.pow(norm, 1.5) * 0.44).toFixed(3);
+  const lightTop = (0.08 + norm * 0.44).toFixed(3);
+  const lightBot = (0.05 + Math.pow(norm, 1.4) * 0.40).toFixed(3);
+  const blurPx = Math.round(3 + norm * 21);
+  const satPct = Math.round(125 + norm * 85);
 
   root.style.setProperty('--lt-bg', s.themeColors.bg);
   root.style.setProperty('--lt-text', s.themeColors.text);

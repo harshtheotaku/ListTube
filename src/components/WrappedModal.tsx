@@ -24,7 +24,7 @@ export const WrappedModal: React.FC<WrappedModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[85] flex items-center justify-center bg-black/80 p-3 backdrop-blur-md"
+      className="fixed inset-0 z-[85] flex items-center justify-center bg-black/35 p-3"
       role="dialog"
       aria-modal="true"
       aria-label="ListTube Wrapped"
