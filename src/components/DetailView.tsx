@@ -602,11 +602,11 @@ export const DetailView: React.FC<DetailViewProps> = ({
         </span>
       </div>
 
-      <div className="mx-auto max-w-[1380px] px-4 pt-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1380px] px-4 pt-0 sm:px-6 sm:pt-4 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_410px]">
           {/* Left Column */}
           <div className={`min-w-0 space-y-4 ${theaterMode ? 'lg:col-span-2' : ''}`}>
-            {/* 16:9 Hero + Morphe Enhanced Ambient Mode Aura */}
+            {/* 16:9 Hero + Morphe Enhanced Ambient Mode Aura (Full-bleed edge-to-edge on portrait mobile) */}
             <div className="relative">
               {settings.ambientMode && !settings.disableBlend && (widePreview || anime.cover) && (
                 <div
@@ -622,7 +622,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
                   />
                 </div>
               )}
-              <div className="relative z-[1] aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-2xl">
+              <div className="relative z-[1] -mx-4 aspect-video w-[calc(100%+2rem)] overflow-hidden rounded-none bg-black shadow-2xl sm:mx-0 sm:w-full sm:rounded-2xl">
                 <button
                   type="button"
                   onClick={() => setTheaterMode((v) => !v)}
@@ -635,13 +635,13 @@ export const DetailView: React.FC<DetailViewProps> = ({
               {anime.trailerYoutubeId && isTrailerPlaying ? (
                 <div className="relative h-full w-full">
                   <iframe
-                    src={`https://www.youtube-nocookie.com/embed/${anime.trailerYoutubeId}?autoplay=1&rel=0&modestbranding=1${
+                    src={`https://www.youtube-nocookie.com/embed/${anime.trailerYoutubeId}?autoplay=1&rel=0&modestbranding=1&playsinline=1${
                       settings.defaultTrailerMuted ? '&mute=1' : ''
                     }`}
                     title={`${anime.title} Official Trailer`}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
                     allowFullScreen
-                    className="h-full w-full border-0"
+                    className="absolute inset-0 h-full w-full border-0"
                   />
                   <button
                     type="button"

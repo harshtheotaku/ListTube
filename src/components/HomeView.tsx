@@ -87,9 +87,9 @@ const YOUTUBE_GRID =
 
 const ANIME_CHIPS = [
   'All',
-  '🔥 Trending',
-  '🌸 This Season',
-  '⭐ Top Rated',
+  'Trending',
+  'This Season',
+  'Top Rated',
   'Action',
   'Romance',
   'Psychological',
@@ -103,8 +103,8 @@ const ANIME_CHIPS = [
 
 const MANGA_CHIPS = [
   'All',
-  '🔥 Trending',
-  '⭐ Top Rated',
+  'Trending',
+  'Top Rated',
   'Action',
   'Drama',
   'Fantasy',
@@ -328,13 +328,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
     (list: ScoredAnime[]) => {
       const safe = list.filter((item) => passesContentSettings(item.anime, settings));
       if (selectedChip === 'All') return safe;
-      if (selectedChip === '🔥 Trending') {
+      if (selectedChip === 'Trending') {
         return [...safe].sort((a, b) => (b.anime.popularity ?? 0) - (a.anime.popularity ?? 0));
       }
-      if (selectedChip === '⭐ Top Rated') {
+      if (selectedChip === 'Top Rated') {
         return [...safe].sort((a, b) => (b.anime.score ?? 0) - (a.anime.score ?? 0));
       }
-      if (selectedChip === '🌸 This Season') {
+      if (selectedChip === 'This Season') {
         const year = new Date().getFullYear();
         return safe.filter((item) => item.anime.year === year || item.anime.status === 'Airing');
       }
