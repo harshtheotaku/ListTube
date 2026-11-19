@@ -24,8 +24,10 @@ declare global {
       cancelAiringAlert?: (id: string) => void;
       getAppVersionInfo?: () => string;
       canRequestPackageInstalls?: () => boolean;
+      hasDownloadedUpdateApk?: () => boolean;
       openInstallUnknownAppsSettings?: () => void;
       installPendingUpdate?: () => void;
+      downloadApkOnly?: (apkUrl: string, targetVersion: string) => void;
       downloadAndInstallApk?: (apkUrl: string, targetVersion: string) => void;
     };
     __listtubeUpdateProgress?: (payload: {

@@ -48,6 +48,7 @@ import {
   AppUpdateInfo,
   canInstallInAppNative,
   checkForGitHubUpdate,
+  downloadInAppUpdateOnly,
   openInstallPermissionSettings,
   retryPendingInstall,
   triggerInAppUpdate,
@@ -1612,22 +1613,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        {resolvedUpdate?.updateAvailable && appUpdate.downloadState !== 'downloading' && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const nativeHandled = triggerInAppUpdate(resolvedUpdate);
-                              if (!nativeHandled) {
-                                toast('Downloading update package…');
-                              }
-                            }}
-                            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-3.5 py-1.5 text-[11.5px] font-bold text-black hover:bg-emerald-400"
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                            {canInstallInAppNative()
-                              ? `Update In-App (v${resolvedUpdate.latestVersion})`
-                              : `Download v${resolvedUpdate.latestVersion}`}
-                          </button>
+                        {appUpdate.downloadState !== 'downloading' && (
+                          <>
+                            <button
+                              type="button"
+                              aria-label="Download update in app"
+                              onClick={() => {
+                                const started = downloadInAppUpdateOnly(resolvedUpdate);
+                                toast(
+                                  started
+                                    ? 'Downloading update APK inside app…'
+                                    : 'Downloading latest APK package…'
+                                );
+                              }}
+                              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/[0.12] px-3.5 py-1.5 text-[11.5px] font-bold text-white hover:bg-white/[0.2]"
+                            >
+                              <Download className="h-3.5 w-3.5 text-emerald-400" />
+                              {resolvedUpdate?.latestVersion
+                                ? `Download Update (v${resolvedUpdate.latestVersion})`
+                                : 'Download Update In-App'}
+                            </button>
+
+                            <button
+                              type="button"
+                              aria-label="Install update in app"
+                              onClick={() => {
+                                if (appUpdate.downloadState === 'downloaded' && canInstallInAppNative()) {
+                                  retryPendingInstall();
+                                  toast('Launching in-app installer…');
+                                } else {
+                                  const nativeHandled = triggerInAppUpdate(resolvedUpdate);
+                                  if (!nativeHandled) {
+                                    toast('Downloading APK to install…');
+                                  }
+                                }
+                              }}
+                              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-3.5 py-1.5 text-[11.5px] font-bold text-black hover:bg-emerald-400"
+                            >
+                              <Sparkles className="h-3.5 w-3.5" />
+                              {appUpdate.downloadState === 'downloaded'
+                                ? 'Install Downloaded Update'
+                                : 'Install Update In-App'}
+                            </button>
+                          </>
                         )}
                         <button
                           type="button"

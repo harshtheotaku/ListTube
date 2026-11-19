@@ -217,13 +217,29 @@ public class MainActivity extends BridgeActivity {
                 }
 
                 @JavascriptInterface
+                public boolean hasDownloadedUpdateApk() {
+                    File cached = new File(new File(getCacheDir(), "updates"), "ListTube-update.apk");
+                    return cached.exists() && cached.length() > 200_000L;
+                }
+
+                @JavascriptInterface
+                public void downloadApkOnly(String apkUrl, String targetVersion) {
+                    if (!isAllowedUpdateApkUrl(apkUrl)) {
+                        emitUpdateProgress("error", 0, "Blocked untrusted update URL.");
+                        return;
+                    }
+                    if (updateDownloading) return;
+                    startApkDownload(apkUrl, targetVersion, false);
+                }
+
+                @JavascriptInterface
                 public void downloadAndInstallApk(String apkUrl, String targetVersion) {
                     if (!isAllowedUpdateApkUrl(apkUrl)) {
                         emitUpdateProgress("error", 0, "Blocked untrusted update URL.");
                         return;
                     }
                     if (updateDownloading) return;
-                    startApkDownloadAndInstall(apkUrl, targetVersion);
+                    startApkDownload(apkUrl, targetVersion, true);
                 }
             }, "ListTubeNative");
             bridgeConfigured = true;
@@ -307,9 +323,9 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    private void startApkDownloadAndInstall(String initialUrl, String targetVersion) {
+    private void startApkDownload(String initialUrl, String targetVersion, boolean installAfter) {
         updateDownloading = true;
-        emitUpdateProgress("downloading", 1, "Connecting to GitHub Releases...");
+        emitUpdateProgress("downloading", 1, "Connecting to update server...");
         new Thread(() -> {
             HttpURLConnection conn = null;
             try {
@@ -390,7 +406,12 @@ public class MainActivity extends BridgeActivity {
                     throw new IllegalStateException("Could not save downloaded APK");
                 }
 
-                runOnUiThread(() -> handleDownloadedApkReady(outFile));
+                pendingInstallApk = outFile;
+                if (installAfter) {
+                    runOnUiThread(() -> handleDownloadedApkReady(outFile));
+                } else {
+                    emitUpdateProgress("downloaded", 100, "Downloaded v" + (targetVersion != null ? targetVersion : "update") + " — tap Install In-App to apply.");
+                }
             } catch (Exception e) {
                 emitUpdateProgress("error", 0, e.getMessage() != null ? e.getMessage() : "Update download failed");
             } finally {

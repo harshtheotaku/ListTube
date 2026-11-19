@@ -25,6 +25,7 @@ export interface AppUpdateInfo {
 export type UpdateDownloadState =
   | 'idle'
   | 'downloading'
+  | 'downloaded'
   | 'needs_permission'
   | 'installing'
   | 'error';
@@ -39,12 +40,17 @@ export interface AppUpdateRuntimeState {
 }
 
 const listeners = new Set<() => void>();
+const initialHasCachedApk =
+  typeof window !== 'undefined' &&
+  typeof window.ListTubeNative?.hasDownloadedUpdateApk === 'function' &&
+  Boolean(window.ListTubeNative.hasDownloadedUpdateApk());
+
 let runtimeState: AppUpdateRuntimeState = {
   info: null,
   checking: false,
-  downloadState: 'idle',
-  downloadProgress: 0,
-  statusMessage: '',
+  downloadState: initialHasCachedApk ? 'downloaded' : 'idle',
+  downloadProgress: initialHasCachedApk ? 100 : 0,
+  statusMessage: initialHasCachedApk ? 'Update APK downloaded — tap Install In-App to apply.' : '',
   bannerDismissed: false,
 };
 
@@ -94,6 +100,7 @@ function ensureNativeProgressListener() {
     const rawStatus = payload?.status;
     const downloadState: UpdateDownloadState =
       rawStatus === 'downloading' ||
+      rawStatus === 'downloaded' ||
       rawStatus === 'needs_permission' ||
       rawStatus === 'installing' ||
       rawStatus === 'error'
@@ -203,6 +210,29 @@ export function canInstallInAppNative(): boolean {
   );
 }
 
+export function downloadInAppUpdateOnly(target?: AppUpdateInfo | null): boolean {
+  const info = target ?? runtimeState.info;
+  const apkUrl = info?.apkUrl || GITHUB_LATEST_APK_URL;
+  const targetVer = info?.latestVersion || APP_VERSION;
+
+  if (isNativeCapacitor() && typeof window !== 'undefined' && window.ListTubeNative?.downloadApkOnly) {
+    ensureNativeProgressListener();
+    patchState({
+      downloadState: 'downloading',
+      downloadProgress: 2,
+      statusMessage: `Downloading v${targetVer} inside app…`,
+      bannerDismissed: false,
+    });
+    window.ListTubeNative.downloadApkOnly(apkUrl, targetVer);
+    return true;
+  }
+
+  if (typeof window !== 'undefined') {
+    window.open(apkUrl, '_blank', 'noopener,noreferrer');
+  }
+  return false;
+}
+
 export function triggerInAppUpdate(target?: AppUpdateInfo | null): boolean {
   const info = target ?? runtimeState.info;
   const apkUrl = info?.apkUrl || GITHUB_LATEST_APK_URL;
@@ -210,6 +240,10 @@ export function triggerInAppUpdate(target?: AppUpdateInfo | null): boolean {
 
   if (canInstallInAppNative() && window.ListTubeNative?.downloadAndInstallApk) {
     ensureNativeProgressListener();
+    if (runtimeState.downloadState === 'downloaded' && window.ListTubeNative?.installPendingUpdate) {
+      window.ListTubeNative.installPendingUpdate();
+      return true;
+    }
     patchState({
       downloadState: 'downloading',
       downloadProgress: 2,

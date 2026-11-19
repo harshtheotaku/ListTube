@@ -1163,6 +1163,7 @@ export const App: React.FC = () => {
       <MiniPlayer onOpenAnimeId={openDetail} />
 
       {(appUpdate.downloadState === 'downloading' ||
+        appUpdate.downloadState === 'downloaded' ||
         appUpdate.downloadState === 'needs_permission' ||
         (appUpdate.info?.updateAvailable && !appUpdate.bannerDismissed)) && (
         <div
@@ -1174,10 +1175,12 @@ export const App: React.FC = () => {
             <div className="min-w-0 flex-1 space-y-1">
               <p className="text-[12.5px] font-black text-emerald-300">
                 {appUpdate.downloadState === 'downloading'
-                  ? `Updating ListTube (${appUpdate.downloadProgress}%)`
-                  : appUpdate.downloadState === 'needs_permission'
-                    ? 'Allow App Updates in Settings'
-                    : `ListTube v${appUpdate.info?.latestVersion} Available`}
+                  ? `Downloading Update (${appUpdate.downloadProgress}%)`
+                  : appUpdate.downloadState === 'downloaded'
+                    ? 'Update Ready to Install'
+                    : appUpdate.downloadState === 'needs_permission'
+                      ? 'Allow App Updates in Settings'
+                      : `ListTube v${appUpdate.info?.latestVersion} Available`}
               </p>
               <p className="text-[11px] text-[#CCCCCC]">
                 {appUpdate.statusMessage ||
@@ -1211,6 +1214,15 @@ export const App: React.FC = () => {
                     Install
                   </button>
                 </>
+              ) : appUpdate.downloadState === 'downloaded' ? (
+                <button
+                  type="button"
+                  onClick={retryPendingInstall}
+                  className="lt-press inline-flex items-center gap-1 rounded-full bg-emerald-500 px-3 py-1.5 text-[11px] font-black text-black hover:bg-emerald-400"
+                >
+                  <Download className="h-3 w-3" />
+                  Install
+                </button>
               ) : (
                 appUpdate.downloadState !== 'downloading' &&
                 appUpdate.info && (
@@ -1224,10 +1236,10 @@ export const App: React.FC = () => {
                   </button>
                 )
               )}
-              {appUpdate.info?.latestVersion && appUpdate.downloadState !== 'downloading' && (
+              {appUpdate.downloadState !== 'downloading' && (
                 <button
                   type="button"
-                  onClick={() => dismissUpdateBanner(appUpdate.info!.latestVersion)}
+                  onClick={() => dismissUpdateBanner(appUpdate.info?.latestVersion || 'cached')}
                   aria-label="Dismiss update banner"
                   className="rounded-full p-1 text-[#8E8E93] hover:bg-white/10 hover:text-white"
                 >
