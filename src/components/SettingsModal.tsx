@@ -457,26 +457,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Main Panel (Mobile Header + Active Content + Footer) */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {/* Mobile Header + Pill Tabs */}
-          <div className="border-b border-white/[0.08] px-4 pb-3 pt-4 sm:hidden">
+          {/* Mobile Header + Sticky Pill Tabs */}
+          <div
+            className={`border-b border-white/[0.08] px-4 pb-3 pt-4 sm:hidden ${
+              pageMode ? 'sticky top-14 z-20 bg-[#0F0F0F]/95 backdrop-blur-xl' : ''
+            }`}
+          >
             {!pageMode && <div className="mx-auto mb-2.5 h-1 w-9 rounded-full bg-white/25" />}
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-[20px] font-extrabold tracking-tight text-white">
-                  Settings
-                </h2>
-                <p className="text-[11px] text-[#AAAAAA]">
-                  Saved automatically on device · Synced when signed in
-                </p>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                {pageMode && (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label="Close settings"
+                    className="lt-press flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.08] text-white hover:bg-white/[0.16]"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </button>
+                )}
+                <div>
+                  <h2 className="text-[20px] font-extrabold tracking-tight text-white">
+                    Settings
+                  </h2>
+                  <p className="text-[11px] text-[#AAAAAA]">
+                    Saved automatically on device · Synced when signed in
+                  </p>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close settings"
-                className="lt-press flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.1] text-[#CCCCCC] hover:bg-white/[0.2] hover:text-white"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              {!pageMode && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close settings"
+                  className="lt-press flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.1] text-[#CCCCCC] hover:bg-white/[0.2] hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
 
             <div className="mt-3.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
@@ -530,7 +548,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           {/* Section Body */}
-          <div className="flex-1 space-y-4 overflow-y-auto p-5 sm:px-6">
+          <div className={pageMode ? 'flex-1 space-y-4 p-4 sm:p-6 lg:px-10' : 'flex-1 space-y-4 overflow-y-auto p-5 sm:px-6'}>
             {matchingCategories && (
               <div className="space-y-2.5">
                 {matchingCategories.length === 0 ? (

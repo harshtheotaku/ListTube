@@ -940,6 +940,9 @@ export const App: React.FC = () => {
     if (picked) openAnime(picked);
   };
 
+  const isSettingsPage =
+    !detailId && !channelAnime && !publicUser && !entityTarget && tab === 'settings';
+
   return (
     <div className="min-h-screen w-full overflow-x-clip bg-[#0F0F0F] text-[#F1F1F1]">
       <LaunchSplash />
@@ -956,7 +959,7 @@ export const App: React.FC = () => {
         onOpenSettings={() => navigate('settings')}
         activeTab={tab}
         onToggleSidebar={() => {
-          if (isWatchMode || window.innerWidth < 1024) {
+          if (isWatchMode || isSettingsPage || window.innerWidth < 1024) {
             setDrawerOpen((d) => !d);
           } else {
             setSidebarCollapsed((c) => !c);
@@ -966,7 +969,7 @@ export const App: React.FC = () => {
         trackers={libraryState.trackers}
       />
 
-      {!isWatchMode && (
+      {!isWatchMode && !isSettingsPage && (
         <Sidebar
           active={tab}
           collapsed={sidebarCollapsed}
@@ -1008,7 +1011,7 @@ export const App: React.FC = () => {
         />
       )}
 
-      <div className={`pt-14 ${isWatchMode ? 'lg:pl-0' : sidebarCollapsed ? 'lg:pl-[74px]' : 'lg:pl-[236px]'}`}>
+      <div className={`pt-14 ${isWatchMode || isSettingsPage ? 'lg:pl-0' : sidebarCollapsed ? 'lg:pl-[74px]' : 'lg:pl-[236px]'}`}>
         <main>
           <Suspense
             fallback={
@@ -1159,7 +1162,9 @@ export const App: React.FC = () => {
         </main>
       </div>
 
-      <BottomNav active={tab} onNavigate={(t) => { resetScrollChrome(); navigate(t); }} />
+      {!isSettingsPage && (
+        <BottomNav active={tab} onNavigate={(t) => { resetScrollChrome(); navigate(t); }} />
+      )}
       <MiniPlayer onOpenAnimeId={openDetail} />
 
       {(appUpdate.downloadState === 'downloading' ||
