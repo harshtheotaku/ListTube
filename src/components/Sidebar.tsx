@@ -22,6 +22,7 @@ import { Anime, LibraryState, MediaType, TrackerAccount } from '../types';
 import { animeStore } from '../services/animeStore';
 import { franchiseNameOf } from '../services/franchise';
 import { useNotifications } from '../services/notifications';
+import { useSettings } from '../services/settings';
 import { ListTubeLogo } from './ListTubeLogo';
 
 export type AppTab = 'home' | 'explore' | 'list' | 'schedule' | 'news' | 'feed' | 'you' | 'quiz' | 'settings';
@@ -66,6 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [showAllSubs, setShowAllSubs] = useState(false);
   const { unreadCount } = useNotifications();
+  const settings = useSettings();
 
   const subscribedItems = useMemo(() => {
     const seen = new Set<string>();
@@ -101,7 +103,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ];
 
     return (
-      <aside className="fixed bottom-0 left-0 top-14 z-30 hidden w-[74px] flex-col items-center gap-1 border-r border-white/[0.06] bg-[#0F0F0F] px-1.5 py-3 lg:flex">
+      <aside
+        className={`fixed bottom-0 left-0 top-14 z-30 hidden w-[74px] flex-col items-center gap-1 border-r border-white/[0.06] px-1.5 py-3 lg:flex ${
+          settings.liquidGlass ? 'liquid-glass' : 'bg-[#0F0F0F]'
+        }`}
+      >
         {miniNav.map((item) => {
           const Icon = item.icon;
           const isActive = active === item.id;
@@ -212,10 +218,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
         )}
         <SidebarItem
-          icon={Sparkles}
-          label="For You"
+          icon={Users}
+          label="Feed"
           active={active === 'feed'}
           onClick={() => handleNav('feed')}
+        />
+        <SidebarItem
+          icon={User}
+          label="You"
+          active={active === 'you'}
+          onClick={() => handleNav('you')}
         />
         {onSpinRoulette && (
           <SidebarItem
@@ -390,7 +402,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           if (e.target === e.currentTarget) onClose?.();
         }}
       >
-        <aside className="flex h-full w-[248px] flex-col overflow-y-auto border-r border-white/[0.1] bg-[#0F0F0F] px-3 py-2 shadow-2xl">
+        <aside
+          className={`flex h-full w-[248px] flex-col overflow-y-auto border-r border-white/[0.1] px-3 py-2 shadow-2xl ${
+            settings.liquidGlass ? 'liquid-glass' : 'bg-[#0F0F0F]'
+          }`}
+        >
           {navBody}
         </aside>
       </div>
@@ -398,7 +414,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }
 
   return (
-    <aside className="fixed bottom-0 left-0 top-14 z-30 hidden w-[236px] flex-col overflow-y-auto border-r border-white/[0.06] bg-[#0F0F0F] px-3 py-3 lg:flex">
+    <aside
+      className={`fixed bottom-0 left-0 top-14 z-30 hidden w-[236px] flex-col overflow-y-auto border-r border-white/[0.06] px-3 py-3 lg:flex ${
+        settings.liquidGlass ? 'liquid-glass' : 'bg-[#0F0F0F]'
+      }`}
+    >
       {navBody}
     </aside>
   );

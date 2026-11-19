@@ -203,10 +203,13 @@ export function applyThemeToDocument(s: AppSettings): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   const glassPct = Math.max(15, Math.min(95, Math.round(s.liquidGlassOpacity ?? 65)));
-  const darkTop = (0.04 + (glassPct / 100) * 0.14).toFixed(3);
-  const darkBot = (0.14 + (glassPct / 100) * 0.74).toFixed(3);
-  const lightTop = (0.44 + (glassPct / 100) * 0.54).toFixed(3);
-  const lightBot = (0.28 + (glassPct / 100) * 0.64).toFixed(3);
+  const norm = (glassPct - 15) / 80;
+  const darkTop = (0.02 + norm * 0.22).toFixed(3);
+  const darkBot = (0.04 + Math.pow(norm, 1.3) * 0.88).toFixed(3);
+  const lightTop = (0.14 + norm * 0.82).toFixed(3);
+  const lightBot = (0.08 + Math.pow(norm, 1.2) * 0.86).toFixed(3);
+  const blurPx = Math.round(3 + Math.pow(norm, 1.1) * 33);
+  const satPct = Math.round(115 + norm * 100);
 
   root.style.setProperty('--lt-bg', s.themeColors.bg);
   root.style.setProperty('--lt-text', s.themeColors.text);
@@ -215,6 +218,8 @@ export function applyThemeToDocument(s: AppSettings): void {
   root.style.setProperty('--lt-glass-bot', darkBot);
   root.style.setProperty('--lt-glass-light-top', lightTop);
   root.style.setProperty('--lt-glass-light-bot', lightBot);
+  root.style.setProperty('--lt-glass-blur', `${blurPx}px`);
+  root.style.setProperty('--lt-glass-sat', `${satPct}%`);
   root.style.setProperty('--font-sans', FONT_STACKS[s.fontFamily] ?? FONT_STACKS.default);
   root.dataset.theme = s.themePreset === 'light' ? 'light' : 'dark';
   root.dataset.liquidGlass = s.liquidGlass ? '1' : '0';

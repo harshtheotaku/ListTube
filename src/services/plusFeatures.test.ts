@@ -322,5 +322,11 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
 
     const rank = getQuizRankInfo(5200, 10);
     expect(rank.title).toBe('ANBU Frame Reader');
+
+    const emojiQ = buildNextInfiniteQuestion({ scope: 'all', preferKind: 'emoji_plot' });
+    const quoteQ = buildNextInfiniteQuestion({ scope: 'all', preferKind: 'quote_match' });
+    const oddQ = buildNextInfiniteQuestion({ scope: 'all', preferKind: 'odd_one_out' });
+    const statQ = buildNextInfiniteQuestion({ scope: 'all', preferKind: 'stat_clash' });
+    expect([emojiQ, quoteQ, oddQ, statQ].every((q) => q.options.length === 4 && q.options.includes(q.correctAnswer))).toBe(true);
   });
 });

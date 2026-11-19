@@ -2,15 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Award,
-  Calendar,
   Check,
-  Copy,
   Crown,
   ExternalLink,
   Eye,
   EyeOff,
   Flame,
-  Gamepad2,
   Grid,
   HelpCircle,
   Keyboard,
@@ -19,11 +16,11 @@ import {
   Music,
   Pause,
   Play,
+  Quote,
   RotateCcw,
   ShieldCheck,
   Sparkles,
   Split,
-  Star,
   Trash2,
   Trophy,
   Users,
@@ -36,35 +33,23 @@ import { Anime, LibraryState, MediaType } from '../types';
 import { animeStore } from '../services/animeStore';
 import { triggerHaptic } from '../services/haptics';
 import {
-  buildDailyTenRound,
-  buildDuelMatchup,
   buildJeopardyBoard,
   buildNextInfiniteQuestion,
-  DailyQuizResult,
   DIFFICULTY_META,
   discoverDynamicAnimeTheme,
   doesTypedGuessMatch,
-  DuelMatchup,
-  DuelMetric,
-  getDailyQuizResult,
-  getDuelHighStreak,
   getJeopardyHighScore,
   getQuizHighScore,
   getQuizRankInfo,
   getSeenQuizCount,
-  getTodayDateKey,
   InfiniteQuizQuestion,
   JeopardyCategory,
   JeopardyCell,
   JeopardyCellKind,
   markQuizQuestionSeen,
-  QuizDifficultyFilter,
   QuizDifficultyLevel,
-  QuizPoolScope,
   resetSeenQuizHistory,
   resolveThemePreviewAudio,
-  saveDailyQuizResult,
-  saveDuelHighStreak,
   saveJeopardyHighScore,
   saveQuizHighScore,
   SNIPPET_LADDER_BY_DIFFICULTY,
@@ -79,7 +64,7 @@ interface QuizViewProps {
   onOpenAnime?: (anime: Anime) => void;
 }
 
-type QuizPageMode = 'infinite_3s' | 'daily_10' | 'duel' | 'jeopardy';
+type QuizPageMode = 'infinite_3s' | 'jeopardy';
 
 const DIFFICULTY_STYLES: Record<
   QuizDifficultyLevel,
@@ -93,39 +78,46 @@ const DIFFICULTY_STYLES: Record<
   easy: {
     label: 'Easy',
     Icon: ShieldCheck,
-    pillClass: 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/35',
+    pillClass: 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/40',
     iconClass: 'text-emerald-400',
   },
   medium: {
     label: 'Medium',
     Icon: Zap,
-    pillClass: 'bg-amber-500/15 text-amber-300 ring-1 ring-amber-400/35',
+    pillClass: 'bg-amber-500/15 text-amber-300 ring-1 ring-amber-400/40',
     iconClass: 'text-amber-400',
   },
   hard: {
     label: 'Hard',
     Icon: Flame,
-    pillClass: 'bg-rose-500/15 text-rose-300 ring-1 ring-rose-400/35',
+    pillClass: 'bg-rose-500/15 text-rose-300 ring-1 ring-rose-400/40',
     iconClass: 'text-rose-400',
   },
 };
 
-const DifficultyBadge: React.FC<{ difficulty: QuizDifficultyLevel; compact?: boolean }> = ({
-  difficulty,
-  compact = false,
-}) => {
+const DifficultyBadge: React.FC<{ difficulty: QuizDifficultyLevel }> = ({ difficulty }) => {
   const meta = DIFFICULTY_STYLES[difficulty];
   const Icon = meta.Icon;
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full font-bold ${meta.pillClass} ${
-        compact ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-0.5 text-[11px]'
-      }`}
+      data-quiz-difficulty={difficulty}
+      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-black uppercase tracking-wider ${meta.pillClass}`}
     >
-      <Icon className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+      <Icon className="h-3.5 w-3.5" />
       <span>{meta.label}</span>
     </span>
   );
+};
+
+const KIND_LABELS: Record<JeopardyCellKind, string> = {
+  audio: '3s OP/ED Audio',
+  visual_crop: 'Blurred Poster',
+  riddle_trivia: '3-Clue Lore',
+  studio_year: 'Studio & Year',
+  emoji_plot: 'Emoji Decoder',
+  quote_match: 'Iconic Quote',
+  odd_one_out: 'Odd One Out',
+  stat_clash: 'Stat Clash',
 };
 
 function fmtSec(sec: number): string {
@@ -140,13 +132,6 @@ function findAnimeByTitle(title: string): Anime | undefined {
   return animeStore.all().find((a) => a.title.toLowerCase() === low);
 }
 
-const KIND_LABELS: Record<JeopardyCellKind, string> = {
-  audio: 'OP/ED Audio',
-  visual_crop: 'Visual Crop',
-  riddle_trivia: 'Lore Riddle',
-  studio_year: 'Studio & Year',
-};
-
 export const QuizView: React.FC<QuizViewProps> = ({
   libraryState,
   mediaType,
@@ -154,25 +139,19 @@ export const QuizView: React.FC<QuizViewProps> = ({
   onOpenAnime,
 }) => {
   const [pageMode, setPageMode] = useState<QuizPageMode>('infinite_3s');
-  const [poolScope, setPoolScope] = useState<QuizPoolScope>('all');
-  const [difficultyFilter, setDifficultyFilter] = useState<QuizDifficultyFilter>('all');
-  const [kindFilter, setKindFilter] = useState<'all' | JeopardyCellKind>('all');
   const [typeAnswerMode, setTypeAnswerMode] = useState(false);
   const [typedGuess, setTypedGuess] = useState('');
   const [blindMode, setBlindMode] = useState(true);
   const [seenCount, setSeenCount] = useState(() => getSeenQuizCount());
 
-  // Infinite 3s Blitz state
+  // Random Quiz state (always 'all' pool, randomized Easy/Medium/Hard per question)
   const sessionSeenRef = useRef<Set<string>>(new Set());
   const [questionNum, setQuestionNum] = useState(1);
-  const [answeredTotal, setAnsweredTotal] = useState(0);
-  const [answeredCorrect, setAnsweredCorrect] = useState(0);
   const [currentQ, setCurrentQ] = useState<InfiniteQuizQuestion>(() =>
     buildNextInfiniteQuestion({
       scope: 'all',
       entries: libraryState.entries,
       mediaType,
-      difficulty: 'all',
     })
   );
   const [score, setScore] = useState(0);
@@ -182,27 +161,6 @@ export const QuizView: React.FC<QuizViewProps> = ({
   const [hintStep, setHintStep] = useState(0);
   const [eliminatedOptions, setEliminatedOptions] = useState<string[]>([]);
   const [bestScore, setBestScore] = useState(() => getQuizHighScore());
-
-  // Daily 10 state
-  const todayKey = useMemo(() => getTodayDateKey(), []);
-  const dailyQuestions = useMemo(() => buildDailyTenRound(todayKey), [todayKey]);
-  const [dailySaved, setDailySaved] = useState<DailyQuizResult | null>(() =>
-    getDailyQuizResult(todayKey)
-  );
-  const [dailyIndex, setDailyIndex] = useState(0);
-  const [dailyScore, setDailyScore] = useState(0);
-  const [dailyPicked, setDailyPicked] = useState<string | null>(null);
-  const [dailyOutcomes, setDailyOutcomes] = useState<('hit' | 'miss')[]>([]);
-  const [dailySnippetStep, setDailySnippetStep] = useState(0);
-  const [dailyHintStep, setDailyHintStep] = useState(0);
-  const [dailyEliminated, setDailyEliminated] = useState<string[]>([]);
-
-  // Higher / Lower Duel state
-  const [duelMetricPref, setDuelMetricPref] = useState<'mix' | DuelMetric>('mix');
-  const [duelMatchup, setDuelMatchup] = useState<DuelMatchup>(() => buildDuelMatchup());
-  const [duelPickedSide, setDuelPickedSide] = useState<'left' | 'right' | null>(null);
-  const [duelStreak, setDuelStreak] = useState(0);
-  const [duelBest, setDuelBest] = useState(() => getDuelHighStreak());
 
   // Anime Jeopardy state
   const [boardSeed, setBoardSeed] = useState(0);
@@ -228,18 +186,10 @@ export const QuizView: React.FC<QuizViewProps> = ({
   const [muted, setMuted] = useState(false);
   const [progress, setProgress] = useState({ cur: 0, dur: 30 });
 
-  const myListCount = useMemo(
-    () => Object.keys(libraryState.entries).length,
-    [libraryState.entries]
-  );
-
   const rankInfo = useMemo(
     () => getQuizRankInfo(Math.max(bestScore, score), seenCount),
     [bestScore, score, seenCount]
   );
-
-  const accuracyPct =
-    answeredTotal > 0 ? Math.round((answeredCorrect / answeredTotal) * 100) : 100;
 
   const boardCategories: JeopardyCategory[] = useMemo(
     () => buildJeopardyBoard(),
@@ -252,20 +202,12 @@ export const QuizView: React.FC<QuizViewProps> = ({
   const boardComplete =
     Object.keys(solvedCells).length >= totalBoardCells && totalBoardCells > 0;
 
-  const dailyActiveQ = dailyQuestions[dailyIndex] ?? dailyQuestions[0];
-
-  const loadNextInfinite = (
-    nextScope: QuizPoolScope = poolScope,
-    nextDiff: QuizDifficultyFilter = difficultyFilter,
-    nextKind: 'all' | JeopardyCellKind = kindFilter
-  ) => {
+  const loadNextRandomQuestion = () => {
     const q = buildNextInfiniteQuestion({
-      scope: nextScope,
+      scope: 'all',
       entries: libraryState.entries,
       mediaType,
       sessionExclude: sessionSeenRef.current,
-      difficulty: nextDiff,
-      preferKind: nextKind === 'all' ? undefined : nextKind,
     });
     sessionSeenRef.current.add(q.signature);
     setCurrentQ(q);
@@ -277,37 +219,10 @@ export const QuizView: React.FC<QuizViewProps> = ({
     setResolvedSongMeta(null);
   };
 
-  const handleScopeChange = (nextScope: QuizPoolScope) => {
-    if (nextScope === 'mylist' && myListCount < 2) {
-      toast('Add at least 2 titles to My List first to play My List mode!');
-      return;
-    }
-    triggerHaptic('light');
-    audioRef.current?.pause();
-    setPlaying(false);
-    setPoolScope(nextScope);
-    loadNextInfinite(nextScope, difficultyFilter, kindFilter);
-  };
-
-  const handleDifficultyChange = (nextDiff: QuizDifficultyFilter) => {
-    triggerHaptic('light');
-    audioRef.current?.pause();
-    setPlaying(false);
-    setDifficultyFilter(nextDiff);
-    loadNextInfinite(poolScope, nextDiff, kindFilter);
-  };
-
-  const handleKindChange = (nextKind: 'all' | JeopardyCellKind) => {
-    triggerHaptic('light');
-    audioRef.current?.pause();
-    setPlaying(false);
-    setKindFilter(nextKind);
-    loadNextInfinite(poolScope, difficultyFilter, nextKind);
-  };
-
   const activeAudioTarget = useMemo(() => {
     if (pageMode === 'infinite_3s' && currentQ.kind === 'audio') {
-      const ladder = SNIPPET_LADDER_BY_DIFFICULTY[currentQ.difficulty] ?? SNIPPET_LADDER_BY_DIFFICULTY.all;
+      const ladder =
+        SNIPPET_LADDER_BY_DIFFICULTY[currentQ.difficulty] ?? SNIPPET_LADDER_BY_DIFFICULTY.all;
       const maxClip = picked ? 30 : ladder[Math.min(snippetStep, ladder.length - 1)] ?? 30;
       return {
         id: currentQ.id,
@@ -315,20 +230,6 @@ export const QuizView: React.FC<QuizViewProps> = ({
         audioQuery: currentQ.audioQuery,
         songTitle: currentQ.songTitle,
         artist: currentQ.artist,
-        maxClipSec: maxClip,
-      };
-    }
-    if (pageMode === 'daily_10' && !dailySaved && dailyActiveQ?.kind === 'audio') {
-      const ladder = SNIPPET_LADDER_BY_DIFFICULTY[dailyActiveQ.difficulty] ?? SNIPPET_LADDER_BY_DIFFICULTY.all;
-      const maxClip = dailyPicked
-        ? 30
-        : ladder[Math.min(dailySnippetStep, ladder.length - 1)] ?? 30;
-      return {
-        id: dailyActiveQ.id,
-        malId: dailyActiveQ.malId,
-        audioQuery: dailyActiveQ.audioQuery,
-        songTitle: dailyActiveQ.songTitle,
-        artist: dailyActiveQ.artist,
         maxClipSec: maxClip,
       };
     }
@@ -345,19 +246,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
       };
     }
     return null;
-  }, [
-    pageMode,
-    currentQ,
-    snippetStep,
-    picked,
-    dailySaved,
-    dailyActiveQ,
-    dailyPicked,
-    dailySnippetStep,
-    activeCell,
-    cellClipBoost,
-    cellPicked,
-  ]);
+  }, [pageMode, currentQ, snippetStep, picked, activeCell, cellClipBoost, cellPicked]);
 
   useEffect(() => {
     if (!activeAudioTarget) {
@@ -445,7 +334,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
           const opt = currentQ.options[Number(e.key) - 1];
           if (opt && !eliminatedOptions.includes(opt)) {
             e.preventDefault();
-            submitInfiniteAnswer(opt, false);
+            submitRandomAnswer(opt, false);
           }
           return;
         }
@@ -463,35 +352,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
           e.preventDefault();
           advanceNextQuestion();
         }
-      } else if (pageMode === 'daily_10' && !dailySaved) {
-        if (!dailyPicked && !typeAnswerMode && ['1', '2', '3', '4'].includes(e.key)) {
-          const opt = dailyActiveQ.options[Number(e.key) - 1];
-          if (opt && !dailyEliminated.includes(opt)) {
-            e.preventDefault();
-            submitDailyAnswer(opt, false);
-          }
-          return;
-        }
-        if (dailyPicked && (e.key.toLowerCase() === 'n' || e.key === 'Enter')) {
-          e.preventDefault();
-          advanceDailyQuestion();
-        }
-      } else if (pageMode === 'duel') {
-        if (!duelPickedSide && (e.key === '1' || e.key === 'ArrowLeft')) {
-          e.preventDefault();
-          submitDuelChoice('left');
-          return;
-        }
-        if (!duelPickedSide && (e.key === '2' || e.key === 'ArrowRight')) {
-          e.preventDefault();
-          submitDuelChoice('right');
-          return;
-        }
-        if (duelPickedSide && (e.key.toLowerCase() === 'n' || e.key === 'Enter')) {
-          e.preventDefault();
-          nextDuelRound();
-        }
-      } else if (pageMode === 'jeopardy' && activeCell) {
+      } else if (activeCell) {
         if (!cellPicked && !typeAnswerMode && ['1', '2', '3', '4'].includes(e.key)) {
           const opt = activeCell.options[Number(e.key) - 1];
           if (opt) {
@@ -529,7 +390,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
     }
   };
 
-  // --- Infinite Blitz Handlers ---
+  // --- Random Quiz Scoring ---
   const activeLadder =
     SNIPPET_LADDER_BY_DIFFICULTY[currentQ.difficulty] ?? SNIPPET_LADDER_BY_DIFFICULTY.all;
   const diffMultiplier = DIFFICULTY_META[currentQ.difficulty].multiplier;
@@ -547,7 +408,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
     setEliminatedOptions(toRemove);
   };
 
-  const submitInfiniteAnswer = (guess: string, isTyped = false) => {
+  const submitRandomAnswer = (guess: string, isTyped = false) => {
     if (picked) return;
     const isCorrect = isTyped
       ? doesTypedGuessMatch(guess, currentQ.correctAnswer, currentQ.aliases)
@@ -557,11 +418,9 @@ export const QuizView: React.FC<QuizViewProps> = ({
     sessionSeenRef.current.add(currentQ.signature);
     setSeenCount(getSeenQuizCount());
     setPicked(isCorrect ? currentQ.correctAnswer : guess);
-    setAnsweredTotal((t) => t + 1);
 
     if (isCorrect) {
       triggerHaptic('success');
-      setAnsweredCorrect((c) => c + 1);
       const nextScore = score + potentialPoints;
       setScore(nextScore);
       setStreak((s) => s + 1);
@@ -580,93 +439,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
     audioRef.current?.pause();
     setPlaying(false);
     setQuestionNum((n) => n + 1);
-    loadNextInfinite(poolScope, difficultyFilter, kindFilter);
-  };
-
-  // --- Daily 10 Handlers ---
-  const dailyLadder =
-    SNIPPET_LADDER_BY_DIFFICULTY[dailyActiveQ?.difficulty ?? 'medium'] ??
-    SNIPPET_LADDER_BY_DIFFICULTY.all;
-
-  const submitDailyAnswer = (guess: string, isTyped = false) => {
-    if (dailyPicked || !dailyActiveQ) return;
-    const isCorrect = isTyped
-      ? doesTypedGuessMatch(guess, dailyActiveQ.correctAnswer, dailyActiveQ.aliases)
-      : guess === dailyActiveQ.correctAnswer;
-
-    setDailyPicked(isCorrect ? dailyActiveQ.correctAnswer : guess);
-    const pts = isCorrect
-      ? Math.round(
-          Math.max(50, 200 - dailySnippetStep * 40 - dailyHintStep * 35 - (dailyEliminated.length > 0 ? 50 : 0)) *
-            DIFFICULTY_META[dailyActiveQ.difficulty].multiplier
-        )
-      : 0;
-    setDailyScore((s) => s + pts);
-    setDailyOutcomes((prev) => [...prev, isCorrect ? 'hit' : 'miss']);
-    triggerHaptic(isCorrect ? 'success' : 'medium');
-  };
-
-  const advanceDailyQuestion = () => {
-    triggerHaptic('light');
-    audioRef.current?.pause();
-    setPlaying(false);
-    if (dailyIndex + 1 >= dailyQuestions.length) {
-      const hits = dailyOutcomes.filter((x) => x === 'hit').length;
-      const finalRes: DailyQuizResult = {
-        dateKey: todayKey,
-        score: dailyScore,
-        correctCount: hits,
-        total: dailyQuestions.length,
-        outcomes: dailyOutcomes,
-        completedAt: Date.now(),
-      };
-      saveDailyQuizResult(finalRes);
-      setDailySaved(finalRes);
-      return;
-    }
-    setDailyIndex((i) => i + 1);
-    setDailyPicked(null);
-    setTypedGuess('');
-    setDailySnippetStep(0);
-    setDailyHintStep(0);
-    setDailyEliminated([]);
-  };
-
-  const copyDailyShareGrid = async () => {
-    if (!dailySaved) return;
-    const grid = dailySaved.outcomes.map((o) => (o === 'hit' ? '🟩' : '🟥')).join('');
-    const text = `ListTube Daily 10 (${dailySaved.dateKey})\nScore: ${dailySaved.score} pts · ${dailySaved.correctCount}/${dailySaved.total}\n${grid}\nhttps://listtube.vercel.app/quiz`;
-    try {
-      await navigator.clipboard.writeText(text);
-      toast('Copied Daily 10 score card to clipboard!');
-    } catch {
-      toast('Score card ready to copy');
-    }
-  };
-
-  // --- Score Duel Handlers ---
-  const nextDuelRound = (pref: 'mix' | DuelMetric = duelMetricPref) => {
-    triggerHaptic('light');
-    setDuelPickedSide(null);
-    setDuelMatchup(buildDuelMatchup(pref === 'mix' ? undefined : pref));
-  };
-
-  const submitDuelChoice = (side: 'left' | 'right') => {
-    if (duelPickedSide) return;
-    setDuelPickedSide(side);
-    const won = side === duelMatchup.winner;
-    if (won) {
-      triggerHaptic('success');
-      const next = duelStreak + 1;
-      setDuelStreak(next);
-      if (next > duelBest) {
-        setDuelBest(next);
-        saveDuelHighStreak(next);
-      }
-    } else {
-      triggerHaptic('medium');
-      setDuelStreak(0);
-    }
+    loadNextRandomQuestion();
   };
 
   // --- Jeopardy Handlers ---
@@ -979,25 +752,17 @@ export const QuizView: React.FC<QuizViewProps> = ({
       aria-label="OP and ED Music Quiz"
       className="mx-auto min-h-screen max-w-6xl space-y-5 bg-[#0F0F0F] px-4 pb-32 pt-5 text-white sm:px-6 lg:px-8 lg:pb-16"
     >
-      {/* Dedicated Page Header + Rank + Modes */}
+      {/* Clean Header + Prominent Scoreboard */}
       <div className="liquid-glass rounded-3xl border border-white/[0.12] p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#FF0000] to-amber-500 text-white shadow-lg">
-              {pageMode === 'jeopardy' ? (
-                <Grid className="h-5 w-5" />
-              ) : pageMode === 'duel' ? (
-                <Star className="h-5 w-5" />
-              ) : pageMode === 'daily_10' ? (
-                <Calendar className="h-5 w-5" />
-              ) : (
-                <Music className="h-5 w-5" />
-              )}
+              {pageMode === 'jeopardy' ? <Grid className="h-5 w-5" /> : <Music className="h-5 w-5" />}
             </span>
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-[19px] font-black tracking-tight text-white sm:text-[22px]">
-                  Infinite Anime Quiz Arena
+                  Anime Quiz Arena
                 </h1>
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2.5 py-0.5 text-[10.5px] font-bold text-amber-300 ring-1 ring-amber-400/30">
                   <Award className="h-3 w-3" />
@@ -1006,46 +771,38 @@ export const QuizView: React.FC<QuizViewProps> = ({
               </div>
               <p className="text-[12px] text-[#AAAAAA]">
                 {pageMode === 'jeopardy'
-                  ? `Jeopardy Best: ${bestJeopardy} pts · 4×4 Game Board`
-                  : pageMode === 'duel'
-                    ? `Score Duel Streak: ${duelStreak} · Best Streak: ${duelBest}`
-                    : pageMode === 'daily_10'
-                      ? `Daily 10 Challenge (${todayKey}) · Same seed worldwide`
-                      : `Score: ${score} · Streak: ${streak} · Best: ${bestScore} · Accuracy: ${accuracyPct}% · Unique Played: ${seenCount}`}
+                  ? `4×4 Jeopardy Board · Best: ${bestJeopardy} pts`
+                  : `Random difficulty & creative rounds · Played: ${seenCount}`}
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {(pageMode === 'infinite_3s' || pageMode === 'daily_10' || pageMode === 'jeopardy') && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setTypeAnswerMode((v) => !v)}
-                  className={`lt-press inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-bold transition ${
-                    typeAnswerMode
-                      ? 'bg-amber-400/20 text-amber-200 ring-1 ring-amber-400/35'
-                      : 'bg-white/[0.08] text-[#CCCCCC] hover:bg-white/[0.14]'
-                  }`}
-                >
-                  {typeAnswerMode ? <Keyboard className="h-3.5 w-3.5" /> : <ListChecks className="h-3.5 w-3.5" />}
-                  {typeAnswerMode ? 'Type-In' : 'Choices'}
-                </button>
+            <button
+              type="button"
+              onClick={() => setTypeAnswerMode((v) => !v)}
+              className={`lt-press inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-bold transition ${
+                typeAnswerMode
+                  ? 'bg-amber-400/20 text-amber-200 ring-1 ring-amber-400/35'
+                  : 'bg-white/[0.08] text-[#CCCCCC] hover:bg-white/[0.14]'
+              }`}
+            >
+              {typeAnswerMode ? <Keyboard className="h-3.5 w-3.5" /> : <ListChecks className="h-3.5 w-3.5" />}
+              {typeAnswerMode ? 'Type-In' : 'Choices'}
+            </button>
 
-                <button
-                  type="button"
-                  onClick={() => setBlindMode((v) => !v)}
-                  className={`lt-press inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-bold transition ${
-                    blindMode
-                      ? 'bg-[#3EA6FF]/20 text-[#3EA6FF] ring-1 ring-[#3EA6FF]/35'
-                      : 'bg-white/[0.08] text-[#CCCCCC] hover:bg-white/[0.14]'
-                  }`}
-                >
-                  {blindMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                  {blindMode ? 'Blind' : 'Title On'}
-                </button>
-              </>
-            )}
+            <button
+              type="button"
+              onClick={() => setBlindMode((v) => !v)}
+              className={`lt-press inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-bold transition ${
+                blindMode
+                  ? 'bg-[#3EA6FF]/20 text-[#3EA6FF] ring-1 ring-[#3EA6FF]/35'
+                  : 'bg-white/[0.08] text-[#CCCCCC] hover:bg-white/[0.14]'
+              }`}
+            >
+              {blindMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              {blindMode ? 'Blind' : 'Title On'}
+            </button>
 
             {seenCount > 0 && pageMode === 'infinite_3s' && (
               <button
@@ -1060,15 +817,61 @@ export const QuizView: React.FC<QuizViewProps> = ({
                 className="lt-press inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-semibold text-[#AAAAAA] hover:bg-white/[0.14] hover:text-white"
               >
                 <Trash2 className="h-3 w-3" />
-                Reset Seen
+                Reset
               </button>
             )}
           </div>
         </div>
 
-        {/* Mode Switcher Bar */}
+        {/* High-Visibility Points & Scoreboard Strip */}
+        <div
+          className="mt-4 grid grid-cols-3 gap-2.5 rounded-2xl border border-white/[0.08] bg-black/35 p-3 sm:grid-cols-4"
+          aria-label="Quiz Points Scoreboard"
+        >
+          <div className="rounded-xl bg-white/[0.04] px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93]">
+              Total Score
+            </p>
+            <p className="text-[20px] font-black tabular-nums text-white sm:text-[24px]">
+              {pageMode === 'jeopardy' ? playerScores[0] : score}
+              <span className="ml-1 text-[11px] font-bold text-[#3EA6FF]">pts</span>
+            </p>
+          </div>
+          <div className="rounded-xl bg-white/[0.04] px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93]">
+              {pageMode === 'jeopardy' ? 'Board Best' : 'Streak'}
+            </p>
+            <p className="text-[20px] font-black tabular-nums text-amber-300 sm:text-[24px]">
+              {pageMode === 'jeopardy' ? `${bestJeopardy}` : `${streak}🔥`}
+            </p>
+          </div>
+          <div className="rounded-xl bg-white/[0.04] px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93]">
+              {pageMode === 'jeopardy' ? 'Cleared' : 'Best Score'}
+            </p>
+            <p className="text-[20px] font-black tabular-nums text-emerald-300 sm:text-[24px]">
+              {pageMode === 'jeopardy'
+                ? `${Object.keys(solvedCells).length}/${totalBoardCells}`
+                : `${bestScore}`}
+            </p>
+          </div>
+          <div className="hidden rounded-xl bg-white/[0.04] px-3 py-2 sm:block">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93]">
+              {pageMode === 'jeopardy' ? 'Mode' : 'Active Worth'}
+            </p>
+            <p className="text-[20px] font-black tabular-nums text-[#3EA6FF] sm:text-[24px]">
+              {pageMode === 'jeopardy'
+                ? twoPlayer
+                  ? '2P Versus'
+                  : 'Solo'
+                : `+${potentialPoints}`}
+            </p>
+          </div>
+        </div>
+
+        {/* Minimal 2-Option Mode Bar: Random Quiz vs Anime Jeopardy */}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.08] pt-3.5">
-          <div className="flex flex-wrap rounded-2xl bg-white/[0.06] p-1 sm:rounded-full">
+          <div className="flex rounded-full bg-white/[0.06] p-1">
             <button
               type="button"
               onClick={() => {
@@ -1076,51 +879,14 @@ export const QuizView: React.FC<QuizViewProps> = ({
                 setPlaying(false);
                 setPageMode('infinite_3s');
               }}
-              className={`lt-press flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
+              className={`lt-press flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12.5px] font-bold transition ${
                 pageMode === 'infinite_3s'
                   ? 'bg-white text-black shadow'
                   : 'text-[#CCCCCC] hover:text-white'
               }`}
             >
               <Flame className="h-3.5 w-3.5 text-[#FF0000]" />
-              3 sec OP/ED
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                audioRef.current?.pause();
-                setPlaying(false);
-                setPageMode('daily_10');
-              }}
-              className={`lt-press flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
-                pageMode === 'daily_10'
-                  ? 'bg-white text-black shadow'
-                  : 'text-[#CCCCCC] hover:text-white'
-              }`}
-            >
-              <Calendar className="h-3.5 w-3.5 text-emerald-500" />
-              Daily 10
-              {dailySaved && (
-                <span className="rounded bg-emerald-500/20 px-1.5 text-[9.5px] font-black text-emerald-600">
-                  {dailySaved.correctCount}/{dailySaved.total}
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                audioRef.current?.pause();
-                setPlaying(false);
-                setPageMode('duel');
-              }}
-              className={`lt-press flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
-                pageMode === 'duel'
-                  ? 'bg-white text-black shadow'
-                  : 'text-[#CCCCCC] hover:text-white'
-              }`}
-            >
-              <Gamepad2 className="h-3.5 w-3.5 text-[#3EA6FF]" />
-              Score Duel
+              Random Quiz
             </button>
             <button
               type="button"
@@ -1129,7 +895,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                 setPlaying(false);
                 setPageMode('jeopardy');
               }}
-              className={`lt-press flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
+              className={`lt-press flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12.5px] font-bold transition ${
                 pageMode === 'jeopardy'
                   ? 'bg-white text-black shadow'
                   : 'text-[#CCCCCC] hover:text-white'
@@ -1139,36 +905,6 @@ export const QuizView: React.FC<QuizViewProps> = ({
               Anime Jeopardy
             </button>
           </div>
-
-          {pageMode === 'infinite_3s' && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <div className="flex rounded-full bg-white/[0.06] p-1 text-[11px] font-bold">
-                <button
-                  type="button"
-                  onClick={() => handleScopeChange('all')}
-                  className={`rounded-full px-3 py-1 transition ${
-                    poolScope === 'all' ? 'bg-[#FF0000] text-white' : 'text-[#AAAAAA] hover:text-white'
-                  }`}
-                >
-                  All Anime
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleScopeChange('mylist')}
-                  className={`rounded-full px-3 py-1 transition ${
-                    poolScope === 'mylist'
-                      ? 'bg-[#3EA6FF] text-black'
-                      : 'text-[#AAAAAA] hover:text-white'
-                  }`}
-                >
-                  My List ({myListCount})
-                </button>
-              </div>
-              <span className="rounded-full bg-[#FF0000]/15 px-3 py-1 text-[11px] font-bold text-rose-200 ring-1 ring-[#FF0000]/30">
-                3 sec Blitz · Endless
-              </span>
-            </div>
-          )}
 
           {pageMode === 'jeopardy' && (
             <button
@@ -1188,87 +924,6 @@ export const QuizView: React.FC<QuizViewProps> = ({
             </button>
           )}
         </div>
-
-        {/* Difficulty Icons Bar + Category Filter for Endless Blitz */}
-        {pageMode === 'infinite_3s' && (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2.5 border-t border-white/[0.06] pt-3">
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Quiz difficulty">
-              <button
-                type="button"
-                onClick={() => handleDifficultyChange('all')}
-                className={`lt-press inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-bold transition ${
-                  difficultyFilter === 'all'
-                    ? 'bg-[#3EA6FF] text-black'
-                    : 'bg-white/[0.06] text-[#CCCCCC] hover:bg-white/[0.12]'
-                }`}
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                Mixed
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDifficultyChange('easy')}
-                className={`lt-press inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-bold transition ${
-                  difficultyFilter === 'easy'
-                    ? 'bg-emerald-500 text-black'
-                    : 'bg-white/[0.06] text-emerald-300 hover:bg-emerald-500/15'
-                }`}
-              >
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Easy (6s · 1×)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDifficultyChange('medium')}
-                className={`lt-press inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-bold transition ${
-                  difficultyFilter === 'medium'
-                    ? 'bg-amber-400 text-black'
-                    : 'bg-white/[0.06] text-amber-300 hover:bg-amber-500/15'
-                }`}
-              >
-                <Zap className="h-3.5 w-3.5" />
-                Medium (3s · 1.25×)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDifficultyChange('hard')}
-                className={`lt-press inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-bold transition ${
-                  difficultyFilter === 'hard'
-                    ? 'bg-rose-500 text-white'
-                    : 'bg-white/[0.06] text-rose-300 hover:bg-rose-500/15'
-                }`}
-              >
-                <Flame className="h-3.5 w-3.5" />
-                Hard (2s · 1.75×)
-              </button>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1 text-[11px] font-semibold">
-              {(
-                [
-                  ['all', 'All Rounds'],
-                  ['audio', 'Audio OP/ED'],
-                  ['visual_crop', 'Blurred Poster'],
-                  ['riddle_trivia', 'Riddles'],
-                  ['studio_year', 'Studio & Year'],
-                ] as const
-              ).map(([k, lbl]) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => handleKindChange(k)}
-                  className={`rounded-full px-2.5 py-1 transition ${
-                    kindFilter === k
-                      ? 'bg-white text-black font-bold'
-                      : 'bg-white/[0.05] text-[#AAAAAA] hover:text-white'
-                  }`}
-                >
-                  {lbl}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Shared In-App Audio Element */}
@@ -1291,25 +946,26 @@ export const QuizView: React.FC<QuizViewProps> = ({
 
       {pageMode === 'infinite_3s' ? (
         <div className="rounded-3xl border border-white/[0.08] bg-[#161619] p-5 sm:p-6">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-[12px] font-bold text-[#3EA6FF]">
+          {/* Question Header: Question # + Prominent Reward Points + Random Difficulty Icon Badge */}
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2.5">
             <div className="flex flex-wrap items-center gap-2">
-              <span>
-                Question #{questionNum} · Up to +{potentialPoints} pts
+              <span className="text-[13px] font-bold text-[#AAAAAA]">
+                Question #{questionNum}
               </span>
               <DifficultyBadge difficulty={currentQ.difficulty} />
+              <span className="rounded-full bg-white/[0.07] px-2.5 py-0.5 text-[11px] font-bold text-[#CCCCCC]">
+                {KIND_LABELS[currentQ.kind]}
+              </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="hidden rounded-full bg-white/[0.05] px-2.5 py-0.5 text-[10.5px] font-semibold text-[#8E8E93] lg:inline">
-                Space Play · 1-4 Pick · 5 Split 50/50 · H Clue · N Next
-              </span>
-              <span className="rounded-full bg-white/[0.06] px-2.5 py-0.5 text-[11px] font-semibold text-neutral-300">
-                {currentQ.fromMyList ? 'From Your List' : KIND_LABELS[currentQ.kind]}
+              <span className="rounded-full bg-emerald-500/20 px-3.5 py-1 text-[13px] font-black text-emerald-300 ring-1 ring-emerald-400/40">
+                +{potentialPoints} PTS
               </span>
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
-            {/* Desktop Left Column: Audio / Visual Challenge + Hints + 50/50 */}
+            {/* Left Column: Audio / Visual / Creative Spotlight + Lifelines */}
             <div className="space-y-4 lg:col-span-5">
               {currentQ.kind === 'audio' &&
                 renderAudioCard(
@@ -1335,6 +991,26 @@ export const QuizView: React.FC<QuizViewProps> = ({
                       {hintStep === 0 ? 'Ultra Blur' : hintStep === 1 ? 'Half Revealed' : 'Nearly Clear'}
                     </span>
                   )}
+                </div>
+              )}
+
+              {currentQ.kind === 'emoji_plot' && (
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-white/[0.1] bg-gradient-to-br from-amber-500/10 to-purple-500/10 p-6 text-center">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
+                    Decode These Emojis
+                  </p>
+                  <p className="mt-2 text-[34px] tracking-widest sm:text-[40px]">
+                    {currentQ.prompt.replace('Emoji Plot Decoder:', '').trim()}
+                  </p>
+                </div>
+              )}
+
+              {currentQ.kind === 'quote_match' && (
+                <div className="rounded-2xl border border-white/[0.1] bg-gradient-to-br from-[#3EA6FF]/10 to-indigo-500/10 p-5">
+                  <Quote className="mb-2 h-6 w-6 text-[#3EA6FF]" />
+                  <p className="text-[15px] font-bold italic leading-relaxed text-white">
+                    {currentQ.prompt.replace('Iconic Quote:', '').trim()}
+                  </p>
                 </div>
               )}
 
@@ -1396,20 +1072,24 @@ export const QuizView: React.FC<QuizViewProps> = ({
               )}
             </div>
 
-            {/* Desktop Right Column: Question + Big Answer Grid + Feedback + View & Track CTA */}
+            {/* Right Column: Prompt + Big Choices + Reveal */}
             <div className="space-y-4 lg:col-span-7">
               <p className="text-[16px] font-extrabold leading-snug text-white sm:text-[19px]">
                 {currentQ.kind === 'audio' && blindMode && !picked
                   ? `Listen to the ${DIFFICULTY_META[currentQ.difficulty].starterSec}s clip — which anime is this theme from?`
-                  : currentQ.prompt}
+                  : currentQ.kind === 'emoji_plot'
+                    ? 'Which anime matches this emoji plot?'
+                    : currentQ.kind === 'quote_match'
+                      ? 'Which anime is this iconic quote from?'
+                      : currentQ.prompt}
               </p>
 
               {renderBigAnswerGrid(
                 currentQ.options,
                 currentQ.correctAnswer,
                 picked,
-                (opt) => submitInfiniteAnswer(opt, false),
-                (val) => submitInfiniteAnswer(val, true),
+                (opt) => submitRandomAnswer(opt, false),
+                (val) => submitRandomAnswer(val, true),
                 currentQ.aliases,
                 eliminatedOptions
               )}
@@ -1417,7 +1097,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
               {picked && (
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-4">
                   <div className="space-y-1.5">
-                    <div className="text-[13.5px] font-bold">
+                    <div className="text-[14px] font-bold">
                       {picked === currentQ.correctAnswer ? (
                         <span className="text-emerald-300">
                           Correct! +{potentialPoints} pts · {currentQ.animeTitle}
@@ -1436,309 +1116,12 @@ export const QuizView: React.FC<QuizViewProps> = ({
                     onClick={advanceNextQuestion}
                     className="lt-press rounded-full bg-[#FF0000] px-6 py-2.5 text-[13.5px] font-bold text-white shadow-lg hover:bg-[#D90000]"
                   >
-                    Next Unseen Question &rarr;
+                    Next Question &rarr;
                   </button>
                 </div>
               )}
             </div>
           </div>
-        </div>
-      ) : pageMode === 'daily_10' ? (
-        <div className="rounded-3xl border border-white/[0.08] bg-[#161619] p-5 sm:p-6">
-          {dailySaved ? (
-            <div className="space-y-4 py-6 text-center">
-              <Trophy className="mx-auto h-12 w-12 text-emerald-400" />
-              <h2 className="text-[22px] font-black text-white">
-                Daily 10 Complete · {dailySaved.correctCount}/{dailySaved.total}
-              </h2>
-              <p className="text-[14px] text-[#AAAAAA]">
-                Score: <span className="font-bold text-white">{dailySaved.score} pts</span> · Come back tomorrow for a fresh global seed!
-              </p>
-              <div className="flex justify-center gap-1.5 text-[22px]">
-                {dailySaved.outcomes.map((o, i) => (
-                  <span key={i}>{o === 'hit' ? '🟩' : '🟥'}</span>
-                ))}
-              </div>
-              <div className="flex flex-wrap justify-center gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => void copyDailyShareGrid()}
-                  className="lt-press inline-flex items-center gap-2 rounded-full bg-emerald-500 px-6 py-2.5 text-[13px] font-black text-black hover:bg-emerald-400"
-                >
-                  <Copy className="h-4 w-4" />
-                  Share Emoji Result
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPageMode('infinite_3s')}
-                  className="lt-press rounded-full bg-white/[0.08] px-5 py-2.5 text-[13px] font-bold text-white hover:bg-white/[0.16]"
-                >
-                  Play Endless Blitz &rarr;
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] font-black text-emerald-300">
-                    Daily Round {dailyIndex + 1} / {dailyQuestions.length}
-                  </span>
-                  <DifficultyBadge difficulty={dailyActiveQ.difficulty} />
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {dailyQuestions.map((_, idx) => {
-                    const out = dailyOutcomes[idx];
-                    return (
-                      <span
-                        key={idx}
-                        className={`h-2.5 w-5 rounded-full transition ${
-                          out === 'hit'
-                            ? 'bg-emerald-400'
-                            : out === 'miss'
-                              ? 'bg-rose-400'
-                              : idx === dailyIndex
-                                ? 'bg-white'
-                                : 'bg-white/15'
-                        }`}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-                <div className="space-y-4 lg:col-span-5">
-                  {dailyActiveQ.kind === 'audio' &&
-                    renderAudioCard(
-                      `Daily Audio · Round ${dailyIndex + 1}`,
-                      blindMode && !dailyPicked
-                        ? 'Daily Mystery Track'
-                        : `${dailyActiveQ.songTitle} · ${dailyActiveQ.artist}`
-                    )}
-
-                  {!dailyPicked && (
-                    <div className="flex flex-wrap items-center gap-2">
-                      {dailyActiveQ.kind === 'audio' && dailySnippetStep < dailyLadder.length - 1 && (
-                        <button
-                          type="button"
-                          onClick={() => setDailySnippetStep((s) => Math.min(dailyLadder.length - 1, s + 1))}
-                          className="lt-press inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3.5 py-1.5 text-[12px] font-bold text-amber-200 ring-1 ring-amber-400/30"
-                        >
-                          <Sparkles className="h-3.5 w-3.5" />
-                          Extend to {dailyLadder[dailySnippetStep + 1]}s
-                        </button>
-                      )}
-                      {dailyActiveQ.clues.length > dailyHintStep && (
-                        <button
-                          type="button"
-                          onClick={() => setDailyHintStep((h) => h + 1)}
-                          className="lt-press inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-3.5 py-1.5 text-[12px] font-bold text-[#CCCCCC]"
-                        >
-                          <HelpCircle className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                          Reveal Clue {dailyHintStep + 1}
-                        </button>
-                      )}
-                      {!typeAnswerMode && dailyEliminated.length === 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const wrong = dailyActiveQ.options.filter((o) => o !== dailyActiveQ.correctAnswer);
-                            setDailyEliminated(wrong.sort(() => Math.random() - 0.5).slice(0, 2));
-                          }}
-                          className="lt-press inline-flex items-center gap-1.5 rounded-full bg-purple-500/15 px-3.5 py-1.5 text-[12px] font-bold text-purple-200 ring-1 ring-purple-400/30"
-                        >
-                          <Split className="h-3.5 w-3.5" />
-                          50/50
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {(dailyHintStep > 0 || dailyActiveQ.kind === 'riddle_trivia') && (
-                    <div className="space-y-1.5 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3.5 text-[13px] text-neutral-200">
-                      {dailyActiveQ.clues
-                        .slice(0, dailyActiveQ.kind === 'riddle_trivia' ? Math.max(1, dailyHintStep + 1) : dailyHintStep)
-                        .map((c, ci) => (
-                          <p key={ci}>
-                            <span className="font-bold text-[#3EA6FF]">Clue {ci + 1}:</span> {c}
-                          </p>
-                        ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-4 lg:col-span-7">
-                  <p className="text-[17px] font-extrabold text-white sm:text-[19px]">
-                    {dailyActiveQ.kind === 'audio' && blindMode && !dailyPicked
-                      ? `Daily Round #${dailyIndex + 1} — Which anime is this theme from?`
-                      : dailyActiveQ.prompt}
-                  </p>
-
-                  {renderBigAnswerGrid(
-                    dailyActiveQ.options,
-                    dailyActiveQ.correctAnswer,
-                    dailyPicked,
-                    (opt) => submitDailyAnswer(opt, false),
-                    (val) => submitDailyAnswer(val, true),
-                    dailyActiveQ.aliases,
-                    dailyEliminated
-                  )}
-
-                  {dailyPicked && (
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-4">
-                      <span className="text-[13px] font-bold text-white">
-                        {dailyPicked === dailyActiveQ.correctAnswer
-                          ? `Correct! ${dailyActiveQ.animeTitle}`
-                          : `Answer: ${dailyActiveQ.correctAnswer}`}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={advanceDailyQuestion}
-                        className="lt-press rounded-full bg-[#FF0000] px-6 py-2.5 text-[13px] font-bold text-white"
-                      >
-                        {dailyIndex + 1 >= dailyQuestions.length ? 'Finish Daily 10 →' : 'Next Round →'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      ) : pageMode === 'duel' ? (
-        <div className="space-y-5 rounded-3xl border border-white/[0.08] bg-[#161619] p-5 sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <span className="rounded-full bg-[#3EA6FF]/15 px-3 py-1 text-[11px] font-bold text-[#3EA6FF]">
-                {duelMatchup.unitLabel} Duel
-              </span>
-              <h2 className="mt-2 text-[19px] font-black text-white sm:text-[22px]">
-                {duelMatchup.question}
-              </h2>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1 rounded-full bg-white/[0.06] p-1 text-[11px] font-bold">
-              {(
-                [
-                  ['mix', 'Mixed'],
-                  ['score', 'Score'],
-                  ['popularity', 'Popularity'],
-                  ['year', 'Year'],
-                  ['episodes', 'Episodes'],
-                ] as const
-              ).map(([m, label]) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => {
-                    setDuelMetricPref(m);
-                    nextDuelRound(m);
-                  }}
-                  className={`rounded-full px-3 py-1 transition ${
-                    duelMetricPref === m ? 'bg-white text-black' : 'text-[#AAAAAA] hover:text-white'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {(['left', 'right'] as const).map((side) => {
-              const card = duelMatchup[side];
-              const isPicked = duelPickedSide === side;
-              const isWinner = duelMatchup.winner === side;
-              const revealed = duelPickedSide !== null;
-              const statDisplay =
-                duelMatchup.metric === 'score'
-                  ? `${card.score.toFixed(1)} ★`
-                  : duelMatchup.metric === 'popularity'
-                    ? `${card.popularity.toLocaleString()} fans`
-                    : duelMatchup.metric === 'year'
-                      ? `${card.year}`
-                      : `${card.episodes} eps`;
-
-              let ringCls = 'border-white/[0.12] bg-[#1E1E24] hover:border-white/35';
-              if (revealed) {
-                ringCls = isWinner
-                  ? 'border-emerald-400 bg-emerald-500/15 shadow-lg'
-                  : isPicked
-                    ? 'border-rose-400 bg-rose-500/15'
-                    : 'border-white/[0.06] bg-white/[0.03] opacity-70';
-              }
-
-              return (
-                <button
-                  key={`${duelMatchup.id}-${side}`}
-                  type="button"
-                  disabled={revealed}
-                  onClick={() => submitDuelChoice(side)}
-                  className={`lt-press group flex items-center gap-4 rounded-2xl border p-4 text-left transition ${ringCls}`}
-                >
-                  <div className="h-28 w-20 shrink-0 overflow-hidden rounded-xl bg-black/50">
-                    {card.cover ? (
-                      <img
-                        src={card.cover}
-                        alt={card.title}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#FF0000]/30 to-amber-500/20">
-                        <Music className="h-6 w-6 text-white/60" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1 space-y-1.5">
-                    <span className="text-[10.5px] font-bold uppercase tracking-wider text-[#8E8E93]">
-                      Choice {side === 'left' ? '1' : '2'}
-                    </span>
-                    <p className="line-clamp-2 text-[16px] font-black text-white">
-                      {card.title}
-                    </p>
-                    <p className="truncate text-[11.5px] text-[#AAAAAA]">
-                      {[card.studio, ...card.genres].filter(Boolean).join(' · ')}
-                    </p>
-                    {revealed ? (
-                      <p
-                        className={`inline-block rounded-lg px-2.5 py-1 text-[14px] font-black ${
-                          isWinner ? 'bg-emerald-500/25 text-emerald-200' : 'bg-white/10 text-white'
-                        }`}
-                      >
-                        {statDisplay}
-                      </p>
-                    ) : (
-                      <p className="text-[12px] font-bold text-[#3EA6FF] group-hover:underline">
-                        Pick this anime &rarr;
-                      </p>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {duelPickedSide && (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-4">
-              <span
-                className={`text-[14px] font-black ${
-                  duelPickedSide === duelMatchup.winner ? 'text-emerald-300' : 'text-rose-300'
-                }`}
-              >
-                {duelPickedSide === duelMatchup.winner
-                  ? `Correct! Streak: ${duelStreak}`
-                  : 'Wrong pick — streak reset to 0'}
-              </span>
-              <button
-                type="button"
-                onClick={() => nextDuelRound()}
-                className="lt-press rounded-full bg-[#FF0000] px-6 py-2.5 text-[13px] font-bold text-white"
-              >
-                Next Duel &rarr;
-              </button>
-            </div>
-          )}
         </div>
       ) : activeCell ? (
         <div className="space-y-4 rounded-3xl border border-white/[0.08] bg-[#161619] p-5 sm:p-6">
@@ -1759,8 +1142,8 @@ export const QuizView: React.FC<QuizViewProps> = ({
                   Daily Double 2×
                 </span>
               )}
-              <span className="rounded-full bg-[#3EA6FF]/15 px-3.5 py-1 text-[12px] font-black text-[#3EA6FF]">
-                Value: {effectiveCellReward} pts
+              <span className="rounded-full bg-emerald-500/20 px-3.5 py-1 text-[12.5px] font-black text-emerald-300 ring-1 ring-emerald-400/35">
+                +{effectiveCellReward} PTS
               </span>
             </div>
           </div>
@@ -1973,9 +1356,9 @@ export const QuizView: React.FC<QuizViewProps> = ({
         </div>
       )}
 
-      {myListCount === 0 && onExplore && (
+      {onExplore && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/[0.08] bg-[#161619] px-4 py-3 text-[12px] text-[#AAAAAA]">
-          <span>Subscribe to anime &amp; manga to unlock personalized My List quiz rounds.</span>
+          <span>Discover new series in Explore and jump straight back anytime.</span>
           <button
             type="button"
             onClick={onExplore}

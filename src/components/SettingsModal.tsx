@@ -123,9 +123,11 @@ const CATEGORY_META: {
   {
     id: 'system',
     label: 'Backup, Storage & Keys',
-    desc: 'JSON backup, storage & shortcuts',
+    desc: isNativeCapacitor() ? 'JSON backup, storage & API keys' : 'JSON backup, storage & shortcuts',
     icon: HardDrive,
-    keywords: 'backup export import json storage quota indexeddb pwa install keyboard shortcuts',
+    keywords: isNativeCapacitor()
+      ? 'backup export import json storage quota api key'
+      : 'backup export import json storage quota indexeddb pwa install keyboard shortcuts',
   },
 ];
 
@@ -338,7 +340,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     <div
       className={
         pageMode
-          ? 'mx-auto min-h-screen max-w-6xl px-4 pb-28 pt-5 text-white sm:px-6 lg:px-8 lg:pb-16'
+          ? 'min-h-[calc(100vh-3.5rem)] w-full bg-[#0F0F0F] text-white'
           : 'lt-backdrop-in fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-4'
       }
       role={pageMode ? 'region' : 'dialog'}
@@ -351,12 +353,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       <div
         className={
           pageMode
-            ? 'liquid-glass flex flex-col overflow-hidden rounded-[26px] border border-white/[0.12] text-white sm:min-h-[78vh] sm:flex-row'
+            ? 'flex min-h-[calc(100vh-3.5rem)] w-full flex-col text-white sm:flex-row'
             : 'liquid-glass lt-sheet-up flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-[30px] border border-white/[0.16] text-white sm:h-[82vh] sm:max-h-[780px] sm:max-w-4xl sm:flex-row sm:rounded-[28px]'
         }
       >
         {/* Desktop App Left Sidebar */}
-        <aside className="hidden w-64 shrink-0 flex-col border-r border-white/[0.08] bg-black/25 p-4 sm:flex">
+        <aside
+          className={`hidden w-64 shrink-0 flex-col border-r border-white/[0.08] p-4 sm:flex lg:w-72 ${
+            pageMode ? 'bg-[#121216]/70' : 'bg-black/25'
+          }`}
+        >
           <div className="mb-3 flex items-center justify-between px-1">
             <div>
               <h2 id="settings-title" className="text-[20px] font-extrabold tracking-tight text-white">
@@ -451,8 +457,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Main Panel (Mobile Header + Active Content + Footer) */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {/* Mobile Header + Pill Tabs */}
-          <div className="border-b border-white/[0.08] px-5 pb-3 pt-3 sm:hidden">
-            <div className="mx-auto mb-2.5 h-1 w-9 rounded-full bg-white/25" />
+          <div className="border-b border-white/[0.08] px-4 pb-3 pt-4 sm:hidden">
+            {!pageMode && <div className="mx-auto mb-2.5 h-1 w-9 rounded-full bg-white/25" />}
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-[20px] font-extrabold tracking-tight text-white">
@@ -753,15 +759,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     />
                   </div>
 
-                  {/* Liquid Glass Opacity Slider + Presets */}
+                  {/* Liquid Glass Opacity Slider + Presets + Live Clarity Preview */}
                   <div className="space-y-3 px-4 py-3.5">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-[13.5px] font-semibold text-white">Liquid Glass Opacity</p>
+                        <p className="text-[13.5px] font-semibold text-white">Liquid Glass Opacity &amp; Clarity</p>
                         <p className="text-[11.5px] text-[#8E8E93]">
                           {settings.reduceBlur
-                            ? 'Turn off Reduce dynamic blur to see translucent glass tinting'
-                            : 'Control translucency of glass headers, docks & sheets'}
+                            ? 'Turn off Reduce dynamic blur to see translucent glass clarity'
+                            : 'Control clarity, blur & translucency of headers, sidebars, docks & sheets'}
                         </p>
                       </div>
                       <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-0.5 font-mono text-[11.5px] font-bold text-white">
@@ -806,6 +812,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           </button>
                         );
                       })}
+                    </div>
+
+                    {/* Interactive Live Glass Clarity Strip */}
+                    <div className="relative h-14 overflow-hidden rounded-xl border border-white/[0.12]">
+                      <div
+                        aria-hidden="true"
+                        className="absolute inset-0 flex items-center justify-around bg-gradient-to-r from-[#FF0000] via-amber-400 to-[#3EA6FF] px-3 text-[12px] font-black tracking-widest text-black"
+                      >
+                        <span>LISTTUBE</span>
+                        <span>ANIME</span>
+                        <span>GLASS</span>
+                        <span>CLARITY</span>
+                      </div>
+                      <div className="liquid-glass relative z-10 flex h-full items-center justify-between px-3.5">
+                        <span className="text-[11.5px] font-bold text-white drop-shadow">
+                          Live Glass Sample ({settings.liquidGlassOpacity}%)
+                        </span>
+                        <span className="text-[10.5px] font-semibold text-white/90 drop-shadow">
+                          {settings.liquidGlassOpacity <= 35
+                            ? 'Crystal Clear'
+                            : settings.liquidGlassOpacity <= 55
+                              ? 'Light Tint'
+                              : settings.liquidGlassOpacity <= 75
+                                ? 'Balanced Frost'
+                                : 'Deep Frosted'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1240,39 +1273,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   ))}
                 </div>
 
-                {/* Desktop & Browser Push Alerts (Matches native Android airing notifications!) */}
-                <div className="space-y-3 rounded-2xl border border-white/[0.1] bg-white/[0.04] p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="flex items-center gap-1.5 text-[13px] font-bold text-white">
-                        <BellRing className="h-4 w-4 text-[#3EA6FF]" />
-                        Desktop &amp; Web Push Alerts
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-[#AAAAAA]">
-                        Status:{' '}
-                        <span className="font-bold text-white">
-                          {notifPermission === 'granted'
-                            ? 'Enabled'
-                            : notifPermission === 'denied'
-                            ? 'Blocked in Browser'
-                            : notifPermission === 'unsupported'
-                            ? 'Unsupported'
-                            : 'Not Enabled'}
-                        </span>
-                      </p>
+                {/* Desktop & Browser Push Alerts (Web only — Android uses native airing alarms) */}
+                {!isNativeCapacitor() && (
+                  <div className="space-y-3 rounded-2xl border border-white/[0.1] bg-white/[0.04] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="flex items-center gap-1.5 text-[13px] font-bold text-white">
+                          <BellRing className="h-4 w-4 text-[#3EA6FF]" />
+                          Desktop &amp; Web Push Alerts
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-[#AAAAAA]">
+                          Status:{' '}
+                          <span className="font-bold text-white">
+                            {notifPermission === 'granted'
+                              ? 'Enabled'
+                              : notifPermission === 'denied'
+                              ? 'Blocked in Browser'
+                              : notifPermission === 'unsupported'
+                              ? 'Unsupported'
+                              : 'Not Enabled'}
+                          </span>
+                        </p>
+                      </div>
+                      {notifPermission !== 'unsupported' && (
+                        <button
+                          type="button"
+                          onClick={handleEnableBrowserAlerts}
+                          className="lt-press inline-flex items-center gap-1.5 rounded-full bg-[#3EA6FF]/15 px-3.5 py-1.5 text-[11.5px] font-bold text-[#3EA6FF] ring-1 ring-[#3EA6FF]/35 hover:bg-[#3EA6FF]/25"
+                        >
+                          <Bell className="h-3.5 w-3.5" />
+                          {notifPermission === 'granted' ? 'Send Test Alert' : 'Enable Browser Alerts'}
+                        </button>
+                      )}
                     </div>
-                    {notifPermission !== 'unsupported' && (
-                      <button
-                        type="button"
-                        onClick={handleEnableBrowserAlerts}
-                        className="lt-press inline-flex items-center gap-1.5 rounded-full bg-[#3EA6FF]/15 px-3.5 py-1.5 text-[11.5px] font-bold text-[#3EA6FF] ring-1 ring-[#3EA6FF]/35 hover:bg-[#3EA6FF]/25"
-                      >
-                        <Bell className="h-3.5 w-3.5" />
-                        {notifPermission === 'granted' ? 'Send Test Alert' : 'Enable Browser Alerts'}
-                      </button>
-                    )}
                   </div>
-                </div>
+                )}
 
                 <div className="space-y-2 rounded-2xl border border-white/[0.1] bg-white/[0.04] p-4">
                   <p className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-wider text-[#CCCCCC]">
@@ -1925,38 +1960,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 )}
 
-                <div className="space-y-2.5 rounded-2xl border border-white/[0.1] bg-white/[0.04] p-4">
-                  <p className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-wider text-[#CCCCCC]">
-                    <Keyboard className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                    Website Keyboard Shortcuts
-                  </p>
-                  <div className="grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-2">
-                    {[
-                      { keys: '⌘K / Ctrl+K', action: 'Open Quick Command Palette' },
-                      { keys: '/', action: 'Focus Global Search' },
-                      { keys: '?', action: 'Open Shortcuts & Palette' },
-                      { keys: 'E', action: 'Watch Page: Log +1 Episode' },
-                      { keys: 'T', action: 'Watch Page: Toggle Theater' },
-                      { keys: 'Esc', action: 'Close Modals or Go Back' },
-                    ].map((s) => (
-                      <div
-                        key={s.keys}
-                        className="flex items-center justify-between rounded-xl bg-black/30 px-3 py-2"
-                      >
-                        <span className="text-[#CCCCCC]">{s.action}</span>
-                        <kbd className="rounded-md border border-white/15 bg-white/10 px-2 py-0.5 font-mono text-[11px] font-bold text-white">
-                          {s.keys}
-                        </kbd>
-                      </div>
-                    ))}
+                {!isNativeCapacitor() && (
+                  <div className="space-y-2.5 rounded-2xl border border-white/[0.1] bg-white/[0.04] p-4">
+                    <p className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-wider text-[#CCCCCC]">
+                      <Keyboard className="h-3.5 w-3.5 text-[#3EA6FF]" />
+                      Website Keyboard Shortcuts
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-2">
+                      {[
+                        { keys: '⌘K / Ctrl+K', action: 'Open Quick Command Palette' },
+                        { keys: '/', action: 'Focus Global Search' },
+                        { keys: '?', action: 'Open Shortcuts & Palette' },
+                        { keys: 'E', action: 'Watch Page: Log +1 Episode' },
+                        { keys: 'T', action: 'Watch Page: Toggle Theater' },
+                        { keys: 'Esc', action: 'Close Modals or Go Back' },
+                      ].map((s) => (
+                        <div
+                          key={s.keys}
+                          className="flex items-center justify-between rounded-xl bg-black/30 px-3 py-2"
+                        >
+                          <span className="text-[#CCCCCC]">{s.action}</span>
+                          <kbd className="rounded-md border border-white/15 bg-white/10 px-2 py-0.5 font-mono text-[11px] font-bold text-white">
+                            {s.keys}
+                          </kbd>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </>
             )}
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between border-t border-white/[0.08] px-5 py-3.5 sm:px-6">
+          <div className={`flex items-center justify-between border-t border-white/[0.08] px-5 py-3.5 sm:px-6 ${pageMode ? 'pb-24 sm:pb-4' : ''}`}>
             <button
               type="button"
               onClick={() => {

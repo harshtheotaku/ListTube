@@ -2,7 +2,15 @@ import { Anime, ListEntry, MediaType } from '../types';
 import { animeStore } from './animeStore';
 import { fetchAnimeThemes } from './jikan';
 
-export type JeopardyCellKind = 'audio' | 'visual_crop' | 'riddle_trivia' | 'studio_year';
+export type JeopardyCellKind =
+  | 'audio'
+  | 'visual_crop'
+  | 'riddle_trivia'
+  | 'studio_year'
+  | 'emoji_plot'
+  | 'quote_match'
+  | 'odd_one_out'
+  | 'stat_clash';
 export type QuizPoolScope = 'all' | 'mylist';
 export type QuizDifficultyLevel = 'easy' | 'medium' | 'hard';
 export type QuizDifficultyFilter = 'all' | QuizDifficultyLevel;
@@ -579,6 +587,218 @@ const HERALEN_RIDDLES: SeedRiddle[] = [
       'Clue 3: Odokawa the 41-year-old walrus cab driver gets tangled in a missing idol case.',
     ],
     options: ['Odd Taxi', 'BEASTARS', 'Aggretsuko', 'BNA'],
+  },
+];
+
+interface CreativePromptItem {
+  sig: string;
+  kind: 'emoji_plot' | 'quote_match' | 'odd_one_out';
+  difficulty: QuizDifficultyLevel;
+  animeTitle: string;
+  prompt: string;
+  clues: [string, string, string];
+  options: [string, string, string, string];
+  correctAnswer: string;
+  aliases?: string[];
+}
+
+const CREATIVE_BANK: CreativePromptItem[] = [
+  // Emoji Plot Decoders
+  {
+    sig: 'emoji:deathnote',
+    kind: 'emoji_plot',
+    difficulty: 'easy',
+    animeTitle: 'Death Note',
+    prompt: 'Emoji Plot Decoder: 📓 🍎 ✍️ ⚖️',
+    clues: ['Genre: Psychological Thriller', 'A notebook drops from another realm.', 'An L vs Kira battle of wits.'],
+    options: ['Death Note', 'Code Geass', 'Monster', 'Mirai Nikki'],
+    correctAnswer: 'Death Note',
+    aliases: ['dn'],
+  },
+  {
+    sig: 'emoji:fmab',
+    kind: 'emoji_plot',
+    difficulty: 'easy',
+    animeTitle: 'Fullmetal Alchemist: Brotherhood',
+    prompt: 'Emoji Plot Decoder: 🦾 ⚗️ 🪨 🐕',
+    clues: ['Studio: Bones (2009)', 'Law of Equivalent Exchange.', 'Elric brothers hunting a red stone.'],
+    options: ['Fullmetal Alchemist: Brotherhood', 'D.Gray-man', 'Blue Exorcist', 'Soul Eater'],
+    correctAnswer: 'Fullmetal Alchemist: Brotherhood',
+    aliases: ['fmab', 'fma'],
+  },
+  {
+    sig: 'emoji:csm',
+    kind: 'emoji_plot',
+    difficulty: 'easy',
+    animeTitle: 'Chainsaw Man',
+    prompt: 'Emoji Plot Decoder: 🪚 😈 🍞 🐕',
+    clues: ['Studio: MAPPA', 'Protagonist dreams of jam on toast.', 'Orange dog devil named Pochita.'],
+    options: ['Chainsaw Man', 'Jujutsu Kaisen', 'Hell’s Paradise', 'Dorohedoro'],
+    correctAnswer: 'Chainsaw Man',
+    aliases: ['csm'],
+  },
+  {
+    sig: 'emoji:steins',
+    kind: 'emoji_plot',
+    difficulty: 'medium',
+    animeTitle: 'Steins;Gate',
+    prompt: 'Emoji Plot Decoder: 🕰️ 🍌 📡 📱',
+    clues: ['2011 White Fox sci-fi masterpiece.', 'Green gelled fruit inside a microwave.', 'Set in Akihabara radio building.'],
+    options: ['Steins;Gate', 'ERASED', 'Link Click', 'Vivy'],
+    correctAnswer: 'Steins;Gate',
+    aliases: ['steins gate', 'sg'],
+  },
+  {
+    sig: 'emoji:frieren',
+    kind: 'emoji_plot',
+    difficulty: 'medium',
+    animeTitle: 'Frieren: Beyond Journey’s End',
+    prompt: 'Emoji Plot Decoder: 🧝‍♀️ 🪄 ⌛ 💎',
+    clues: ['Begins AFTER defeating the Demon King.', '1,000-year-old elf learns human grief.', 'Studio Madhouse, 2023.'],
+    options: ['Frieren: Beyond Journey’s End', 'Mushoku Tensei', 'Delicious in Dungeon', 'Ancient Magus’ Bride'],
+    correctAnswer: 'Frieren: Beyond Journey’s End',
+    aliases: ['frieren'],
+  },
+  {
+    sig: 'emoji:onk',
+    kind: 'emoji_plot',
+    difficulty: 'medium',
+    animeTitle: 'Oshi no Ko',
+    prompt: 'Emoji Plot Decoder: 🌟 👁️ 🎤 🏥',
+    clues: ['Theme song "Idol" by YOASOBI.', 'Reincarnation inside Japan’s entertainment industry.', 'Starry eyes hide deadly secrets.'],
+    options: ['Oshi no Ko', 'Perfect Blue', 'Zombieland Saga', 'Ya Boy Kongming!'],
+    correctAnswer: 'Oshi no Ko',
+    aliases: ['onk'],
+  },
+  {
+    sig: 'emoji:dandadan',
+    kind: 'emoji_plot',
+    difficulty: 'hard',
+    animeTitle: 'Dan Da Dan',
+    prompt: 'Emoji Plot Decoder: 👽 👻 👵 🏃',
+    clues: ['Aliens + Ghosts collide in Episode 1.', 'Science SARU kinetic animation (2024).', 'Watch out for Turbo Granny’s 100 km/h sprint.'],
+    options: ['Dan Da Dan', 'Mob Psycho 100', 'FLCL', 'Undead Unluck'],
+    correctAnswer: 'Dan Da Dan',
+    aliases: ['dandadan'],
+  },
+  {
+    sig: 'emoji:bocchi',
+    kind: 'emoji_plot',
+    difficulty: 'medium',
+    animeTitle: 'Bocchi the Rock!',
+    prompt: 'Emoji Plot Decoder: 🎸 📦 🎀 🍺',
+    clues: ['CloverWorks music comedy.', 'Introvert shreds guitar inside a ripe mango box.', 'Kessoku Band at STARRY live house.'],
+    options: ['Bocchi the Rock!', 'K-On!', 'Girls Band Cry', 'NANA'],
+    correctAnswer: 'Bocchi the Rock!',
+    aliases: ['bocchi', 'btr'],
+  },
+  {
+    sig: 'emoji:oddtaxi',
+    kind: 'emoji_plot',
+    difficulty: 'hard',
+    animeTitle: 'Odd Taxi',
+    prompt: 'Emoji Plot Decoder: 🚕 🦭 🎤 🕵️',
+    clues: ['13-episode 2021 mystery thriller.', 'Dialogues during late-night cab fares.', 'Main character is a 41-year-old walrus driver.'],
+    options: ['Odd Taxi', 'BEASTARS', 'Baccano!', 'Durarara!!'],
+    correctAnswer: 'Odd Taxi',
+    aliases: ['oddtaxi'],
+  },
+  // Famous Anime Quotes
+  {
+    sig: 'quote:honoredone',
+    kind: 'quote_match',
+    difficulty: 'easy',
+    animeTitle: 'Jujutsu Kaisen',
+    prompt: 'Iconic Quote: “Throughout Heaven and Earth, I alone am the honored one.”',
+    clues: ['Spoken mid-air above Tokyo Jujutsu High.', 'Studio MAPPA (Hidden Inventory arc).', 'White hair + Limitless Hollow Purple.'],
+    options: ['Jujutsu Kaisen', 'Bleach', 'Record of Ragnarok', 'Fate/Zero'],
+    correctAnswer: 'Jujutsu Kaisen',
+    aliases: ['jjk'],
+  },
+  {
+    sig: 'quote:believeinme',
+    kind: 'quote_match',
+    difficulty: 'medium',
+    animeTitle: 'Gurren Lagann',
+    prompt: 'Iconic Quote: “Don’t believe in yourself. Believe in the me that believes in you!”',
+    clues: ['2007 Studio Gainax mecha classic.', 'Pointed sunglasses and core drills.', 'Kamina inspiring Simon underground.'],
+    options: ['Gurren Lagann', 'Kill la Kill', 'Evangelion', 'Code Geass'],
+    correctAnswer: 'Gurren Lagann',
+    aliases: ['ttgl'],
+  },
+  {
+    sig: 'quote:noenemies',
+    kind: 'quote_match',
+    difficulty: 'medium',
+    animeTitle: 'Vinland Saga',
+    prompt: 'Iconic Quote: “You have no enemies. Nobody in the world is your enemy.”',
+    clues: ['Norse historical drama.', 'Thors lecturing young Thorfinn in Iceland.', 'Wit Studio (S1) & MAPPA (S2).'],
+    options: ['Vinland Saga', 'Berserk', 'Kingdom', 'Vagabond'],
+    correctAnswer: 'Vinland Saga',
+    aliases: ['vinland'],
+  },
+  {
+    sig: 'quote:whathappens',
+    kind: 'quote_match',
+    difficulty: 'hard',
+    animeTitle: 'Cowboy Bebop',
+    prompt: 'Iconic Quote: “Whatever happens, happens.”',
+    clues: ['1998 Sunrise space-western noir.', 'Soundtrack composed by Yoko Kanno.', 'Spike Spiegelaboard the Bebop cruiser.'],
+    options: ['Cowboy Bebop', 'Samurai Champloo', 'Trigun', 'Space Dandy'],
+    correctAnswer: 'Cowboy Bebop',
+    aliases: ['bebop'],
+  },
+  {
+    sig: 'quote:fakevalue',
+    kind: 'quote_match',
+    difficulty: 'hard',
+    animeTitle: 'Bakemonogatari',
+    prompt: 'Iconic Quote: “The fake is of far greater value. In its attempt to be real, it’s more real than the real thing.”',
+    clues: ['Studio Shaft surrealist dialogue.', 'Kaiki Deishuu speaking on oddities.', 'Features "Renai Circulation".'],
+    options: ['Bakemonogatari', 'Oregairu', 'Hyouka', 'Rascal Does Not Dream'],
+    correctAnswer: 'Bakemonogatari',
+    aliases: ['monogatari', 'nisemonogatari'],
+  },
+  // Odd One Out Puzzles
+  {
+    sig: 'odd:mappa',
+    kind: 'odd_one_out',
+    difficulty: 'medium',
+    animeTitle: 'Demon Slayer',
+    prompt: 'Odd One Out: Three of these hits were animated by MAPPA. Which one was NOT?',
+    clues: ['Look closely at the breathing-style action hit.', 'It was actually animated by ufotable!', 'Its OP "Gurenge" dominated 2019.'],
+    options: ['Jujutsu Kaisen', 'Chainsaw Man', 'Hell’s Paradise', 'Demon Slayer'],
+    correctAnswer: 'Demon Slayer',
+  },
+  {
+    sig: 'odd:kyoani',
+    kind: 'odd_one_out',
+    difficulty: 'hard',
+    animeTitle: 'Bocchi the Rock!',
+    prompt: 'Odd One Out: Which of these anime was NOT produced by Kyoto Animation?',
+    clues: ['Three are famous KyoAni masterpieces.', 'Look at the 2022 Shimokitazawa band hit.', 'CloverWorks animated the impostor.'],
+    options: ['Violet Evergarden', 'A Silent Voice', 'K-On!', 'Bocchi the Rock!'],
+    correctAnswer: 'Bocchi the Rock!',
+  },
+  {
+    sig: 'odd:sawano',
+    kind: 'odd_one_out',
+    difficulty: 'hard',
+    animeTitle: 'Made in Abyss',
+    prompt: 'Odd One Out: Three soundtracks were composed by Hiroyuki Sawano. Which one was NOT?',
+    clues: ['Kevin Penkin composed the impostor’s orchestral score.', 'All four feature monumental drops or action.', 'Released in 2017 by Kinema Citrus.'],
+    options: ['Attack on Titan', 'Solo Leveling', 'Kill la Kill', 'Made in Abyss'],
+    correctAnswer: 'Made in Abyss',
+  },
+  {
+    sig: 'odd:yukikaji',
+    kind: 'odd_one_out',
+    difficulty: 'hard',
+    animeTitle: 'Satoru Gojo',
+    prompt: 'Voice Actor Twist: Three of these characters are voiced by Yuki Kaji in Japanese. Who is NOT?',
+    clues: ['Think about Titans, half-cold heroes & Echoes Stand.', 'One is voiced by Yuichi Nakamura instead!', 'Famous for Infinity & Six Eyes.'],
+    options: ['Eren Yeager', 'Shoto Todoroki', 'Koichi Hirose', 'Satoru Gojo'],
+    correctAnswer: 'Satoru Gojo',
   },
 ];
 
@@ -1247,8 +1467,108 @@ export function buildNextInfiniteQuestion(opts: {
     }
   }
 
-  // Prefer matching difficulty filter cleanly
-  const diffFiltered = wantedDiff ? candidates.filter((c) => c.difficulty === wantedDiff) : candidates;
+  // Creative Bank: Emoji Plot Decoders, Famous Quotes, Odd One Out
+  for (const item of CREATIVE_BANK) {
+    if (opts.preferKind && opts.preferKind !== item.kind) continue;
+    if (exclude.has(item.sig)) continue;
+    candidates.push({
+      id: `${item.sig}-${Math.random().toString(36).slice(2, 7)}`,
+      signature: item.sig,
+      kind: item.kind,
+      difficulty: item.difficulty,
+      animeTitle: item.animeTitle,
+      prompt: item.prompt,
+      clues: [...item.clues],
+      options: [...item.options].sort(() => Math.random() - 0.5),
+      correctAnswer: item.correctAnswer,
+      aliases: item.aliases,
+      fromMyList: false,
+    });
+  }
+
+  // Dynamic Stat Clash questions (highest rated / earliest premiere / longest run across 4 anime)
+  if (!opts.preferKind || opts.preferKind === 'stat_clash') {
+    const statPool = allCatalog
+      .filter((a) => (a.score ?? 0) > 5 && (a.year ?? 0) > 1985 && (a.episodes ?? 0) > 0)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 16);
+    const clashSource =
+      statPool.length >= 4
+        ? statPool
+        : FALLBACK_DUEL_CATALOG.map((d) => ({
+            id: d.id,
+            title: d.title,
+            score: d.score,
+            year: d.year,
+            episodes: d.episodes,
+            studios: d.studio ? [d.studio] : [],
+          }));
+    const four = [...clashSource].sort(() => Math.random() - 0.5).slice(0, 4);
+    if (four.length === 4) {
+      const modeRoll = Math.floor(Math.random() * 3);
+      if (modeRoll === 0) {
+        const winner = [...four].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
+        candidates.push({
+          id: `stat-score-${winner.id}-${Math.random().toString(36).slice(2, 6)}`,
+          signature: `stat_clash:score:${four.map((f) => f.id).sort().join(',')}`,
+          kind: 'stat_clash',
+          difficulty: 'medium',
+          animeTitle: winner.title,
+          prompt: `Stat Clash: Which of these 4 anime has the HIGHEST AniList community score?`,
+          clues: [
+            `Score spread: ${Math.min(...four.map((x) => x.score ?? 0)).toFixed(1)}★ to ${Math.max(...four.map((x) => x.score ?? 0)).toFixed(1)}★`,
+            `Animated by ${winner.studios?.[0] || 'a major Japanese studio'}`,
+            `Premiered in ${winner.year ?? 'the modern era'}`,
+          ],
+          options: four.map((f) => f.title).sort(() => Math.random() - 0.5),
+          correctAnswer: winner.title,
+        });
+      } else if (modeRoll === 1) {
+        const winner = [...four].sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999))[0];
+        candidates.push({
+          id: `stat-year-${winner.id}-${Math.random().toString(36).slice(2, 6)}`,
+          signature: `stat_clash:year:${four.map((f) => f.id).sort().join(',')}`,
+          kind: 'stat_clash',
+          difficulty: 'easy',
+          animeTitle: winner.title,
+          prompt: `Time Capsule: Which of these 4 series premiered EARLIEST?`,
+          clues: [
+            `Oldest premiered in ${winner.year ?? 2000}`,
+            `Studio behind the classic: ${winner.studios?.[0] || 'Classic Studio'}`,
+            `Ran for ${winner.episodes ?? '?'} episodes`,
+          ],
+          options: four.map((f) => f.title).sort(() => Math.random() - 0.5),
+          correctAnswer: winner.title,
+        });
+      } else {
+        const winner = [...four].sort((a, b) => (b.episodes ?? 0) - (a.episodes ?? 0))[0];
+        candidates.push({
+          id: `stat-eps-${winner.id}-${Math.random().toString(36).slice(2, 6)}`,
+          signature: `stat_clash:eps:${four.map((f) => f.id).sort().join(',')}`,
+          kind: 'stat_clash',
+          difficulty: 'hard',
+          animeTitle: winner.title,
+          prompt: `Episode Marathon: Which of these 4 anime ran for the MOST episodes?`,
+          clues: [
+            `Winner total: ${winner.episodes ?? '?'} episodes`,
+            `Aired ${winner.year ?? 'originally'}`,
+            `Studio: ${winner.studios?.[0] || 'Japan'}`,
+          ],
+          options: four.map((f) => f.title).sort(() => Math.random() - 0.5),
+          correctAnswer: winner.title,
+        });
+      }
+    }
+  }
+
+  // When difficulty isn't explicitly forced, randomly pick Easy / Medium / Hard so questions keep surprising the player!
+  const rolledDiff: QuizDifficultyLevel = wantedDiff
+    ? wantedDiff
+    : (() => {
+        const r = Math.random();
+        return r < 0.34 ? 'easy' : r < 0.72 ? 'medium' : 'hard';
+      })();
+  const diffFiltered = candidates.filter((c) => c.difficulty === rolledDiff);
   const scopedPool = diffFiltered.length > 0 ? diffFiltered : candidates;
 
   // Strictly prioritize never-before-seen questions first!
