@@ -25,6 +25,7 @@ declare global {
       getAppVersionInfo?: () => string;
       canRequestPackageInstalls?: () => boolean;
       hasDownloadedUpdateApk?: () => boolean;
+      clearDownloadedUpdateApk?: () => void;
       openInstallUnknownAppsSettings?: () => void;
       installPendingUpdate?: () => void;
       downloadApkOnly?: (apkUrl: string, targetVersion: string) => void;

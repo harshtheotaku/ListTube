@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { isNativeCapacitor } from './platform';
 
-export const APP_VERSION = '1.3.2';
+export const APP_VERSION = '1.3.3';
 export const GITHUB_RELEASES_API =
   'https://api.github.com/repos/harshtheotaku/ListTube/releases/latest';
 export const GITHUB_LATEST_APK_URL =
@@ -45,13 +45,16 @@ const initialHasCachedApk =
   typeof window.ListTubeNative?.hasDownloadedUpdateApk === 'function' &&
   Boolean(window.ListTubeNative.hasDownloadedUpdateApk());
 
+const initialDismissedCached =
+  typeof localStorage !== 'undefined' && localStorage.getItem(DISMISSED_TAG_KEY) === 'cached';
+
 let runtimeState: AppUpdateRuntimeState = {
   info: null,
   checking: false,
   downloadState: initialHasCachedApk ? 'downloaded' : 'idle',
   downloadProgress: initialHasCachedApk ? 100 : 0,
   statusMessage: initialHasCachedApk ? 'Update APK downloaded — tap Install In-App to apply.' : '',
-  bannerDismissed: false,
+  bannerDismissed: initialDismissedCached,
 };
 
 function emit() {
@@ -190,10 +193,21 @@ export async function checkForGitHubUpdate(force = false): Promise<AppUpdateInfo
       assetSizeBytes: typeof apkAsset?.size === 'number' ? apkAsset.size : undefined,
     };
 
-    patchState({
-      info,
-      bannerDismissed: !updateAvailable || isUpdateBannerDismissed(latestVersion),
-    });
+    if (!updateAvailable) {
+      window.ListTubeNative?.clearDownloadedUpdateApk?.();
+      patchState({
+        info,
+        downloadState: 'idle',
+        downloadProgress: 0,
+        statusMessage: '',
+        bannerDismissed: true,
+      });
+    } else {
+      patchState({
+        info,
+        bannerDismissed: isUpdateBannerDismissed(latestVersion),
+      });
+    }
     return info;
   } catch {
     return null;

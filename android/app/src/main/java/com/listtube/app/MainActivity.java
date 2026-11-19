@@ -204,22 +204,23 @@ public class MainActivity extends BridgeActivity {
                 @JavascriptInterface
                 public void installPendingUpdate() {
                     runOnUiThread(() -> {
-                        File target = pendingInstallApk;
-                        if (target == null || !target.exists()) {
-                            target = new File(new File(getCacheDir(), "updates"), "ListTube-update.apk");
-                        }
-                        if (target.exists()) {
+                        File target = getValidPendingUpdateApk();
+                        if (target != null && target.exists()) {
                             handleDownloadedApkReady(target);
                         } else {
-                            emitUpdateProgress("error", 0, "Downloaded APK not found — tap Update again.");
+                            emitUpdateProgress("idle", 0, "");
                         }
                     });
                 }
 
                 @JavascriptInterface
                 public boolean hasDownloadedUpdateApk() {
-                    File cached = new File(new File(getCacheDir(), "updates"), "ListTube-update.apk");
-                    return cached.exists() && cached.length() > 200_000L;
+                    return getValidPendingUpdateApk() != null;
+                }
+
+                @JavascriptInterface
+                public void clearDownloadedUpdateApk() {
+                    deleteCachedUpdateApk();
                 }
 
                 @JavascriptInterface
@@ -258,6 +259,55 @@ public class MainActivity extends BridgeActivity {
             } else {
                 emitUpdateProgress("needs_permission", 100, "Allow 'Install unknown apps' to finish updating.");
             }
+        }
+    }
+
+    private File getCachedUpdateApkFile() {
+        return new File(new File(getCacheDir(), "updates"), "ListTube-update.apk");
+    }
+
+    private void deleteCachedUpdateApk() {
+        try {
+            File cached = getCachedUpdateApkFile();
+            if (cached.exists()) {
+                cached.delete();
+            }
+            pendingInstallApk = null;
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * Returns the cached update APK ONLY if it exists, is a valid Android archive
+     * for this package, and has a strictly higher versionCode than the currently
+     * installed app. Stale/already-installed APKs are automatically deleted.
+     */
+    private File getValidPendingUpdateApk() {
+        File cached = getCachedUpdateApkFile();
+        if (!cached.exists() || cached.length() <= 200_000L) {
+            return null;
+        }
+        try {
+            PackageManager pm = getPackageManager();
+            PackageInfo archiveInfo = pm.getPackageArchiveInfo(cached.getAbsolutePath(), 0);
+            PackageInfo currentInfo = pm.getPackageInfo(getPackageName(), 0);
+            if (archiveInfo == null || currentInfo == null) {
+                deleteCachedUpdateApk();
+                return null;
+            }
+            if (archiveInfo.packageName != null && !getPackageName().equals(archiveInfo.packageName)) {
+                deleteCachedUpdateApk();
+                return null;
+            }
+            long archiveCode = Build.VERSION.SDK_INT >= 28 ? archiveInfo.getLongVersionCode() : archiveInfo.versionCode;
+            long currentCode = Build.VERSION.SDK_INT >= 28 ? currentInfo.getLongVersionCode() : currentInfo.versionCode;
+            if (archiveCode <= currentCode) {
+                deleteCachedUpdateApk();
+                return null;
+            }
+            return cached;
+        } catch (Exception e) {
+            deleteCachedUpdateApk();
+            return null;
         }
     }
 

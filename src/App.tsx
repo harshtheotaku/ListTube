@@ -1168,9 +1168,10 @@ export const App: React.FC = () => {
       <MiniPlayer onOpenAnimeId={openDetail} />
 
       {(appUpdate.downloadState === 'downloading' ||
-        appUpdate.downloadState === 'downloaded' ||
-        appUpdate.downloadState === 'needs_permission' ||
-        (appUpdate.info?.updateAvailable && !appUpdate.bannerDismissed)) && (
+        (!appUpdate.bannerDismissed &&
+          (appUpdate.downloadState === 'downloaded' ||
+            appUpdate.downloadState === 'needs_permission' ||
+            Boolean(appUpdate.info?.updateAvailable)))) && (
         <div
           role="status"
           aria-label="App Update Banner"
