@@ -9,11 +9,14 @@ import {
   Database,
   Download,
   Droplets,
+  ExternalLink,
   Eye,
   EyeOff,
   FileUp,
   Gauge,
   HardDrive,
+  Heart,
+  Info,
   KeyRound,
   Keyboard,
   Layout,
@@ -49,11 +52,13 @@ import {
   canInstallInAppNative,
   checkForGitHubUpdate,
   downloadInAppUpdateOnly,
+  getEffectiveAppVersion,
   openInstallPermissionSettings,
   retryPendingInstall,
   triggerInAppUpdate,
   useAppUpdateState,
 } from '../services/appUpdater';
+import brandAnimeUrl from '../assets/brand-anime.webp';
 import { exportMalXml } from '../services/backupImport';
 import {
   createUserApiKey,
@@ -77,7 +82,7 @@ interface SettingsModalProps {
   pageMode?: boolean;
 }
 
-type SettingsSection = 'appearance' | 'home' | 'content' | 'privacy' | 'playback' | 'system';
+type SettingsSection = 'appearance' | 'home' | 'content' | 'privacy' | 'playback' | 'system' | 'about';
 
 const CATEGORY_META: {
   id: SettingsSection;
@@ -129,6 +134,13 @@ const CATEGORY_META: {
     keywords: isNativeCapacitor()
       ? 'backup export import json storage quota api key'
       : 'backup export import json storage quota indexeddb pwa install keyboard shortcuts',
+  },
+  {
+    id: 'about',
+    label: 'About',
+    desc: 'Version, updates & GitHub',
+    icon: Info,
+    keywords: 'about version build details upgrade update github developer harsh thank you release notes',
   },
 ];
 
@@ -2035,6 +2047,243 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 )}
               </>
+            )}
+
+            {!matchingCategories && section === 'about' && (
+              <div className="lt-view-enter space-y-4">
+                {/* Apple-Minimal App Identity Card */}
+                <div className="flex flex-col items-center rounded-3xl border border-white/[0.08] bg-[#161618] px-6 py-7 text-center">
+                  <img
+                    src={brandAnimeUrl}
+                    alt="ListTube"
+                    className="h-16 w-16 rounded-2xl border border-white/[0.12] object-cover shadow-lg"
+                  />
+                  <h3 className="mt-3.5 text-[20px] font-bold tracking-tight text-white">
+                    ListTube
+                  </h3>
+                  <p className="mt-0.5 text-[12.5px] font-medium tabular-nums text-[#8E8E93]">
+                    Version {getEffectiveAppVersion()}
+                  </p>
+                  <p className="mt-2 max-w-sm text-[12.5px] leading-relaxed text-[#AEAEB2]">
+                    A fast, minimal anime &amp; manga tracker, discovery feed, and interactive quiz arena.
+                  </p>
+                </div>
+
+                {/* App Details Table */}
+                <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#161618] divide-y divide-white/[0.06]">
+                  {[
+                    { label: 'Version', value: `v${getEffectiveAppVersion()}` },
+                    {
+                      label: 'Platform',
+                      value: isNativeCapacitor() ? 'Android App' : 'Web / PWA',
+                    },
+                    {
+                      label: 'Library',
+                      value: `${Object.keys(lib.entries).length} tracked titles`,
+                    },
+                    {
+                      label: 'Cloud Sync',
+                      value: cloud.isLinked ? 'Connected' : 'Local Only',
+                    },
+                    { label: 'Created By', value: 'Harsh (@harshtheotaku)' },
+                  ].map((row) => (
+                    <div
+                      key={row.label}
+                      className="flex items-center justify-between px-4 py-3 text-[13px]"
+                    >
+                      <span className="font-medium text-[#8E8E93]">{row.label}</span>
+                      <span className="font-semibold tabular-nums text-white">{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Software Upgrade & Auto-Update */}
+                <div className="space-y-3.5 rounded-2xl border border-white/[0.08] bg-[#161618] p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[13.5px] font-semibold tracking-tight text-white">
+                        Software Update
+                      </p>
+                      <p className="mt-0.5 text-[12px] text-[#8E8E93]">
+                        {resolvedUpdate
+                          ? resolvedUpdate.updateAvailable
+                            ? `ListTube v${resolvedUpdate.latestVersion} is ready to install${resolvedUpdate.assetSizeBytes ? ` (${(resolvedUpdate.assetSizeBytes / (1024 * 1024)).toFixed(1)} MB)` : ''}.`
+                            : `ListTube is up to date (v${resolvedUpdate.latestVersion}).`
+                          : 'Check for the latest release and upgrade directly inside the app.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={checkingUpdate}
+                      onClick={() => {
+                        setCheckingUpdate(true);
+                        void checkForGitHubUpdate(true)
+                          .then((res) => {
+                            if (res) {
+                              setUpdateInfo(res);
+                              toast(
+                                res.updateAvailable
+                                  ? `ListTube v${res.latestVersion} available`
+                                  : `Up to date (v${res.latestVersion})`
+                              );
+                            } else {
+                              toast('Could not reach update feed');
+                            }
+                          })
+                          .finally(() => setCheckingUpdate(false));
+                      }}
+                      className="lt-btn-apple inline-flex items-center gap-1.5 rounded-full border border-white/[0.1] bg-[#1C1C1E] px-3.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${checkingUpdate ? 'animate-spin' : ''}`} />
+                      <span>{checkingUpdate ? 'Checking…' : 'Check for Updates'}</span>
+                    </button>
+                  </div>
+
+                  {resolvedUpdate?.releaseNotes && (
+                    <p className="rounded-xl bg-[#1C1C1E] px-3.5 py-2.5 text-[12px] leading-relaxed text-[#AEAEB2]">
+                      {resolvedUpdate.releaseNotes}
+                    </p>
+                  )}
+
+                  {appUpdate.downloadState === 'downloading' && (
+                    <div className="space-y-1.5 rounded-xl bg-[#1C1C1E] p-3">
+                      <div className="flex items-center justify-between text-[11.5px] font-semibold text-white">
+                        <span>{appUpdate.statusMessage || 'Downloading update…'}</span>
+                        <span className="tabular-nums">{appUpdate.downloadProgress}%</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.1]">
+                        <div
+                          className="h-full rounded-full bg-white transition-all duration-150"
+                          style={{ width: `${appUpdate.downloadProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {appUpdate.downloadState === 'needs_permission' && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/[0.12] bg-[#1C1C1E] px-3.5 py-2.5">
+                      <p className="text-[12px] text-[#E5E5EA]">
+                        Allow &ldquo;Install unknown apps&rdquo; in Android Settings to finish.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={openInstallPermissionSettings}
+                          className="lt-btn-apple rounded-full bg-white px-3 py-1 text-[11.5px] font-semibold text-black"
+                        >
+                          Allow
+                        </button>
+                        <button
+                          type="button"
+                          onClick={retryPendingInstall}
+                          className="lt-btn-apple rounded-full border border-white/[0.12] bg-white/[0.08] px-3 py-1 text-[11.5px] font-semibold text-white"
+                        >
+                          Install
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {appUpdate.downloadState !== 'downloading' && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const started = downloadInAppUpdateOnly(resolvedUpdate);
+                          toast(
+                            started
+                              ? 'Downloading update APK in app…'
+                              : 'Downloading latest APK package…'
+                          );
+                        }}
+                        className="lt-btn-apple inline-flex items-center gap-1.5 rounded-full border border-white/[0.1] bg-[#1C1C1E] px-3.5 py-1.5 text-[12px] font-semibold text-[#E5E5EA] hover:text-white"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        <span>Download Update</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (appUpdate.downloadState === 'downloaded' && canInstallInAppNative()) {
+                            retryPendingInstall();
+                            toast('Launching installer…');
+                          } else {
+                            const handled = triggerInAppUpdate(resolvedUpdate);
+                            if (!handled) toast('Downloading APK to install…');
+                          }
+                        }}
+                        className="lt-btn-apple inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-1.5 text-[12px] font-semibold text-black"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>
+                          {appUpdate.downloadState === 'downloaded'
+                            ? 'Install Downloaded Update'
+                            : 'Upgrade Now'}
+                        </span>
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-3 border-t border-white/[0.06] pt-3">
+                    <div>
+                      <p className="text-[12.5px] font-semibold text-white">
+                        Automatic Updates
+                      </p>
+                      <p className="text-[11px] text-[#8E8E93]">
+                        Automatically check and download new versions in the background
+                      </p>
+                    </div>
+                    <AppleSwitch
+                      checked={settings.autoUpdateApp}
+                      onChange={(next) => settingsStore.update({ autoUpdateApp: next })}
+                      label="Automatic Updates"
+                    />
+                  </div>
+                </div>
+
+                {/* GitHub & Links */}
+                <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#161618] divide-y divide-white/[0.06]">
+                  <a
+                    href="https://github.com/harshtheotaku"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="lt-press flex items-center justify-between px-4 py-3.5 text-[13px] font-semibold text-white transition hover:bg-white/[0.04]"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <svg className="h-4 w-4 text-[#AEAEB2]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.57.1.78-.25.78-.55 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.06 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.77.11 3.06.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.4-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.79-.01 3.17 0 .31.21.66.79.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
+                      </svg>
+                      <span>GitHub · @harshtheotaku</span>
+                    </span>
+                    <ExternalLink className="h-3.5 w-3.5 text-[#8E8E93]" />
+                  </a>
+                  <a
+                    href="https://github.com/harshtheotaku/ListTube"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="lt-press flex items-center justify-between px-4 py-3.5 text-[13px] font-semibold text-white transition hover:bg-white/[0.04]"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <svg className="h-4 w-4 text-[#AEAEB2]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.57.1.78-.25.78-.55 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.06 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.77.11 3.06.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.4-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.79-.01 3.17 0 .31.21.66.79.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
+                      </svg>
+                      <span>ListTube Source &amp; Releases</span>
+                    </span>
+                    <ExternalLink className="h-3.5 w-3.5 text-[#8E8E93]" />
+                  </a>
+                </div>
+
+                {/* Thank You Card */}
+                <div className="rounded-2xl border border-white/[0.08] bg-[#161618] px-5 py-5 text-center">
+                  <Heart className="mx-auto h-5 w-5 text-white/80" />
+                  <p className="mt-2 text-[14px] font-semibold tracking-tight text-white">
+                    Thank you for using ListTube
+                  </p>
+                  <p className="mt-1 text-[12px] leading-relaxed text-[#8E8E93]">
+                    Built with care for anime and manga fans. Your watchlists, feedback, and support keep this project growing.
+                  </p>
+                </div>
+              </div>
             )}
           </div>
 
