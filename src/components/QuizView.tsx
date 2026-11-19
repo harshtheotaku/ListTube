@@ -1,26 +1,23 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
-  Award,
+  ArrowRight,
   Check,
-  Crown,
   ExternalLink,
   Eye,
   EyeOff,
   Flame,
-  Grid,
   HelpCircle,
   Keyboard,
   ListChecks,
   Loader2,
-  Music,
   Pause,
   Play,
   Quote,
   RotateCcw,
   ShieldCheck,
-  Sparkles,
   Split,
+  Star,
   Trash2,
   Trophy,
   Users,
@@ -40,7 +37,6 @@ import {
   doesTypedGuessMatch,
   getJeopardyHighScore,
   getQuizHighScore,
-  getQuizRankInfo,
   getSeenQuizCount,
   InfiniteQuizQuestion,
   JeopardyCategory,
@@ -79,20 +75,20 @@ const DIFFICULTY_STYLES: Record<
   easy: {
     label: 'Easy',
     Icon: ShieldCheck,
-    pillClass: 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/40',
-    iconClass: 'text-emerald-400',
+    pillClass: 'bg-white/[0.06] text-[#E5E5EA] ring-1 ring-white/[0.1]',
+    iconClass: 'text-[#AEAEB2]',
   },
   medium: {
     label: 'Medium',
     Icon: Zap,
-    pillClass: 'bg-amber-500/15 text-amber-300 ring-1 ring-amber-400/40',
-    iconClass: 'text-amber-400',
+    pillClass: 'bg-white/[0.08] text-white ring-1 ring-white/[0.14]',
+    iconClass: 'text-[#D1D1D6]',
   },
   hard: {
     label: 'Hard',
     Icon: Flame,
-    pillClass: 'bg-rose-500/15 text-rose-300 ring-1 ring-rose-400/40',
-    iconClass: 'text-rose-400',
+    pillClass: 'bg-white/[0.12] text-white ring-1 ring-white/[0.22]',
+    iconClass: 'text-white',
   },
 };
 
@@ -102,24 +98,24 @@ const DifficultyBadge: React.FC<{ difficulty: QuizDifficultyLevel }> = ({ diffic
   return (
     <span
       data-quiz-difficulty={difficulty}
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-black uppercase tracking-wider ${meta.pillClass}`}
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-tight ${meta.pillClass}`}
     >
-      <Icon className="h-3.5 w-3.5" />
+      <Icon className={`h-3 w-3 ${meta.iconClass}`} />
       <span>{meta.label}</span>
     </span>
   );
 };
 
 const KIND_LABELS: Record<JeopardyCellKind, string> = {
-  audio: '1s OP/ED Audio',
-  visual_crop: 'Blurred Poster',
+  audio: 'OP/ED Audio',
+  visual_crop: 'Blurred Frame',
   riddle_trivia: '3-Clue Lore',
   studio_year: 'Studio & Year',
-  emoji_plot: 'Emoji Decoder',
-  quote_match: 'Iconic Quote',
+  emoji_plot: 'Symbol Plot',
+  quote_match: 'Quote',
   odd_one_out: 'Odd One Out',
   stat_clash: 'Stat Clash',
-  noob_plot: 'Noob Plot Summary',
+  noob_plot: 'Plot Summary',
   cursed_review: '1-Star Review',
   lore_torture: 'Spot the Lie',
 };
@@ -140,8 +136,6 @@ function findAnimeByTitle(title: string): Anime | undefined {
 
 export const QuizView: React.FC<QuizViewProps> = ({
   libraryState,
-  mediaType,
-  onExplore,
   onOpenAnime,
 }) => {
   const [pageMode, setPageMode] = useState<QuizPageMode>('infinite_3s');
@@ -191,11 +185,6 @@ export const QuizView: React.FC<QuizViewProps> = ({
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [progress, setProgress] = useState({ cur: 0, dur: 30 });
-
-  const rankInfo = useMemo(
-    () => getQuizRankInfo(Math.max(bestScore, score), seenCount),
-    [bestScore, score, seenCount]
-  );
 
   const boardCategories: JeopardyCategory[] = useMemo(
     () => buildJeopardyBoard(),
@@ -467,6 +456,42 @@ export const QuizView: React.FC<QuizViewProps> = ({
     loadNextRandomQuestion();
   };
 
+  // Keyboard shortcuts (1-4 to pick choice, Enter to advance) for fast Apple-grade desktop UX
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (typeAnswerMode) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      if (pageMode === 'infinite_3s') {
+        if (!picked && ['1', '2', '3', '4'].includes(e.key)) {
+          const opt = currentQ.options[Number(e.key) - 1];
+          if (opt && !eliminatedOptions.includes(opt)) {
+            e.preventDefault();
+            submitRandomAnswer(opt, false);
+          }
+        } else if (picked && (e.key === 'Enter' || e.key === 'ArrowRight')) {
+          e.preventDefault();
+          advanceNextQuestion();
+        }
+      } else if (activeCell) {
+        if (!cellPicked && ['1', '2', '3', '4'].includes(e.key)) {
+          const opt = activeCell.options[Number(e.key) - 1];
+          if (opt) {
+            e.preventDefault();
+            submitJeopardyAnswer(opt, false);
+          }
+        } else if (cellPicked && e.key === 'Enter') {
+          e.preventDefault();
+          closeActiveCell();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
+
   // --- Jeopardy Handlers ---
   const openCell = (cell: JeopardyCell) => {
     if (solvedCells[cell.id]) return;
@@ -542,20 +567,26 @@ export const QuizView: React.FC<QuizViewProps> = ({
     const pct = progress.dur > 0 ? Math.min(100, (progress.cur / progress.dur) * 100) : 0;
     const capPct = Math.min(100, (cap / (progress.dur || 30)) * 100);
     return (
-      <div className="space-y-3 rounded-2xl border border-white/[0.1] bg-white/[0.05] p-4 sm:p-5">
-        <div className="flex items-center justify-between text-[11.5px] font-bold text-[#3EA6FF]">
+      <div className="space-y-3 rounded-2xl border border-white/[0.08] bg-[#1C1C1E] p-4">
+        <div className="flex items-center justify-between text-[11px] font-medium text-[#8E8E93]">
           <span className="flex items-center gap-2">
             {label}
             {playing && (
-              <span className="inline-flex items-end gap-0.5" aria-hidden="true">
-                <span className="h-2.5 w-0.5 animate-pulse rounded bg-[#FF0000]" />
-                <span className="h-3.5 w-0.5 animate-bounce rounded bg-amber-400" />
-                <span className="h-2 w-0.5 animate-pulse rounded bg-[#3EA6FF]" />
+              <span className="inline-flex h-3 items-end gap-[2px]" aria-hidden="true">
+                <span className="lt-audio-bar h-full w-[2px] rounded-full bg-white" />
+                <span
+                  className="lt-audio-bar h-full w-[2px] rounded-full bg-white/80"
+                  style={{ animationDelay: '160ms' }}
+                />
+                <span
+                  className="lt-audio-bar h-full w-[2px] rounded-full bg-white/60"
+                  style={{ animationDelay: '320ms' }}
+                />
               </span>
             )}
           </span>
-          <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10.5px] font-bold text-emerald-300">
-            {cap < 30 ? `Clip Limit: ${cap}s` : 'Full 30s Preview'}
+          <span className="rounded-full bg-white/[0.08] px-2.5 py-0.5 text-[10.5px] font-semibold tabular-nums text-[#E5E5EA]">
+            {cap < 30 ? `${cap}s clip` : '30s preview'}
           </span>
         </div>
 
@@ -565,7 +596,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
             disabled={audioLoading || !track?.previewUrl}
             onClick={() => void togglePlay()}
             aria-label={playing ? 'Pause theme song' : 'Play theme song'}
-            className="lt-press flex h-13 w-13 shrink-0 items-center justify-center rounded-full bg-[#FF0000] text-white shadow-lg transition hover:bg-[#D90000] disabled:opacity-45"
+            className="lt-btn-apple flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-black disabled:opacity-40"
           >
             {audioLoading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -578,12 +609,14 @@ export const QuizView: React.FC<QuizViewProps> = ({
 
           <div className="min-w-0 flex-1 space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <p className="truncate text-[13.5px] font-bold text-white">{titleText}</p>
+              <p className="truncate text-[13.5px] font-semibold tracking-tight text-white">
+                {titleText}
+              </p>
               <button
                 type="button"
                 onClick={() => setMuted((m) => !m)}
                 aria-label={muted ? 'Unmute audio' : 'Mute audio'}
-                className="rounded-full p-1.5 text-[#AAAAAA] hover:bg-white/10 hover:text-white"
+                className="lt-press rounded-full p-1.5 text-[#8E8E93] hover:bg-white/[0.08] hover:text-white"
               >
                 {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
               </button>
@@ -603,26 +636,26 @@ export const QuizView: React.FC<QuizViewProps> = ({
                 const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
                 el.currentTime = Math.min(cap, ratio * (el.duration || 30));
               }}
-              className="relative h-2.5 cursor-pointer overflow-hidden rounded-full bg-white/10"
+              className="relative h-1.5 cursor-pointer overflow-hidden rounded-full bg-white/[0.1]"
             >
               <div
-                className="absolute inset-y-0 left-0 bg-white/15"
+                className="absolute inset-y-0 left-0 bg-white/[0.16]"
                 style={{ width: `${capPct}%` }}
               />
               <div
-                className="relative z-10 h-full rounded-full bg-[#FF0000] transition-all duration-100"
+                className="relative z-10 h-full rounded-full bg-white transition-all duration-100"
                 style={{ width: `${pct}%` }}
               />
             </div>
 
-            <div className="flex items-center justify-between text-[11px] text-[#AAAAAA]">
+            <div className="flex items-center justify-between text-[11px] tabular-nums text-[#8E8E93]">
               <span>{fmtSec(progress.cur)}</span>
               <span>
                 {audioLoading
-                  ? 'Resolving studio audio…'
+                  ? 'Loading audio…'
                   : track?.previewUrl
-                    ? `Playing up to ${cap}s`
-                    : 'Preview unavailable — use clues below'}
+                    ? `Up to ${cap}s`
+                    : 'Audio unavailable — use clues'}
               </span>
               <span>{fmtSec(cap)}</span>
             </div>
@@ -649,28 +682,23 @@ export const QuizView: React.FC<QuizViewProps> = ({
             e.preventDefault();
             if (typedGuess.trim()) onSubmitTyped(typedGuess.trim());
           }}
-          className="space-y-2.5"
+          className="flex flex-col gap-2.5 sm:flex-row"
         >
-          <div className="flex flex-col gap-2.5 sm:flex-row">
-            <input
-              type="text"
-              value={typedGuess}
-              onChange={(e) => setTypedGuess(e.target.value)}
-              placeholder="Type anime title or acronym (AOT, JJK, FMAB)…"
-              autoFocus
-              className="h-14 flex-1 rounded-2xl border border-white/[0.14] bg-white/[0.06] px-4 text-[15px] font-semibold text-white placeholder:text-neutral-500 outline-none focus:border-[#3EA6FF]"
-            />
-            <button
-              type="submit"
-              disabled={!typedGuess.trim()}
-              className="lt-press h-14 rounded-2xl bg-white px-7 text-[14.5px] font-black text-black disabled:opacity-40"
-            >
-              Lock In
-            </button>
-          </div>
-          <p className="text-[11.5px] text-neutral-400">
-            Pro Type-In mode: forgiving spelling &amp; abbreviations supported.
-          </p>
+          <input
+            type="text"
+            value={typedGuess}
+            onChange={(e) => setTypedGuess(e.target.value)}
+            placeholder="Type anime title…"
+            autoFocus
+            className="h-13 flex-1 rounded-2xl border border-white/[0.12] bg-[#1C1C1E] px-4 text-[14.5px] font-medium text-white placeholder:text-[#636366] outline-none transition focus:border-white/40"
+          />
+          <button
+            type="submit"
+            disabled={!typedGuess.trim()}
+            className="lt-btn-apple h-13 rounded-2xl bg-white px-6 text-[14px] font-semibold text-black disabled:opacity-35"
+          >
+            Submit
+          </button>
         </form>
       );
     }
@@ -681,34 +709,40 @@ export const QuizView: React.FC<QuizViewProps> = ({
         doesTypedGuessMatch(selected ?? '', correctAnswer, aliases);
       return (
         <div
-          className={`rounded-2xl border p-4 text-[14.5px] font-bold ${
+          className={`rounded-2xl border p-4 text-[14px] font-semibold ${
             won
-              ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-200'
-              : 'border-rose-400/40 bg-rose-500/15 text-rose-200'
+              ? 'lt-answer-pulse border-emerald-400/40 bg-emerald-500/12 text-emerald-200'
+              : 'lt-answer-shake border-rose-400/40 bg-rose-500/12 text-rose-200'
           }`}
         >
-          {won ? 'Spot on!' : `Missed — you guessed "${selected}"`} · Answer: {correctAnswer}
+          {won ? 'Correct' : `Guessed "${selected}"`} · {correctAnswer}
         </div>
       );
     }
 
     const LETTERS = ['A', 'B', 'C', 'D'];
+    const STAGGERS = ['lt-stagger-1', 'lt-stagger-2', 'lt-stagger-3', 'lt-stagger-4'];
     return (
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {options.map((opt, idxOpt) => {
           const isCorrect = opt === correctAnswer;
           const isPicked = selected === opt;
           const isRemoved = !isAnswered && eliminated.includes(opt);
           let cls =
-            'border-white/[0.12] bg-[#1D1D22] text-neutral-100 hover:border-white/30 hover:bg-[#27272E]';
+            'border-white/[0.09] bg-[#1C1C1E] text-[#F2F2F7] hover:border-white/[0.22] hover:bg-[#262629]';
+          let feedbackAnim = '';
           if (isRemoved) {
-            cls = 'border-white/[0.04] bg-white/[0.02] text-neutral-600 line-through opacity-40';
+            cls = 'border-white/[0.04] bg-[#161618] text-[#48484A] line-through opacity-40';
           } else if (isAnswered) {
-            if (isCorrect)
-              cls = 'border-emerald-400/70 bg-emerald-500/20 text-emerald-100 shadow-lg';
-            else if (isPicked)
-              cls = 'border-rose-400/70 bg-rose-500/20 text-rose-100';
-            else cls = 'border-white/[0.05] bg-white/[0.03] text-neutral-500';
+            if (isCorrect) {
+              cls = 'border-emerald-400/55 bg-emerald-500/14 text-white';
+              feedbackAnim = 'lt-answer-pulse';
+            } else if (isPicked) {
+              cls = 'border-rose-400/55 bg-rose-500/14 text-white';
+              feedbackAnim = 'lt-answer-shake';
+            } else {
+              cls = 'border-white/[0.05] bg-[#161618] text-[#636366] opacity-70';
+            }
           }
           return (
             <button
@@ -716,16 +750,16 @@ export const QuizView: React.FC<QuizViewProps> = ({
               type="button"
               disabled={isAnswered || isRemoved}
               onClick={() => onSelectChoice(opt)}
-              className={`lt-press flex min-h-[64px] items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 text-left text-[14.5px] font-bold leading-snug transition sm:min-h-[72px] sm:px-5 sm:text-[15.5px] ${cls}`}
+              className={`lt-btn-apple lt-card-pop ${STAGGERS[idxOpt] ?? ''} ${feedbackAnim} flex min-h-[56px] items-center justify-between gap-3 rounded-2xl border px-3.5 py-3 text-left text-[14px] font-semibold leading-snug tracking-tight sm:min-h-[62px] sm:px-4 sm:text-[14.5px] ${cls}`}
             >
               <div className="flex min-w-0 items-center gap-3">
                 <span
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[12px] font-black ${
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11.5px] font-bold transition-colors ${
                     isAnswered && isCorrect
-                      ? 'bg-emerald-500 text-black'
+                      ? 'bg-emerald-400 text-black'
                       : isAnswered && isPicked
-                        ? 'bg-rose-500 text-white'
-                        : 'bg-white/[0.08] text-[#AAAAAA]'
+                        ? 'bg-rose-400 text-black'
+                        : 'bg-white/[0.07] text-[#8E8E93]'
                   }`}
                 >
                   {LETTERS[idxOpt] ?? idxOpt + 1}
@@ -733,7 +767,10 @@ export const QuizView: React.FC<QuizViewProps> = ({
                 <span className="line-clamp-2">{opt}</span>
               </div>
               {isAnswered && isCorrect && (
-                <Check className="h-5 w-5 shrink-0 text-emerald-300" />
+                <Check className="h-4.5 w-4.5 shrink-0 text-emerald-400" />
+              )}
+              {isAnswered && isPicked && !isCorrect && (
+                <X className="h-4.5 w-4.5 shrink-0 text-rose-400" />
               )}
             </button>
           );
@@ -750,10 +787,10 @@ export const QuizView: React.FC<QuizViewProps> = ({
       <button
         type="button"
         onClick={() => onOpenAnime(match)}
-        className="lt-press inline-flex items-center gap-1 rounded-full bg-white/[0.08] px-3 py-1.5 text-[11.5px] font-bold text-[#3EA6FF] hover:bg-white/[0.16]"
+        className="lt-btn-apple inline-flex items-center gap-1.5 rounded-full border border-white/[0.1] bg-white/[0.06] px-3 py-1.5 text-[11.5px] font-semibold text-[#E5E5EA] hover:bg-white/[0.12] hover:text-white"
       >
         <ExternalLink className="h-3 w-3" />
-        View &amp; Track {match.title}
+        <span>{match.title}</span>
       </button>
     );
   };
@@ -771,190 +808,175 @@ export const QuizView: React.FC<QuizViewProps> = ({
     return step === 0 ? 'scale-[2.3] blur-[14px]' : step === 1 ? 'scale-[1.6] blur-[6px]' : 'scale-110 blur-[2px]';
   };
 
+  const activeScoreVal = pageMode === 'jeopardy' ? playerScores[0] : score;
+
   return (
     <div
       role="region"
       aria-label="OP and ED Music Quiz"
-      className="mx-auto min-h-screen max-w-6xl space-y-5 bg-[#0F0F0F] px-4 pb-32 pt-5 text-white sm:px-6 lg:px-8 lg:pb-16"
+      className="mx-auto flex min-h-[calc(100dvh-56px)] max-w-5xl flex-col justify-start gap-3.5 bg-[#0F0F0F] px-3.5 pb-28 pt-3.5 text-white sm:px-6 lg:justify-center lg:gap-4 lg:px-8 lg:pb-10 lg:pt-5"
     >
-      {/* Clean Header + Prominent Scoreboard */}
-      <div className="liquid-glass rounded-3xl border border-white/[0.12] p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#FF0000] to-amber-500 text-white shadow-lg">
-              {pageMode === 'jeopardy' ? <Grid className="h-5 w-5" /> : <Music className="h-5 w-5" />}
-            </span>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-[19px] font-black tracking-tight text-white sm:text-[22px]">
-                  Anime Quiz Arena
-                </h1>
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2.5 py-0.5 text-[10.5px] font-bold text-amber-300 ring-1 ring-amber-400/30">
-                  <Award className="h-3 w-3" />
-                  {rankInfo.title}
-                </span>
-              </div>
-              <p className="text-[12px] text-[#AAAAAA]">
-                {pageMode === 'jeopardy'
-                  ? `4×4 Jeopardy Board · Best: ${bestJeopardy} pts`
-                  : `Random difficulty & creative rounds · Played: ${seenCount}`}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setTypeAnswerMode((v) => !v)}
-              className={`lt-press inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-bold transition ${
-                typeAnswerMode
-                  ? 'bg-amber-400/20 text-amber-200 ring-1 ring-amber-400/35'
-                  : 'bg-white/[0.08] text-[#CCCCCC] hover:bg-white/[0.14]'
-              }`}
-            >
-              {typeAnswerMode ? <Keyboard className="h-3.5 w-3.5" /> : <ListChecks className="h-3.5 w-3.5" />}
-              {typeAnswerMode ? 'Type-In' : 'Choices'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setBlindMode((v) => !v)}
-              className={`lt-press inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-bold transition ${
-                blindMode
-                  ? 'bg-[#3EA6FF]/20 text-[#3EA6FF] ring-1 ring-[#3EA6FF]/35'
-                  : 'bg-white/[0.08] text-[#CCCCCC] hover:bg-white/[0.14]'
-              }`}
-            >
-              {blindMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              {blindMode ? 'Blind' : 'Title On'}
-            </button>
-
-            {seenCount > 0 && pageMode === 'infinite_3s' && (
-              <button
-                type="button"
-                onClick={() => {
-                  resetSeenQuizHistory();
-                  sessionSeenRef.current.clear();
-                  setSeenCount(0);
-                  toast('Non-repeating question history reset');
-                }}
-                title="Reset non-repeating seen history"
-                className="lt-press inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-semibold text-[#AAAAAA] hover:bg-white/[0.14] hover:text-white"
-              >
-                <Trash2 className="h-3 w-3" />
-                Reset
-              </button>
-            )}
-          </div>
+      {/* Apple-Minimal Top Bar: Segmented Mode Switch + Compact Controls */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5">
+        <div className="inline-flex rounded-full border border-white/[0.08] bg-[#161618] p-1">
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              audioRef.current?.pause();
+              setPlaying(false);
+              setPageMode('infinite_3s');
+            }}
+            className={`lt-press rounded-full px-4 py-1.5 text-[12.5px] font-semibold tracking-tight transition-all ${
+              pageMode === 'infinite_3s'
+                ? 'bg-white text-black shadow-sm'
+                : 'text-[#8E8E93] hover:text-white'
+            }`}
+          >
+            Random Quiz
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              audioRef.current?.pause();
+              setPlaying(false);
+              setPageMode('jeopardy');
+            }}
+            className={`lt-press rounded-full px-4 py-1.5 text-[12.5px] font-semibold tracking-tight transition-all ${
+              pageMode === 'jeopardy'
+                ? 'bg-white text-black shadow-sm'
+                : 'text-[#8E8E93] hover:text-white'
+            }`}
+          >
+            Anime Jeopardy
+          </button>
         </div>
 
-        {/* High-Visibility Points & Scoreboard Strip */}
-        <div
-          className="mt-4 grid grid-cols-3 gap-2.5 rounded-2xl border border-white/[0.08] bg-black/35 p-3 sm:grid-cols-4"
-          aria-label="Quiz Points Scoreboard"
-        >
-          <div className="rounded-xl bg-white/[0.04] px-3 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93]">
-              Total Score
-            </p>
-            <p
-              className={`text-[20px] font-black tabular-nums sm:text-[24px] ${
-                (pageMode === 'jeopardy' ? playerScores[0] : score) < 0
-                  ? 'text-rose-400'
-                  : 'text-white'
-              }`}
-            >
-              {pageMode === 'jeopardy' ? playerScores[0] : score}
-              <span className="ml-1 text-[11px] font-bold text-[#3EA6FF]">pts</span>
-            </p>
-          </div>
-          <div className="rounded-xl bg-white/[0.04] px-3 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93]">
-              {pageMode === 'jeopardy' ? 'Board Best' : 'Streak'}
-            </p>
-            <p className="text-[20px] font-black tabular-nums text-amber-300 sm:text-[24px]">
-              {pageMode === 'jeopardy' ? `${bestJeopardy}` : `${streak}🔥`}
-            </p>
-          </div>
-          <div className="rounded-xl bg-white/[0.04] px-3 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93]">
-              {pageMode === 'jeopardy' ? 'Cleared' : 'Best Score'}
-            </p>
-            <p className="text-[20px] font-black tabular-nums text-emerald-300 sm:text-[24px]">
-              {pageMode === 'jeopardy'
-                ? `${Object.keys(solvedCells).length}/${totalBoardCells}`
-                : `${bestScore}`}
-            </p>
-          </div>
-          <div className="hidden rounded-xl bg-white/[0.04] px-3 py-2 sm:block">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93]">
-              {pageMode === 'jeopardy' ? 'Mode' : 'Active Worth'}
-            </p>
-            <p className="text-[20px] font-black tabular-nums text-[#3EA6FF] sm:text-[24px]">
-              {pageMode === 'jeopardy'
-                ? twoPlayer
-                  ? '2P Versus'
-                  : 'Solo'
-                : `+${potentialPoints}`}
-            </p>
-          </div>
-        </div>
-
-        {/* Minimal 2-Option Mode Bar: Random Quiz vs Anime Jeopardy */}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.08] pt-3.5">
-          <div className="flex rounded-full bg-white/[0.06] p-1">
-            <button
-              type="button"
-              onClick={() => {
-                audioRef.current?.pause();
-                setPlaying(false);
-                setPageMode('infinite_3s');
-              }}
-              className={`lt-press flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12.5px] font-bold transition ${
-                pageMode === 'infinite_3s'
-                  ? 'bg-white text-black shadow'
-                  : 'text-[#CCCCCC] hover:text-white'
-              }`}
-            >
-              <Flame className="h-3.5 w-3.5 text-[#FF0000]" />
-              Random Quiz
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                audioRef.current?.pause();
-                setPlaying(false);
-                setPageMode('jeopardy');
-              }}
-              className={`lt-press flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12.5px] font-bold transition ${
-                pageMode === 'jeopardy'
-                  ? 'bg-white text-black shadow'
-                  : 'text-[#CCCCCC] hover:text-white'
-              }`}
-            >
-              <Grid className="h-3.5 w-3.5 text-amber-500" />
-              Anime Jeopardy
-            </button>
-          </div>
-
+        <div className="flex items-center gap-1.5">
           {pageMode === 'jeopardy' && (
             <button
               type="button"
               onClick={() => {
+                triggerHaptic('light');
                 setTwoPlayer((v) => !v);
                 setActivePlayer(0);
               }}
-              className={`lt-press flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11.5px] font-bold transition ${
+              className={`lt-press inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11.5px] font-semibold ${
                 twoPlayer
-                  ? 'bg-[#3EA6FF]/20 text-[#3EA6FF] ring-1 ring-[#3EA6FF]/40'
-                  : 'bg-white/[0.06] text-[#CCCCCC] hover:text-white'
+                  ? 'border-white/25 bg-white text-black'
+                  : 'border-white/[0.08] bg-[#161618] text-[#AEAEB2] hover:text-white'
               }`}
             >
               <Users className="h-3.5 w-3.5" />
-              {twoPlayer ? '2P Versus On' : '1P Solo (Tap for 2P)'}
+              <span>{twoPlayer ? '2P' : '1P'}</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setTypeAnswerMode((v) => !v);
+            }}
+            aria-label={typeAnswerMode ? 'Switch to multiple choice' : 'Switch to type answer'}
+            className={`lt-press inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11.5px] font-semibold ${
+              typeAnswerMode
+                ? 'border-white/25 bg-white text-black'
+                : 'border-white/[0.08] bg-[#161618] text-[#AEAEB2] hover:text-white'
+            }`}
+          >
+            {typeAnswerMode ? <Keyboard className="h-3.5 w-3.5" /> : <ListChecks className="h-3.5 w-3.5" />}
+            <span>{typeAnswerMode ? 'Type' : 'Choices'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setBlindMode((v) => !v);
+            }}
+            aria-label={blindMode ? 'Disable blind mode' : 'Enable blind mode'}
+            className={`lt-press inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11.5px] font-semibold ${
+              blindMode
+                ? 'border-white/[0.16] bg-white/[0.12] text-white'
+                : 'border-white/[0.08] bg-[#161618] text-[#AEAEB2] hover:text-white'
+            }`}
+          >
+            {blindMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            <span>{blindMode ? 'Blind' : 'Title'}</span>
+          </button>
+
+          {seenCount > 0 && pageMode === 'infinite_3s' && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                resetSeenQuizHistory();
+                sessionSeenRef.current.clear();
+                setSeenCount(0);
+                toast('Question history cleared');
+              }}
+              aria-label="Reset question history"
+              title="Reset seen history"
+              className="lt-press inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-[#161618] text-[#8E8E93] hover:text-white"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
+      </div>
+
+      {/* Compact Single-Row Apple Score Strip */}
+      <div
+        aria-label="Quiz Points Scoreboard"
+        className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/[0.08] bg-[#161618] px-4 py-2.5"
+      >
+        <div className="flex items-center gap-5 sm:gap-7">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[11px] font-medium text-[#8E8E93]">Score</span>
+            <span
+              className={`text-[18px] font-bold tracking-tight tabular-nums ${
+                activeScoreVal < 0 ? 'text-rose-400' : 'text-white'
+              }`}
+            >
+              {activeScoreVal}
+            </span>
+          </div>
+
+          <div className="h-3.5 w-px bg-white/[0.08]" aria-hidden="true" />
+
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[11px] font-medium text-[#8E8E93]">
+              {pageMode === 'jeopardy' ? 'Cleared' : 'Streak'}
+            </span>
+            <span className="text-[16px] font-semibold tracking-tight tabular-nums text-[#E5E5EA]">
+              {pageMode === 'jeopardy'
+                ? `${Object.keys(solvedCells).length}/${totalBoardCells}`
+                : streak}
+            </span>
+          </div>
+
+          <div className="h-3.5 w-px bg-white/[0.08]" aria-hidden="true" />
+
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[11px] font-medium text-[#8E8E93]">Best</span>
+            <span className="text-[16px] font-semibold tracking-tight tabular-nums text-[#E5E5EA]">
+              {pageMode === 'jeopardy' ? bestJeopardy : bestScore}
+            </span>
+          </div>
+        </div>
+
+        {pageMode === 'infinite_3s' && (
+          <div className="flex items-center gap-2 text-[11.5px] font-semibold tabular-nums">
+            <span className="rounded-full bg-white/[0.08] px-2.5 py-0.5 text-white">
+              +{potentialPoints} PTS
+            </span>
+            <span className="rounded-full bg-white/[0.05] px-2.5 py-0.5 text-[#8E8E93]">
+              -{wrongPenalty} Wrong
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Shared In-App Audio Element */}
@@ -976,114 +998,114 @@ export const QuizView: React.FC<QuizViewProps> = ({
       />
 
       {pageMode === 'infinite_3s' ? (
-        <div className="rounded-3xl border border-white/[0.08] bg-[#161619] p-5 sm:p-6">
-          {/* Question Header: Question # + Prominent Reward Points + Random Difficulty Icon Badge */}
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[13px] font-bold text-[#AAAAAA]">
-                Question #{questionNum}
+        <div
+          key={currentQ.id}
+          className="lt-view-enter rounded-3xl border border-white/[0.08] bg-[#161618] p-4 sm:p-6"
+        >
+          {/* Minimal Question Meta Row */}
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] font-semibold tabular-nums text-[#8E8E93]">
+                #{questionNum}
               </span>
               <DifficultyBadge difficulty={currentQ.difficulty} />
-              <span className="rounded-full bg-white/[0.07] px-2.5 py-0.5 text-[11px] font-bold text-[#CCCCCC]">
+              <span className="text-[12px] font-medium text-[#8E8E93]">
                 {KIND_LABELS[currentQ.kind]}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-emerald-500/20 px-3.5 py-1 text-[13px] font-black text-emerald-300 ring-1 ring-emerald-400/40">
-                +{potentialPoints} PTS
-              </span>
-              <span className="rounded-full bg-rose-500/15 px-3 py-1 text-[12px] font-black text-rose-300 ring-1 ring-rose-400/35">
-                -{wrongPenalty} Wrong
               </span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
-            {/* Left Column: Audio / Visual / Creative Spotlight + Lifelines */}
-            <div className="space-y-4 lg:col-span-5">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-start">
+            {/* Left Column: Focused Media / Prompt Card + Minimal Lifelines */}
+            <div className="space-y-3 lg:col-span-5">
               {currentQ.kind === 'audio' &&
                 renderAudioCard(
-                  `In-App Studio Preview · ${DIFFICULTY_META[currentQ.difficulty].starterSec}s Starter`,
+                  `${DIFFICULTY_META[currentQ.difficulty].starterSec}s Starter`,
                   blindMode && !picked
-                    ? 'Mystery Theme Track'
+                    ? 'Mystery Theme'
                     : `${songDisplayTitle} · ${songDisplayArtist}`
                 )}
 
               {currentQ.kind === 'visual_crop' && currentQ.imageUrl && (
-                <div className="relative mx-auto aspect-video w-full overflow-hidden rounded-2xl border border-white/[0.12] bg-black">
+                <div className="relative mx-auto aspect-video w-full overflow-hidden rounded-2xl border border-white/[0.08] bg-black">
                   <img
                     src={currentQ.imageUrl}
                     alt="Blurred frame challenge"
-                    className={`h-full w-full object-cover transition-all duration-500 ${blurScaleClasses(
+                    className={`h-full w-full object-cover transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${blurScaleClasses(
                       currentQ.difficulty,
                       hintStep,
                       Boolean(picked)
                     )}`}
                   />
                   {!picked && (
-                    <span className="absolute bottom-2.5 right-2.5 rounded-full bg-black/75 px-3 py-1 text-[10.5px] font-bold text-white">
-                      {hintStep === 0 ? 'Ultra Blur' : hintStep === 1 ? 'Half Revealed' : 'Nearly Clear'}
+                    <span className="absolute bottom-2.5 right-2.5 rounded-full bg-black/70 px-2.5 py-0.5 text-[10.5px] font-semibold text-white/90 backdrop-blur-md">
+                      {hintStep === 0 ? 'Blurred' : hintStep === 1 ? 'Sharper' : 'Clear'}
                     </span>
                   )}
                 </div>
               )}
 
               {currentQ.kind === 'emoji_plot' && (
-                <div className="flex flex-col items-center justify-center rounded-2xl border border-white/[0.1] bg-gradient-to-br from-amber-500/10 to-purple-500/10 p-6 text-center">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
-                    Decode These Emojis
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-white/[0.08] bg-[#1C1C1E] p-6 text-center">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
+                    Symbol Clues
                   </p>
-                  <p className="mt-2 text-[34px] tracking-widest sm:text-[40px]">
+                  <p className="mt-2.5 text-[32px] tracking-widest sm:text-[36px]">
                     {currentQ.prompt.replace('Emoji Plot Decoder:', '').trim()}
                   </p>
                 </div>
               )}
 
               {currentQ.kind === 'quote_match' && (
-                <div className="rounded-2xl border border-white/[0.1] bg-gradient-to-br from-[#3EA6FF]/10 to-indigo-500/10 p-5">
-                  <Quote className="mb-2 h-6 w-6 text-[#3EA6FF]" />
-                  <p className="text-[15px] font-bold italic leading-relaxed text-white">
+                <div className="rounded-2xl border border-white/[0.08] bg-[#1C1C1E] p-5">
+                  <Quote className="mb-2 h-5 w-5 text-[#8E8E93]" />
+                  <p className="text-[15px] font-medium leading-relaxed text-white">
                     {currentQ.prompt.replace('Iconic Quote:', '').trim()}
                   </p>
                 </div>
               )}
 
               {currentQ.kind === 'noob_plot' && (
-                <div className="rounded-2xl border border-amber-400/25 bg-gradient-to-br from-amber-500/12 to-orange-500/10 p-5">
-                  <p className="text-[11px] font-black uppercase tracking-wider text-amber-300">
-                    Anime Noob Explains the Plot
+                <div className="rounded-2xl border border-white/[0.08] bg-[#1C1C1E] p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
+                    Plot Summary
                   </p>
-                  <p className="mt-2 text-[15px] font-bold leading-relaxed text-white">
+                  <p className="mt-2 text-[15px] font-medium leading-relaxed text-white">
                     {currentQ.prompt.replace('Anime Noob Explains:', '').trim()}
                   </p>
                 </div>
               )}
 
               {currentQ.kind === 'cursed_review' && (
-                <div className="rounded-2xl border border-rose-400/25 bg-gradient-to-br from-rose-500/12 to-amber-500/10 p-5">
+                <div className="rounded-2xl border border-white/[0.08] bg-[#1C1C1E] p-5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-rose-300">
-                      Cursed 1-Star Review
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
+                      1-Star Review
                     </span>
-                    <span className="text-[13px] tracking-wider text-amber-300" aria-label="1 out of 5 stars">
-                      ★☆☆☆☆
+                    <span className="inline-flex items-center gap-0.5" aria-label="1 out of 5 stars">
+                      {[0, 1, 2, 3, 4].map((idx) => (
+                        <Star
+                          key={idx}
+                          className={`h-3.5 w-3.5 ${
+                            idx === 0 ? 'fill-white text-white' : 'text-white/20'
+                          }`}
+                        />
+                      ))}
                     </span>
                   </div>
-                  <p className="mt-2.5 text-[14.5px] font-bold italic leading-relaxed text-white">
+                  <p className="mt-2.5 text-[14.5px] font-medium leading-relaxed text-white">
                     {currentQ.prompt.replace(/^★☆☆☆☆\s*—\s*/, '').trim()}
                   </p>
                 </div>
               )}
 
               {currentQ.kind === 'lore_torture' && (
-                <div className="rounded-2xl border border-purple-400/25 bg-gradient-to-br from-purple-500/15 to-rose-500/10 p-5">
-                  <p className="text-[11px] font-black uppercase tracking-wider text-purple-300">
-                    Impossible Lore Torture · Spot the Lie
+                <div className="rounded-2xl border border-white/[0.08] bg-[#1C1C1E] p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8E8E93]">
+                    Spot the Lie
                   </p>
-                  <p className="mt-2 text-[14.5px] font-bold leading-relaxed text-white">
-                    Three statements are 100% canon about{' '}
-                    <span className="text-amber-300">{currentQ.animeTitle}</span>. Pick the single
-                    FAKE fact!
+                  <p className="mt-2 text-[14.5px] font-medium leading-relaxed text-[#E5E5EA]">
+                    Three facts about <span className="font-semibold text-white">{currentQ.animeTitle}</span> are true. Pick the single fake one.
                   </p>
                 </div>
               )}
@@ -1094,29 +1116,36 @@ export const QuizView: React.FC<QuizViewProps> = ({
                     <button
                       type="button"
                       onClick={() => {
+                        triggerHaptic('light');
                         setSnippetStep((s) => Math.min(activeLadder.length - 1, s + 1));
                         if (audioRef.current && track?.previewUrl) {
                           audioRef.current.currentTime = 0;
                           void audioRef.current.play().then(() => setPlaying(true)).catch(() => {});
                         }
                       }}
-                      className="lt-press inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3.5 py-1.5 text-[12px] font-bold text-amber-200 ring-1 ring-amber-400/30 hover:bg-amber-500/25"
+                      className="lt-btn-apple inline-flex items-center gap-1.5 rounded-full border border-white/[0.1] bg-[#1C1C1E] px-3.5 py-1.5 text-[12px] font-semibold text-[#E5E5EA] hover:bg-[#262629] hover:text-white"
                     >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      Extend to {activeLadder[snippetStep + 1]}s (-45 pts)
+                      <span>Extend {activeLadder[snippetStep + 1]}s</span>
+                      <span className="text-[#8E8E93]">-45</span>
                     </button>
                   )}
 
                   {currentQ.clues.length > hintStep && (
                     <button
                       type="button"
-                      onClick={() => setHintStep((h) => h + 1)}
-                      className="lt-press inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-3.5 py-1.5 text-[12px] font-bold text-[#CCCCCC] hover:bg-white/[0.15]"
+                      onClick={() => {
+                        triggerHaptic('light');
+                        setHintStep((h) => h + 1);
+                      }}
+                      className="lt-btn-apple inline-flex items-center gap-1.5 rounded-full border border-white/[0.1] bg-[#1C1C1E] px-3.5 py-1.5 text-[12px] font-semibold text-[#E5E5EA] hover:bg-[#262629] hover:text-white"
                     >
-                      <HelpCircle className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                      {currentQ.kind === 'visual_crop'
-                        ? `Unblur & Clue ${hintStep + 1} (-35 pts)`
-                        : `Reveal Clue ${hintStep + 1} (-35 pts)`}
+                      <HelpCircle className="h-3.5 w-3.5 text-[#8E8E93]" />
+                      <span>
+                        {currentQ.kind === 'visual_crop'
+                          ? `Unblur ${hintStep + 1}`
+                          : `Clue ${hintStep + 1}`}
+                      </span>
+                      <span className="text-[#8E8E93]">-35</span>
                     </button>
                   )}
 
@@ -1124,43 +1153,44 @@ export const QuizView: React.FC<QuizViewProps> = ({
                     <button
                       type="button"
                       onClick={triggerFiftyFifty}
-                      className="lt-press inline-flex items-center gap-1.5 rounded-full bg-purple-500/15 px-3.5 py-1.5 text-[12px] font-bold text-purple-200 ring-1 ring-purple-400/30 hover:bg-purple-500/25"
+                      className="lt-btn-apple inline-flex items-center gap-1.5 rounded-full border border-white/[0.1] bg-[#1C1C1E] px-3.5 py-1.5 text-[12px] font-semibold text-[#E5E5EA] hover:bg-[#262629] hover:text-white"
                     >
-                      <Split className="h-3.5 w-3.5" />
-                      50/50 (-50 pts)
+                      <Split className="h-3.5 w-3.5 text-[#8E8E93]" />
+                      <span>50/50</span>
+                      <span className="text-[#8E8E93]">-50</span>
                     </button>
                   )}
                 </div>
               )}
 
               {(hintStep > 0 || currentQ.kind === 'riddle_trivia') && (
-                <div className="space-y-1.5 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3.5 text-[13px] text-neutral-200">
+                <div className="lt-card-pop space-y-1.5 rounded-2xl border border-white/[0.07] bg-[#1C1C1E]/80 p-3.5 text-[12.5px] leading-relaxed text-[#D1D1D6]">
                   {currentQ.clues
                     .slice(0, currentQ.kind === 'riddle_trivia' ? Math.max(1, hintStep + 1) : hintStep)
                     .map((c, ci) => (
                       <p key={ci}>
-                        <span className="font-bold text-[#3EA6FF]">Clue {ci + 1}:</span> {c}
+                        <span className="font-semibold text-white">Clue {ci + 1}:</span> {c}
                       </p>
                     ))}
                 </div>
               )}
             </div>
 
-            {/* Right Column: Prompt + Big Choices + Reveal */}
+            {/* Right Column: Prompt + Tactile Choices + Clean Result Bar */}
             <div className="space-y-4 lg:col-span-7">
-              <p className="text-[16px] font-extrabold leading-snug text-white sm:text-[19px]">
+              <h2 className="text-[17px] font-semibold leading-snug tracking-tight text-white sm:text-[20px]">
                 {currentQ.kind === 'audio' && blindMode && !picked
-                  ? `Listen to the ${DIFFICULTY_META[currentQ.difficulty].starterSec}s clip — which anime is this theme from?`
+                  ? `Which anime is this ${DIFFICULTY_META[currentQ.difficulty].starterSec}s theme from?`
                   : currentQ.kind === 'emoji_plot'
-                    ? 'Which anime matches this emoji plot?'
+                    ? 'Which anime matches these symbols?'
                     : currentQ.kind === 'quote_match'
-                      ? 'Which anime is this iconic quote from?'
+                      ? 'Which anime is this quote from?'
                       : currentQ.kind === 'noob_plot'
-                        ? 'Which anime is this terrible 1-sentence plot describing?'
+                        ? 'Which anime does this summary describe?'
                         : currentQ.kind === 'cursed_review'
-                          ? 'Which anime got hit with this unhinged 1-star review?'
+                          ? 'Which anime received this review?'
                           : currentQ.prompt}
-              </p>
+              </h2>
 
               {renderBigAnswerGrid(
                 currentQ.options,
@@ -1173,28 +1203,26 @@ export const QuizView: React.FC<QuizViewProps> = ({
               )}
 
               {picked && (
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-4">
-                  <div className="space-y-1.5">
-                    <div className="text-[14px] font-bold">
-                      {picked === currentQ.correctAnswer ? (
-                        <span className="text-emerald-300">
-                          Correct! +{potentialPoints} pts · {currentQ.animeTitle}
-                          {currentQ.songTitle ? ` — “${currentQ.songTitle}”` : ''}
-                        </span>
-                      ) : (
-                        <span className="text-rose-300">
-                          Wrong (-{wrongPenalty} pts) · Answer: {currentQ.correctAnswer} ({currentQ.animeTitle})
-                        </span>
-                      )}
-                    </div>
+                <div className="lt-card-pop flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-4">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <span
+                      className={`text-[13.5px] font-semibold ${
+                        picked === currentQ.correctAnswer ? 'text-emerald-400' : 'text-rose-400'
+                      }`}
+                    >
+                      {picked === currentQ.correctAnswer
+                        ? `+${potentialPoints} pts · ${currentQ.animeTitle}${currentQ.songTitle ? ` — ${currentQ.songTitle}` : ''}`
+                        : `-${wrongPenalty} pts · ${currentQ.correctAnswer}`}
+                    </span>
                     {renderTrackShortcutButton(currentQ.animeTitle)}
                   </div>
                   <button
                     type="button"
                     onClick={advanceNextQuestion}
-                    className="lt-press rounded-full bg-[#FF0000] px-6 py-2.5 text-[13.5px] font-bold text-white shadow-lg hover:bg-[#D90000]"
+                    className="lt-btn-apple inline-flex items-center gap-1.5 rounded-full bg-white px-5 py-2.5 text-[13px] font-semibold text-black"
                   >
-                    Next Question &rarr;
+                    <span>Next</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                 </div>
               )}
@@ -1202,25 +1230,27 @@ export const QuizView: React.FC<QuizViewProps> = ({
           </div>
         </div>
       ) : activeCell ? (
-        <div className="space-y-4 rounded-3xl border border-white/[0.08] bg-[#161619] p-5 sm:p-6">
+        <div
+          key={activeCell.id}
+          className="lt-view-enter space-y-4 rounded-3xl border border-white/[0.08] bg-[#161618] p-4 sm:p-6"
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <button
               type="button"
               onClick={closeActiveCell}
-              className="flex items-center gap-1.5 rounded-full bg-white/[0.08] px-3.5 py-1.5 text-[12px] font-bold text-neutral-200 hover:bg-white/[0.15]"
+              className="lt-btn-apple inline-flex items-center gap-1.5 rounded-full border border-white/[0.1] bg-[#1C1C1E] px-3.5 py-1.5 text-[12px] font-semibold text-[#E5E5EA] hover:text-white"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              Back to Board
+              <span>Board</span>
             </button>
             <div className="flex flex-wrap items-center gap-2">
               <DifficultyBadge difficulty={activeCell.difficulty} />
               {activeCell.isDailyDouble && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/20 px-3 py-1 text-[11px] font-black uppercase tracking-wider text-amber-300 ring-1 ring-amber-400/40">
-                  <Crown className="h-3.5 w-3.5" />
-                  Daily Double 2×
+                <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold text-black">
+                  2× Double
                 </span>
               )}
-              <span className="rounded-full bg-emerald-500/20 px-3.5 py-1 text-[12.5px] font-black text-emerald-300 ring-1 ring-emerald-400/35">
+              <span className="rounded-full bg-white/[0.08] px-3 py-0.5 text-[12px] font-semibold tabular-nums text-white">
                 +{effectiveCellReward} PTS
               </span>
             </div>
@@ -1228,18 +1258,18 @@ export const QuizView: React.FC<QuizViewProps> = ({
 
           {activeCell.kind === 'audio' &&
             renderAudioCard(
-              `OP/ED Blitz · ${activeCell.points} pts`,
+              `OP/ED · ${activeCell.points} pts`,
               blindMode && !cellPicked
-                ? 'Mystery Opening / Ending'
+                ? 'Mystery Theme'
                 : `${activeCell.songTitle} · ${activeCell.artist}`
             )}
 
           {activeCell.kind === 'visual_crop' && activeCell.imageUrl && (
-            <div className="relative mx-auto aspect-video w-full max-w-lg overflow-hidden rounded-2xl border border-white/[0.12] bg-black">
+            <div className="relative mx-auto aspect-video w-full max-w-lg overflow-hidden rounded-2xl border border-white/[0.08] bg-black">
               <img
                 src={activeCell.imageUrl}
                 alt="Blurred anime challenge"
-                className={`h-full w-full object-cover transition-all duration-500 ${blurScaleClasses(
+                className={`h-full w-full object-cover transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${blurScaleClasses(
                   activeCell.difficulty,
                   cellHintLevel,
                   Boolean(cellPicked)
@@ -1248,14 +1278,14 @@ export const QuizView: React.FC<QuizViewProps> = ({
             </div>
           )}
 
-          <div className="space-y-2 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-4">
-            <p className="text-[16px] font-extrabold text-white">{activeCell.prompt}</p>
-            <div className="space-y-1 text-[13px] text-neutral-300">
+          <div className="space-y-2 rounded-2xl border border-white/[0.08] bg-[#1C1C1E] p-4">
+            <p className="text-[16px] font-semibold tracking-tight text-white">{activeCell.prompt}</p>
+            <div className="space-y-1.5 text-[13px] text-[#D1D1D6]">
               {(activeCell.kind === 'riddle_trivia'
                 ? activeCell.clues.slice(0, cellHintLevel + 1)
                 : activeCell.clues.slice(0, cellHintLevel)
               ).map((clue, ci) => (
-                <p key={ci} className="rounded-lg bg-white/[0.04] px-3 py-1.5">
+                <p key={ci} className="rounded-xl bg-white/[0.04] px-3 py-1.5">
                   {clue}
                 </p>
               ))}
@@ -1269,27 +1299,32 @@ export const QuizView: React.FC<QuizViewProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      triggerHaptic('light');
                       setCellClipBoost((b) => b + 1);
                       if (audioRef.current && track?.previewUrl) {
                         audioRef.current.currentTime = 0;
                         void audioRef.current.play().then(() => setPlaying(true)).catch(() => {});
                       }
                     }}
-                    className="lt-press inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-3.5 py-1.5 text-[12px] font-bold text-amber-200 ring-1 ring-amber-400/30"
+                    className="lt-btn-apple inline-flex items-center gap-1.5 rounded-full border border-white/[0.1] bg-[#1C1C1E] px-3.5 py-1.5 text-[12px] font-semibold text-[#E5E5EA]"
                   >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Extend to {SNIPPET_LADDER.three_sec[cellClipBoost + 1]}s (-50 pts)
+                    <span>Extend {SNIPPET_LADDER.three_sec[cellClipBoost + 1]}s</span>
+                    <span className="text-[#8E8E93]">-50</span>
                   </button>
                 )}
 
               {cellHintLevel < (activeCell.kind === 'riddle_trivia' ? 2 : 3) && (
                 <button
                   type="button"
-                  onClick={() => setCellHintLevel((h) => h + 1)}
-                  className="lt-press inline-flex items-center gap-1 rounded-full bg-white/[0.08] px-3.5 py-1.5 text-[12px] font-bold text-[#CCCCCC] hover:bg-white/[0.15]"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setCellHintLevel((h) => h + 1);
+                  }}
+                  className="lt-btn-apple inline-flex items-center gap-1.5 rounded-full border border-white/[0.1] bg-[#1C1C1E] px-3.5 py-1.5 text-[12px] font-semibold text-[#E5E5EA]"
                 >
-                  <HelpCircle className="h-3.5 w-3.5 text-[#3EA6FF]" />
-                  {activeCell.kind === 'visual_crop' ? 'Unblur / Clue (-50 pts)' : 'Reveal Clue (-50 pts)'}
+                  <HelpCircle className="h-3.5 w-3.5 text-[#8E8E93]" />
+                  <span>{activeCell.kind === 'visual_crop' ? 'Unblur' : 'Clue'}</span>
+                  <span className="text-[#8E8E93]">-50</span>
                 </button>
               )}
             </div>
@@ -1305,16 +1340,20 @@ export const QuizView: React.FC<QuizViewProps> = ({
           )}
 
           {cellPicked && (
-            <div className="flex items-center justify-between border-t border-white/[0.08] pt-4">
-              <span className="text-[13px] font-bold text-white">
+            <div className="lt-card-pop flex items-center justify-between border-t border-white/[0.08] pt-4">
+              <span
+                className={`text-[13.5px] font-semibold ${
+                  cellPicked === activeCell.correctAnswer ? 'text-emerald-400' : 'text-rose-400'
+                }`}
+              >
                 {cellPicked === activeCell.correctAnswer
-                  ? `+${effectiveCellReward} pts!`
-                  : `-${Math.round(activeCell.points / 2)} pts · Answer: ${activeCell.correctAnswer}`}
+                  ? `+${effectiveCellReward} pts`
+                  : `-${Math.round(activeCell.points / 2)} pts · ${activeCell.correctAnswer}`}
               </span>
               <button
                 type="button"
                 onClick={closeActiveCell}
-                className="lt-press rounded-full bg-[#FF0000] px-5 py-2 text-[13px] font-bold text-white"
+                className="lt-btn-apple rounded-full bg-white px-5 py-2 text-[13px] font-semibold text-black"
               >
                 Back to Board
               </button>
@@ -1322,75 +1361,75 @@ export const QuizView: React.FC<QuizViewProps> = ({
           )}
         </div>
       ) : (
-        <div className="space-y-4 rounded-3xl border border-white/[0.08] bg-[#161619] p-4 sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3">
+        <div
+          key="jeopardy-board"
+          className="lt-view-enter space-y-3.5 rounded-3xl border border-white/[0.08] bg-[#161618] p-4 sm:p-5"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <div
-                className={`rounded-xl px-3.5 py-1.5 text-[13px] font-black ${
-                  !twoPlayer || activePlayer === 0
-                    ? 'bg-[#FF0000]/25 text-white ring-1 ring-[#FF0000]/50'
-                    : 'bg-white/[0.04] text-[#AAAAAA]'
-                }`}
-              >
-                {twoPlayer ? 'P1' : 'Score'}: {playerScores[0]}
-              </div>
               {twoPlayer && (
-                <div
-                  className={`rounded-xl px-3.5 py-1.5 text-[13px] font-black ${
-                    activePlayer === 1
-                      ? 'bg-[#3EA6FF]/25 text-white ring-1 ring-[#3EA6FF]/50'
-                      : 'bg-white/[0.04] text-[#AAAAAA]'
-                  }`}
-                >
-                  P2: {playerScores[1]}
-                </div>
+                <>
+                  <div
+                    className={`rounded-full px-3.5 py-1 text-[12px] font-semibold tabular-nums transition ${
+                      activePlayer === 0
+                        ? 'bg-white text-black'
+                        : 'bg-[#1C1C1E] text-[#8E8E93]'
+                    }`}
+                  >
+                    P1 · {playerScores[0]}
+                  </div>
+                  <div
+                    className={`rounded-full px-3.5 py-1 text-[12px] font-semibold tabular-nums transition ${
+                      activePlayer === 1
+                        ? 'bg-white text-black'
+                        : 'bg-[#1C1C1E] text-[#8E8E93]'
+                    }`}
+                  >
+                    P2 · {playerScores[1]}
+                  </div>
+                </>
               )}
             </div>
 
-            <div className="flex items-center gap-2.5">
-              <span className="text-[12px] font-semibold text-[#AAAAAA]">
-                {Object.keys(solvedCells).length}/{totalBoardCells} played
-              </span>
-              <button
-                type="button"
-                onClick={restartJeopardy}
-                className="lt-press inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-3 py-1.5 text-[12px] font-bold text-white hover:bg-white/[0.16]"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                New Board
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={restartJeopardy}
+              className="lt-btn-apple inline-flex items-center gap-1.5 rounded-full border border-white/[0.1] bg-[#1C1C1E] px-3.5 py-1.5 text-[12px] font-semibold text-[#E5E5EA] hover:text-white"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>New Board</span>
+            </button>
           </div>
 
           {boardComplete ? (
-            <div className="space-y-3 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-8 text-center">
-              <Trophy className="mx-auto h-12 w-12 text-amber-300" />
-              <p className="text-[20px] font-black text-white">
+            <div className="space-y-3 rounded-2xl border border-white/[0.1] bg-[#1C1C1E] p-8 text-center">
+              <Trophy className="mx-auto h-10 w-10 text-white" />
+              <p className="text-[19px] font-bold tracking-tight text-white">
                 {twoPlayer
                   ? playerScores[0] === playerScores[1]
-                    ? 'Tie Game!'
+                    ? 'Tie Game'
                     : playerScores[0] > playerScores[1]
-                      ? `Player 1 Wins (${playerScores[0]} pts)!`
-                      : `Player 2 Wins (${playerScores[1]} pts)!`
+                      ? `Player 1 Wins · ${playerScores[0]} pts`
+                      : `Player 2 Wins · ${playerScores[1]} pts`
                   : `Board Cleared · ${playerScores[0]} pts`}
               </p>
               <button
                 type="button"
                 onClick={restartJeopardy}
-                className="lt-press rounded-full bg-white px-6 py-2.5 text-[13px] font-bold text-black"
+                className="lt-btn-apple rounded-full bg-white px-6 py-2.5 text-[13px] font-semibold text-black"
               >
-                Generate Fresh Board
+                New Board
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
               {boardCategories.map((cat) => (
-                <div key={cat.id} className="space-y-2.5">
-                  <div className="flex min-h-[60px] flex-col items-center justify-center rounded-2xl border border-white/[0.12] bg-gradient-to-b from-blue-950/90 to-slate-900/95 px-2 py-2.5 text-center">
-                    <p className="text-[12.5px] font-black leading-tight text-white">
+                <div key={cat.id} className="space-y-2">
+                  <div className="flex min-h-[52px] flex-col items-center justify-center rounded-2xl border border-white/[0.08] bg-[#1C1C1E] px-2 py-2 text-center">
+                    <p className="text-[12.5px] font-semibold leading-tight tracking-tight text-white">
                       {cat.title}
                     </p>
-                    <p className="mt-0.5 text-[10.5px] font-semibold text-[#3EA6FF]">
+                    <p className="mt-0.5 text-[10.5px] font-medium text-[#8E8E93]">
                       {cat.subtitle}
                     </p>
                   </div>
@@ -1406,21 +1445,21 @@ export const QuizView: React.FC<QuizViewProps> = ({
                         disabled={Boolean(status)}
                         onClick={() => openCell(cell)}
                         aria-label={`${cat.title} ${cell.points} points (${diffStyle.label})`}
-                        className={`lt-press relative flex h-16 w-full items-center justify-center gap-1.5 rounded-2xl border text-[16px] font-black transition ${
+                        className={`lt-btn-apple flex h-14 w-full items-center justify-center gap-1.5 rounded-2xl border text-[15px] font-bold tabular-nums ${
                           status === 'right'
-                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400/70'
+                            ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-400/75'
                             : status === 'wrong'
-                              ? 'border-rose-500/30 bg-rose-500/10 text-rose-400/70'
-                              : 'border-amber-400/25 bg-gradient-to-b from-[#172554]/80 to-[#0f172a]/90 text-amber-300 shadow-md hover:border-amber-300/60 hover:brightness-125'
+                              ? 'border-rose-400/30 bg-rose-500/10 text-rose-400/75'
+                              : 'border-white/[0.09] bg-[#1C1C1E] text-white hover:border-white/[0.22] hover:bg-[#262629]'
                         }`}
                       >
                         {status === 'right' ? (
-                          <Check className="h-6 w-6" />
+                          <Check className="h-5 w-5" />
                         ) : status === 'wrong' ? (
-                          <X className="h-6 w-6" />
+                          <X className="h-5 w-5" />
                         ) : (
                           <>
-                            <DiffIcon className={`h-3.5 w-3.5 ${diffStyle.iconClass}`} />
+                            <DiffIcon className="h-3.5 w-3.5 text-[#8E8E93]" />
                             <span>{cell.points}</span>
                           </>
                         )}
@@ -1431,19 +1470,6 @@ export const QuizView: React.FC<QuizViewProps> = ({
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {onExplore && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/[0.08] bg-[#161619] px-4 py-3 text-[12px] text-[#AAAAAA]">
-          <span>Discover new series in Explore and jump straight back anytime.</span>
-          <button
-            type="button"
-            onClick={onExplore}
-            className="font-bold text-[#3EA6FF] hover:underline"
-          >
-            Browse Catalog &rarr;
-          </button>
         </div>
       )}
     </div>

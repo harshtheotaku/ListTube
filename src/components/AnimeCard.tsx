@@ -105,7 +105,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = React.memo(({
             loading={priority ? 'eager' : 'lazy'}
             fetchPriority={priority ? 'high' : 'auto'}
             decoding="async"
-            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.035]"
           />
         ) : officialWideBanner ? (
           <img
@@ -115,7 +115,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = React.memo(({
             fetchPriority={priority ? 'high' : 'auto'}
             decoding="async"
             onError={() => setBannerFailed(true)}
-            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.035]"
           />
         ) : (
           <div className="absolute inset-0 overflow-hidden bg-[#121216]">

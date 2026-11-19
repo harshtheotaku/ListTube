@@ -183,14 +183,14 @@ export const TopBar: React.FC<TopBarProps> = ({
                   type="button"
                   onClick={onOpenQuiz}
                   aria-label="Open Quiz Arena"
-                  title="OP/ED Quiz, Daily 10, Score Duel & Jeopardy"
-                  className={`lt-press flex h-9 items-center gap-1.5 rounded-full px-3 text-[12px] font-bold transition ${
+                  title="Anime Quiz & Jeopardy"
+                  className={`lt-btn-apple flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[12.5px] font-semibold tracking-tight ${
                     activeTab === 'quiz'
-                      ? 'bg-gradient-to-r from-[#FF0000] to-amber-500 text-white shadow-md'
-                      : 'border border-white/[0.12] bg-white/[0.08] text-white hover:bg-white/[0.16]'
+                      ? 'bg-white text-black'
+                      : 'border border-white/[0.12] bg-white/[0.08] text-white/90 hover:bg-white/[0.15] hover:text-white'
                   }`}
                 >
-                  <Gamepad2 className={`h-4 w-4 ${activeTab === 'quiz' ? 'text-white' : 'text-amber-400'}`} />
+                  <Gamepad2 className="h-3.5 w-3.5" />
                   <span>Quiz</span>
                 </button>
               )}

@@ -1020,6 +1020,20 @@ export const App: React.FC = () => {
               </div>
             }
           >
+            <div
+              key={
+                detailId
+                  ? `detail:${detailId}`
+                  : channelAnime
+                    ? `channel:${channelAnime.id}`
+                    : publicUser
+                      ? `user:${publicUser}`
+                      : entityTarget
+                        ? `entity:${entityTarget.kind}:${entityTarget.idOrName}`
+                        : `tab:${tab}`
+              }
+              className="lt-view-enter"
+            >
             {detailId ? (
               <DetailView
                 animeId={detailId}
@@ -1158,6 +1172,7 @@ export const App: React.FC = () => {
                 )}
               </>
             )}
+            </div>
           </Suspense>
         </main>
       </div>

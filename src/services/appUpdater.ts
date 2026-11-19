@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { isNativeCapacitor } from './platform';
 
-export const APP_VERSION = '1.3.3';
+export const APP_VERSION = '1.3.4';
 export const GITHUB_RELEASES_API =
   'https://api.github.com/repos/harshtheotaku/ListTube/releases/latest';
 export const GITHUB_LATEST_APK_URL =
