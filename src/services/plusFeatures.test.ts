@@ -18,6 +18,7 @@ import {
   getSeenQuizCount,
   markQuizQuestionSeen,
   resetSeenQuizHistory,
+  SNIPPET_LADDER,
 } from './themeQuiz';
 import { computeWrappedSummary } from './wrappedStats';
 import { pickDefaultCollageSlots, pickDefaultTierBuckets } from './collageGrid';
@@ -328,5 +329,6 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
     const oddQ = buildNextInfiniteQuestion({ scope: 'all', preferKind: 'odd_one_out' });
     const statQ = buildNextInfiniteQuestion({ scope: 'all', preferKind: 'stat_clash' });
     expect([emojiQ, quoteQ, oddQ, statQ].every((q) => q.options.length === 4 && q.options.includes(q.correctAnswer))).toBe(true);
+    expect(SNIPPET_LADDER.three_sec).toEqual([1, 3, 10, 30]);
   });
 });

@@ -869,23 +869,23 @@ export async function discoverDynamicAnimeTheme(malId?: number): Promise<{
 
 export type QuizDifficultyTier = 'three_sec';
 export const SNIPPET_LADDER: Record<QuizDifficultyTier, number[]> = {
-  three_sec: [3, 7, 15, 28],
+  three_sec: [1, 3, 10, 30],
 };
 
 export const SNIPPET_LADDER_BY_DIFFICULTY: Record<QuizDifficultyFilter, number[]> = {
-  all: [3, 7, 15, 28],
-  easy: [6, 12, 20, 30],
-  medium: [3, 7, 15, 28],
-  hard: [2, 5, 10, 20],
+  all: [1, 3, 10, 30],
+  easy: [1, 3, 10, 30],
+  medium: [1, 3, 10, 30],
+  hard: [1, 3, 10, 30],
 };
 
 export const DIFFICULTY_META: Record<
   QuizDifficultyLevel,
   { label: string; multiplier: number; starterSec: number; blurPx: [number, number, number] }
 > = {
-  easy: { label: 'Easy', multiplier: 1.0, starterSec: 6, blurPx: [10, 4, 1] },
-  medium: { label: 'Medium', multiplier: 1.25, starterSec: 3, blurPx: [14, 6, 2] },
-  hard: { label: 'Hard', multiplier: 1.75, starterSec: 2, blurPx: [18, 9, 3] },
+  easy: { label: 'Easy', multiplier: 1.0, starterSec: 1, blurPx: [10, 4, 1] },
+  medium: { label: 'Medium', multiplier: 1.25, starterSec: 1, blurPx: [14, 6, 2] },
+  hard: { label: 'Hard', multiplier: 1.75, starterSec: 1, blurPx: [18, 9, 3] },
 };
 
 export function normalizeTierToDifficulty(
@@ -1060,12 +1060,12 @@ export function buildJeopardyBoard(catalogInput?: Anime[]): JeopardyCategory[] {
     new Set([...storeCatalog.slice(0, 80).map((a) => a.title), ...fallbackTitles])
   );
 
-  // Category 1: OP/ED Audio Blitz (10s -> 6s -> 3s)
+  // Category 1: OP/ED Audio Blitz (1s -> 3s -> 10s -> 30s)
   const tiers: Array<{ tier: SeedTheme['tier']; points: number; clipSec: number }> = [
-    { tier: 'easy', points: 100, clipSec: 10 },
-    { tier: 'medium', points: 200, clipSec: 6 },
-    { tier: 'hard', points: 400, clipSec: 3 },
-    { tier: 'impossible', points: 600, clipSec: 3 },
+    { tier: 'easy', points: 100, clipSec: 1 },
+    { tier: 'medium', points: 200, clipSec: 1 },
+    { tier: 'hard', points: 400, clipSec: 1 },
+    { tier: 'impossible', points: 600, clipSec: 1 },
   ];
 
   const usedSongs = new Set<string>();
@@ -1224,7 +1224,7 @@ export function buildJeopardyBoard(catalogInput?: Anime[]): JeopardyCategory[] {
     {
       id: 'audio',
       title: 'OP/ED Blitz',
-      subtitle: '3s–10s Audio',
+      subtitle: '1s → 30s Audio',
       cells: audioCells,
     },
     {

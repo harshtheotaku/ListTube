@@ -52,6 +52,7 @@ import {
   resolveThemePreviewAudio,
   saveJeopardyHighScore,
   saveQuizHighScore,
+  SNIPPET_LADDER,
   SNIPPET_LADDER_BY_DIFFICULTY,
   ThemeAudioTrack,
 } from '../services/themeQuiz';
@@ -110,7 +111,7 @@ const DifficultyBadge: React.FC<{ difficulty: QuizDifficultyLevel }> = ({ diffic
 };
 
 const KIND_LABELS: Record<JeopardyCellKind, string> = {
-  audio: '3s OP/ED Audio',
+  audio: '1s OP/ED Audio',
   visual_crop: 'Blurred Poster',
   riddle_trivia: '3-Clue Lore',
   studio_year: 'Studio & Year',
@@ -234,8 +235,8 @@ export const QuizView: React.FC<QuizViewProps> = ({
       };
     }
     if (pageMode === 'jeopardy' && activeCell?.kind === 'audio') {
-      const base = activeCell.initialClipSec ?? 6;
-      const maxClip = cellPicked ? 30 : Math.min(30, base + cellClipBoost * 4);
+      const jpLadder = SNIPPET_LADDER.three_sec;
+      const maxClip = cellPicked ? 30 : jpLadder[Math.min(cellClipBoost, jpLadder.length - 1)] ?? 30;
       return {
         id: activeCell.id,
         malId: undefined,
@@ -316,6 +317,23 @@ export const QuizView: React.FC<QuizViewProps> = ({
     };
   }, []);
 
+  // Frame-accurate clip stop (ensures exact 1s -> 3s -> 10s stops without waiting on coarse timeupdate ticks)
+  useEffect(() => {
+    if (!playing || !activeAudioTarget || activeAudioTarget.maxClipSec >= 30) return;
+    const cap = activeAudioTarget.maxClipSec;
+    const id = window.setInterval(() => {
+      const el = audioRef.current;
+      if (!el || el.paused) return;
+      if (el.currentTime >= cap) {
+        el.pause();
+        el.currentTime = cap;
+        setPlaying(false);
+        setProgress({ cur: cap, dur: el.duration || 30 });
+      }
+    }, 35);
+    return () => window.clearInterval(id);
+  }, [playing, activeAudioTarget?.id, activeAudioTarget?.maxClipSec]);
+
   // Desktop keyboard controls: Space Play/Pause, 1-4 Choices, 5 Fifty-Fifty, H Clue, N/Enter Next
   useEffect(() => {
     const onQuizKey = (e: KeyboardEvent) => {
@@ -390,7 +408,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
     }
   };
 
-  // --- Random Quiz Scoring ---
+  // --- Random Quiz Scoring (includes Negative Points on wrong picks) ---
   const activeLadder =
     SNIPPET_LADDER_BY_DIFFICULTY[currentQ.difficulty] ?? SNIPPET_LADDER_BY_DIFFICULTY.all;
   const diffMultiplier = DIFFICULTY_META[currentQ.difficulty].multiplier;
@@ -399,6 +417,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
     240 - snippetStep * 45 - hintStep * 35 - (eliminatedOptions.length > 0 ? 50 : 0) + streak * 25
   );
   const potentialPoints = Math.round(basePoints * diffMultiplier);
+  const wrongPenalty = Math.round(60 * diffMultiplier);
 
   const triggerFiftyFifty = () => {
     if (picked || eliminatedOptions.length > 0) return;
@@ -430,6 +449,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
       }
     } else {
       triggerHaptic('medium');
+      setScore((s) => s - wrongPenalty);
       setStreak(0);
     }
   };
@@ -832,7 +852,13 @@ export const QuizView: React.FC<QuizViewProps> = ({
             <p className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93]">
               Total Score
             </p>
-            <p className="text-[20px] font-black tabular-nums text-white sm:text-[24px]">
+            <p
+              className={`text-[20px] font-black tabular-nums sm:text-[24px] ${
+                (pageMode === 'jeopardy' ? playerScores[0] : score) < 0
+                  ? 'text-rose-400'
+                  : 'text-white'
+              }`}
+            >
               {pageMode === 'jeopardy' ? playerScores[0] : score}
               <span className="ml-1 text-[11px] font-bold text-[#3EA6FF]">pts</span>
             </p>
@@ -960,6 +986,9 @@ export const QuizView: React.FC<QuizViewProps> = ({
             <div className="flex items-center gap-2">
               <span className="rounded-full bg-emerald-500/20 px-3.5 py-1 text-[13px] font-black text-emerald-300 ring-1 ring-emerald-400/40">
                 +{potentialPoints} PTS
+              </span>
+              <span className="rounded-full bg-rose-500/15 px-3 py-1 text-[12px] font-black text-rose-300 ring-1 ring-rose-400/35">
+                -{wrongPenalty} Wrong
               </span>
             </div>
           </div>
@@ -1105,7 +1134,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                         </span>
                       ) : (
                         <span className="text-rose-300">
-                          Answer: {currentQ.correctAnswer} ({currentQ.animeTitle})
+                          Wrong (-{wrongPenalty} pts) · Answer: {currentQ.correctAnswer} ({currentQ.animeTitle})
                         </span>
                       )}
                     </div>
@@ -1187,7 +1216,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
           {!cellPicked && (
             <div className="flex flex-wrap items-center gap-2">
               {activeCell.kind === 'audio' &&
-                (activeCell.initialClipSec ?? 6) + cellClipBoost * 4 < 25 && (
+                cellClipBoost < SNIPPET_LADDER.three_sec.length - 1 && (
                   <button
                     type="button"
                     onClick={() => {
@@ -1200,7 +1229,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
                     className="lt-press inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-3.5 py-1.5 text-[12px] font-bold text-amber-200 ring-1 ring-amber-400/30"
                   >
                     <Sparkles className="h-3.5 w-3.5" />
-                    +4s Audio (-50 pts)
+                    Extend to {SNIPPET_LADDER.three_sec[cellClipBoost + 1]}s (-50 pts)
                   </button>
                 )}
 
