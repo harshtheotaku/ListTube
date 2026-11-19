@@ -119,6 +119,9 @@ const KIND_LABELS: Record<JeopardyCellKind, string> = {
   quote_match: 'Iconic Quote',
   odd_one_out: 'Odd One Out',
   stat_clash: 'Stat Clash',
+  noob_plot: 'Noob Plot Summary',
+  cursed_review: '1-Star Review',
+  lore_torture: 'Spot the Lie',
 };
 
 function fmtSec(sec: number): string {
@@ -130,7 +133,9 @@ function fmtSec(sec: number): string {
 
 function findAnimeByTitle(title: string): Anime | undefined {
   const low = title.trim().toLowerCase();
-  return animeStore.all().find((a) => a.title.toLowerCase() === low);
+  return animeStore
+    .all()
+    .find((a) => (a.mediaType ?? 'ANIME') === 'ANIME' && a.title.toLowerCase() === low);
 }
 
 export const QuizView: React.FC<QuizViewProps> = ({
@@ -152,7 +157,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
     buildNextInfiniteQuestion({
       scope: 'all',
       entries: libraryState.entries,
-      mediaType,
+      mediaType: 'ANIME',
     })
   );
   const [score, setScore] = useState(0);
@@ -207,7 +212,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
     const q = buildNextInfiniteQuestion({
       scope: 'all',
       entries: libraryState.entries,
-      mediaType,
+      mediaType: 'ANIME',
       sessionExclude: sessionSeenRef.current,
     });
     sessionSeenRef.current.add(q.signature);
@@ -1043,6 +1048,46 @@ export const QuizView: React.FC<QuizViewProps> = ({
                 </div>
               )}
 
+              {currentQ.kind === 'noob_plot' && (
+                <div className="rounded-2xl border border-amber-400/25 bg-gradient-to-br from-amber-500/12 to-orange-500/10 p-5">
+                  <p className="text-[11px] font-black uppercase tracking-wider text-amber-300">
+                    Anime Noob Explains the Plot
+                  </p>
+                  <p className="mt-2 text-[15px] font-bold leading-relaxed text-white">
+                    {currentQ.prompt.replace('Anime Noob Explains:', '').trim()}
+                  </p>
+                </div>
+              )}
+
+              {currentQ.kind === 'cursed_review' && (
+                <div className="rounded-2xl border border-rose-400/25 bg-gradient-to-br from-rose-500/12 to-amber-500/10 p-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-rose-300">
+                      Cursed 1-Star Review
+                    </span>
+                    <span className="text-[13px] tracking-wider text-amber-300" aria-label="1 out of 5 stars">
+                      ★☆☆☆☆
+                    </span>
+                  </div>
+                  <p className="mt-2.5 text-[14.5px] font-bold italic leading-relaxed text-white">
+                    {currentQ.prompt.replace(/^★☆☆☆☆\s*—\s*/, '').trim()}
+                  </p>
+                </div>
+              )}
+
+              {currentQ.kind === 'lore_torture' && (
+                <div className="rounded-2xl border border-purple-400/25 bg-gradient-to-br from-purple-500/15 to-rose-500/10 p-5">
+                  <p className="text-[11px] font-black uppercase tracking-wider text-purple-300">
+                    Impossible Lore Torture · Spot the Lie
+                  </p>
+                  <p className="mt-2 text-[14.5px] font-bold leading-relaxed text-white">
+                    Three statements are 100% canon about{' '}
+                    <span className="text-amber-300">{currentQ.animeTitle}</span>. Pick the single
+                    FAKE fact!
+                  </p>
+                </div>
+              )}
+
               {!picked && (
                 <div className="flex flex-wrap items-center gap-2">
                   {currentQ.kind === 'audio' && snippetStep < activeLadder.length - 1 && (
@@ -1110,7 +1155,11 @@ export const QuizView: React.FC<QuizViewProps> = ({
                     ? 'Which anime matches this emoji plot?'
                     : currentQ.kind === 'quote_match'
                       ? 'Which anime is this iconic quote from?'
-                      : currentQ.prompt}
+                      : currentQ.kind === 'noob_plot'
+                        ? 'Which anime is this terrible 1-sentence plot describing?'
+                        : currentQ.kind === 'cursed_review'
+                          ? 'Which anime got hit with this unhinged 1-star review?'
+                          : currentQ.prompt}
               </p>
 
               {renderBigAnswerGrid(

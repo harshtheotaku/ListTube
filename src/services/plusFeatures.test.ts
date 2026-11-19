@@ -42,6 +42,7 @@ const makeAnime = (p: Partial<Anime> & { id: string }): Anime => ({
   genres: p.genres ?? ['Action'],
   tags: p.tags ?? [],
   studios: p.studios ?? ['MAPPA'],
+  format: p.format,
   episodes: p.episodes ?? 24,
   duration: p.duration ?? 24,
   score: p.score ?? 8.5,
@@ -118,7 +119,8 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
     expect(formatPreferredTitle(aot, 'romaji')).toBe('Shingeki no Kyojin');
     expect(formatPreferredTitle(aot, 'native')).toBe('進撃の巨人');
     expect(formatSecondaryTitle(aot, 'romaji')).toBe('Attack on Titan');
-    expect(gridClassFor('ANIME', 'compact')).toContain('xl:grid-cols-5');
+    expect(gridClassFor('ANIME', 'compact')).toContain('lg:grid-cols-4');
+    expect(gridClassFor('ANIME', 'compact')).not.toContain('grid-cols-5');
   });
 
   it('computes catch-up pacing completion days and remaining manga volumes', () => {
@@ -328,7 +330,51 @@ describe('Apple Liquid Glass Settings, Wrapped, Pacing & Theme Quiz', () => {
     const quoteQ = buildNextInfiniteQuestion({ scope: 'all', preferKind: 'quote_match' });
     const oddQ = buildNextInfiniteQuestion({ scope: 'all', preferKind: 'odd_one_out' });
     const statQ = buildNextInfiniteQuestion({ scope: 'all', preferKind: 'stat_clash' });
-    expect([emojiQ, quoteQ, oddQ, statQ].every((q) => q.options.length === 4 && q.options.includes(q.correctAnswer))).toBe(true);
+    const noobQ = buildNextInfiniteQuestion({ scope: 'all', preferKind: 'noob_plot' });
+    const reviewQ = buildNextInfiniteQuestion({ scope: 'all', preferKind: 'cursed_review' });
+    const loreQ = buildNextInfiniteQuestion({ scope: 'all', preferKind: 'lore_torture' });
+    expect(
+      [emojiQ, quoteQ, oddQ, statQ, noobQ, reviewQ, loreQ].every(
+        (q) => q.options.length === 4 && q.options.includes(q.correctAnswer)
+      )
+    ).toBe(true);
+    expect(noobQ.kind).toBe('noob_plot');
+    expect(reviewQ.kind).toBe('cursed_review');
+    expect(loreQ.kind).toBe('lore_torture');
     expect(SNIPPET_LADDER.three_sec).toEqual([1, 3, 10, 30]);
+
+    // Strictly excludes Manhwa/Manga titles from Anime Quiz options & Jeopardy boards
+    animeStore.remember(
+      makeAnime({
+        id: 'anilist:manhwa-9991',
+        title: 'SSS-Class Revival Hunter',
+        mediaType: 'MANGA',
+        format: 'MANHWA',
+        cover: 'https://example.com/manhwa.jpg',
+      })
+    );
+    animeStore.remember(
+      makeAnime({
+        id: 'anilist:manhwa-9992',
+        title: 'Got Dropped into a Ghost Story, Still Gotta Work',
+        mediaType: 'ANIME',
+        format: 'MANHWA',
+        cover: 'https://example.com/manhwa2.jpg',
+      })
+    );
+    for (let i = 0; i < 30; i += 1) {
+      const q = buildNextInfiniteQuestion({ scope: 'all' });
+      expect(q.options).not.toContain('SSS-Class Revival Hunter');
+      expect(q.options).not.toContain('Got Dropped into a Ghost Story, Still Gotta Work');
+      expect(q.correctAnswer).not.toBe('SSS-Class Revival Hunter');
+      expect(q.correctAnswer).not.toBe('Got Dropped into a Ghost Story, Still Gotta Work');
+    }
+    const cleanBoard = buildJeopardyBoard();
+    for (const cat of cleanBoard) {
+      for (const cell of cat.cells) {
+        expect(cell.options).not.toContain('SSS-Class Revival Hunter');
+        expect(cell.options).not.toContain('Got Dropped into a Ghost Story, Still Gotta Work');
+      }
+    }
   });
 });

@@ -10,7 +10,10 @@ export type JeopardyCellKind =
   | 'emoji_plot'
   | 'quote_match'
   | 'odd_one_out'
-  | 'stat_clash';
+  | 'stat_clash'
+  | 'noob_plot'
+  | 'cursed_review'
+  | 'lore_torture';
 export type QuizPoolScope = 'all' | 'mylist';
 export type QuizDifficultyLevel = 'easy' | 'medium' | 'hard';
 export type QuizDifficultyFilter = 'all' | QuizDifficultyLevel;
@@ -592,7 +595,13 @@ const HERALEN_RIDDLES: SeedRiddle[] = [
 
 interface CreativePromptItem {
   sig: string;
-  kind: 'emoji_plot' | 'quote_match' | 'odd_one_out';
+  kind:
+    | 'emoji_plot'
+    | 'quote_match'
+    | 'odd_one_out'
+    | 'noob_plot'
+    | 'cursed_review'
+    | 'lore_torture';
   difficulty: QuizDifficultyLevel;
   animeTitle: string;
   prompt: string;
@@ -799,6 +808,264 @@ const CREATIVE_BANK: CreativePromptItem[] = [
     clues: ['Think about Titans, half-cold heroes & Echoes Stand.', 'One is voiced by Yuichi Nakamura instead!', 'Famous for Infinity & Six Eyes.'],
     options: ['Eren Yeager', 'Shoto Todoroki', 'Koichi Hirose', 'Satoru Gojo'],
     correctAnswer: 'Satoru Gojo',
+  },
+  // Heralen-Inspired: "Anime Noob Explains the Plot"
+  {
+    sig: 'noob:opm',
+    kind: 'noob_plot',
+    difficulty: 'easy',
+    animeTitle: 'One-Punch Man',
+    prompt: 'Anime Noob Explains: "A bald guy ruins his own hobby by doing 100 push-ups a day and getting too strong for supermarket sales."',
+    clues: ['Genre: Superhero Parody / Action.', 'His cyborg disciple takes notes on everything he says.', 'Hero name: Caped Baldy (Saitama).'],
+    options: ['One-Punch Man', 'Mob Psycho 100', 'My Hero Academia', 'Mashle'],
+    correctAnswer: 'One-Punch Man',
+    aliases: ['opm', 'one punch man'],
+  },
+  {
+    sig: 'noob:jjk',
+    kind: 'noob_plot',
+    difficulty: 'easy',
+    animeTitle: 'Jujutsu Kaisen',
+    prompt: 'Anime Noob Explains: "A teenager eats a cursed finger he found at school and now shares his body with a 1,000-year-old hater."',
+    clues: ['Studio: MAPPA (2020).', 'His blindfolded teacher is the strongest sorcerer alive.', 'Features Domain Expansions & Sukuna.'],
+    options: ['Jujutsu Kaisen', 'Chainsaw Man', 'Bleach', 'Tokyo Ghoul'],
+    correctAnswer: 'Jujutsu Kaisen',
+    aliases: ['jjk'],
+  },
+  {
+    sig: 'noob:spyxfamily',
+    kind: 'noob_plot',
+    difficulty: 'easy',
+    animeTitle: 'SPY x FAMILY',
+    prompt: 'Anime Noob Explains: "A paranoid dad, an assassin mom, and a telepathic kid fake a marriage just to pass private school admissions."',
+    clues: ['The little girl loves peanuts and says "Waku Waku!"', 'Operation Strix at Eden Academy.', 'Loid, Yor, and Anya Forger.'],
+    options: ['SPY x FAMILY', 'Buddy Daddies', 'Sakamoto Days', 'Kaguya-sama: Love is War'],
+    correctAnswer: 'SPY x FAMILY',
+    aliases: ['spy x family', 'spyxfamily'],
+  },
+  {
+    sig: 'noob:kaguya',
+    kind: 'noob_plot',
+    difficulty: 'medium',
+    animeTitle: 'Kaguya-sama: Love is War',
+    prompt: 'Anime Noob Explains: "Two top-ranked geniuses treat asking each other out to the movies like psychological World War III."',
+    clues: ['Set in Shuchiin Academy Student Council.', 'Includes Chika Fujiwara’s viral ending dance.', 'Whoever confesses first loses!'],
+    options: ['Kaguya-sama: Love is War', 'Horimiya', 'Toradora!', 'Oregairu'],
+    correctAnswer: 'Kaguya-sama: Love is War',
+    aliases: ['kaguya sama', 'love is war'],
+  },
+  {
+    sig: 'noob:frieren',
+    kind: 'noob_plot',
+    difficulty: 'medium',
+    animeTitle: 'Frieren: Beyond Journey’s End',
+    prompt: 'Anime Noob Explains: "An immortal elf finally realizes her party member had a crush on her 80 years after his funeral."',
+    clues: ['Starts right AFTER defeating the Demon King.', 'She cannot resist opening suspicious mimic treasure chests.', 'Studio Madhouse (2023), Himmel the Hero.'],
+    options: ['Frieren: Beyond Journey’s End', 'Delicious in Dungeon', 'Violet Evergarden', 'Mushoku Tensei'],
+    correctAnswer: 'Frieren: Beyond Journey’s End',
+    aliases: ['frieren'],
+  },
+  {
+    sig: 'noob:deathnote',
+    kind: 'noob_plot',
+    difficulty: 'easy',
+    animeTitle: 'Death Note',
+    prompt: 'Anime Noob Explains: "An honor student develops a god complex over a stationery item and eats potato chips like an action movie."',
+    clues: ['Directed by Tetsuro Araki at Madhouse.', 'A Shinigami follows him around craving apples.', 'Light Yagami vs Detective L.'],
+    options: ['Death Note', 'Code Geass', 'Monster', 'Classroom of the Elite'],
+    correctAnswer: 'Death Note',
+    aliases: ['dn'],
+  },
+  {
+    sig: 'noob:dandadan',
+    kind: 'noob_plot',
+    difficulty: 'medium',
+    animeTitle: 'Dan Da Dan',
+    prompt: 'Anime Noob Explains: "Two classmates argue about whether aliens or ghosts are real, and both turn out to be terrifyingly right in Episode 1."',
+    clues: ['Animated by Science SARU (2024).', 'OP "Otonoke" by Creepy Nuts.', 'Momo Ayase, Okarun, and Turbo Granny.'],
+    options: ['Dan Da Dan', 'Mob Psycho 100', 'Chainsaw Man', 'FLCL'],
+    correctAnswer: 'Dan Da Dan',
+    aliases: ['dandadan'],
+  },
+  {
+    sig: 'noob:csm',
+    kind: 'noob_plot',
+    difficulty: 'medium',
+    animeTitle: 'Chainsaw Man',
+    prompt: 'Anime Noob Explains: "A broke teenager fuses with his orange pet dog so he can pay off debt and finally eat jam on toast."',
+    clues: ['OP "KICK BACK" by Kenshi Yonezu.', 'Public Safety Devil Hunters.', 'Denji and Pochita.'],
+    options: ['Chainsaw Man', 'Jujutsu Kaisen', 'Hell’s Paradise', 'Dorohedoro'],
+    correctAnswer: 'Chainsaw Man',
+    aliases: ['csm'],
+  },
+  // Heralen-Inspired: "Guess the Anime from a 1-Star / Chaotic Review"
+  {
+    sig: 'review:bocchi',
+    kind: 'cursed_review',
+    difficulty: 'medium',
+    animeTitle: 'Bocchi the Rock!',
+    prompt: '★☆☆☆☆ — "12 episodes and the lead guitarist STILL turns into a glitching polygon every time someone makes eye contact with her."',
+    clues: ['CloverWorks 2022 music comedy hit.', 'She practices guitar inside a dark closet.', 'Hitori Gotoh & Kessoku Band.'],
+    options: ['Bocchi the Rock!', 'K-On!', 'Komi Can’t Communicate', 'Girls Band Cry'],
+    correctAnswer: 'Bocchi the Rock!',
+    aliases: ['bocchi'],
+  },
+  {
+    sig: 'review:madoka',
+    kind: 'cursed_review',
+    difficulty: 'hard',
+    animeTitle: 'Puella Magi Madoka Magica',
+    prompt: '★☆☆☆☆ — "Clicked for a wholesome magical girl show with a cute talking white cat. Episode 3 ended and now I need therapy."',
+    clues: ['Written by Gen Urobuchi & animated by Shaft.', 'Never sign a contract with Kyubey.', 'Deconstructed the entire Magical Girl genre in 2011.'],
+    options: ['Puella Magi Madoka Magica', 'Cardcaptor Sakura', 'Sailor Moon', 'Wonder Egg Priority'],
+    correctAnswer: 'Puella Magi Madoka Magica',
+    aliases: ['madoka', 'madoka magica'],
+  },
+  {
+    sig: 'review:steinsgate',
+    kind: 'cursed_review',
+    difficulty: 'medium',
+    animeTitle: 'Steins;Gate',
+    prompt: '★☆☆☆☆ — "Spent half the season watching a lab coat weirdo microwave bananas and drink Dr Pepper until everything suddenly ruined my week."',
+    clues: ['White Fox sci-fi thriller (2011).', 'Catchphrase: "El Psy Kongroo."', 'Rintaro Okabe & Kurisu Makise.'],
+    options: ['Steins;Gate', 'ERASED', 'Re:ZERO', 'Link Click'],
+    correctAnswer: 'Steins;Gate',
+    aliases: ['steins gate', 'sg'],
+  },
+  {
+    sig: 'review:onepiece',
+    kind: 'cursed_review',
+    difficulty: 'easy',
+    animeTitle: 'One Piece',
+    prompt: '★☆☆☆☆ — "Everyone is bawling over a wooden boat. It is literally a ship. Why am I ALSO sobbing uncontrollably over this boat?"',
+    clues: ['Over 1,100 episodes by Toei Animation.', 'Water 7 / Enies Lobby arc.', 'Farewell to the Going Merry.'],
+    options: ['One Piece', 'Vinland Saga', 'Fairy Tail', 'Black Clover'],
+    correctAnswer: 'One Piece',
+    aliases: ['op'],
+  },
+  {
+    sig: 'review:haikyuu',
+    kind: 'cursed_review',
+    difficulty: 'easy',
+    animeTitle: 'Haikyu!!',
+    prompt: '★☆☆☆☆ — "Why does a single volleyball spike take half an episode and a tear-jerking flashback about a middle school rival?"',
+    clues: ['Production I.G sports classic.', 'Karasuno High’s "Fly" banner.', 'Shoyo Hinata & Tobio Kageyama.'],
+    options: ['Haikyu!!', 'Blue Lock', 'Kuroko’s Basketball', 'Slam Dunk'],
+    correctAnswer: 'Haikyu!!',
+    aliases: ['haikyuu', 'haikyu'],
+  },
+  {
+    sig: 'review:tpn',
+    kind: 'cursed_review',
+    difficulty: 'medium',
+    animeTitle: 'The Promised Neverland',
+    prompt: '★☆☆☆☆ — "Thought it was a cozy slice-of-life about genius kids living in a sunny countryside orphanage. Episode 1 made me lock my doors."',
+    clues: ['Grace Field House & Mom Isabella.', 'Emma, Norman, and Ray plot an escape.', 'Season 1 by CloverWorks (2019).'],
+    options: ['The Promised Neverland', 'Made in Abyss', 'Shadows House', 'Heavenly Delusion'],
+    correctAnswer: 'The Promised Neverland',
+    aliases: ['tpn', 'promised neverland'],
+  },
+  {
+    sig: 'review:hxh',
+    kind: 'cursed_review',
+    difficulty: 'hard',
+    animeTitle: 'Hunter x Hunter',
+    prompt: '★☆☆☆☆ — "The narrator spent 15 straight minutes describing 4 seconds of guys running up a staircase — and somehow it was peak fiction."',
+    clues: ['Madhouse 2011 masterpiece.', 'Chimera Ant Palace Invasion arc.', 'Gon, Killua, and Nen power system.'],
+    options: ['Hunter x Hunter', 'JoJo’s Bizarre Adventure', 'Yu Yu Hakusho', 'Bleach'],
+    correctAnswer: 'Hunter x Hunter',
+    aliases: ['hxh'],
+  },
+  // Heralen-Inspired: "Spot the LIE / Impossible Lore Torture"
+  {
+    sig: 'lore:aot_lie',
+    kind: 'lore_torture',
+    difficulty: 'medium',
+    animeTitle: 'Attack on Titan',
+    prompt: 'Spot the LIE: Three of these Attack on Titan facts are TRUE. Which one is completely FAKE?',
+    clues: ['Check humanity’s strongest soldier carefully.', 'He is famously one of the shortest characters in the Survey Corps!', 'Levi Ackerman is 160 cm (5\'3"), NOT 6 feet tall.'],
+    options: [
+      'Levi Ackerman is 6 feet tall (183 cm)',
+      'Wit Studio animated Seasons 1 to 3',
+      'The three walls are Maria, Rose, and Sina',
+      'Mikasa wears a red scarf given by Eren',
+    ],
+    correctAnswer: 'Levi Ackerman is 6 feet tall (183 cm)',
+  },
+  {
+    sig: 'lore:jjk_lie',
+    kind: 'lore_torture',
+    difficulty: 'easy',
+    animeTitle: 'Jujutsu Kaisen',
+    prompt: 'Spot the LIE: Three of these Jujutsu Kaisen facts are TRUE. Which one is FAKE?',
+    clues: ['Check the Domain Expansion names!', 'Malevolent Shrine belongs to the King of Curses.', 'Gojo’s Domain Expansion is actually Unlimited Void.'],
+    options: [
+      'Gojo’s Domain Expansion is Malevolent Shrine',
+      'Yuji Itadori starts out in the Occult Research Club',
+      'Megumi Fushiguro uses the Ten Shadows Technique',
+      'Nanami Kento used to work as a salaryman',
+    ],
+    correctAnswer: 'Gojo’s Domain Expansion is Malevolent Shrine',
+  },
+  {
+    sig: 'lore:fmab_lie',
+    kind: 'lore_torture',
+    difficulty: 'medium',
+    animeTitle: 'Fullmetal Alchemist: Brotherhood',
+    prompt: 'Spot the LIE: Three of these Fullmetal Alchemist: Brotherhood facts are TRUE. Which one is FAKE?',
+    clues: ['Think about where Alphonse Elric’s soul is bound.', 'Edward carries the silver State Alchemist watch, not Al’s soul.', 'Alphonse’s soul is bound to a giant suit of armor!'],
+    options: [
+      'Alphonse’s soul is bound to a silver pocket watch',
+      'Roy Mustang is known as the Flame Alchemist',
+      'Edward Elric hates being called short',
+      'Studio Bones produced the 64-episode series',
+    ],
+    correctAnswer: 'Alphonse’s soul is bound to a silver pocket watch',
+  },
+  {
+    sig: 'lore:onepiece_lie',
+    kind: 'lore_torture',
+    difficulty: 'easy',
+    animeTitle: 'One Piece',
+    prompt: 'Spot the LIE: Three of these One Piece facts are TRUE. Which one is FAKE?',
+    clues: ['Think about the Straw Hat swordsman’s biggest running gag.', 'He gets lost walking down a completely straight hallway.', 'Roronoa Zoro has the WORST sense of direction in anime!'],
+    options: [
+      'Roronoa Zoro has a flawless sense of direction',
+      'Luffy’s bounty started at 30,000,000 Berries',
+      'Tony Tony Chopper is the crew’s doctor',
+      'Sanji refuses to fight using his hands',
+    ],
+    correctAnswer: 'Roronoa Zoro has a flawless sense of direction',
+  },
+  {
+    sig: 'lore:naruto_lie',
+    kind: 'lore_torture',
+    difficulty: 'hard',
+    animeTitle: 'Naruto',
+    prompt: 'Spot the LIE: Three of these Naruto facts are TRUE. Which one is FAKE?',
+    clues: ['Check how Kakashi Hatake got his Sharingan.', 'He is not an Uchiha by blood.', 'Obito Uchiha gifted Kakashi his left Sharingan!'],
+    options: [
+      'Kakashi was born with both Sharingan eyes',
+      'Rock Lee cannot use ninjutsu or genjutsu',
+      'Ichiraku Ramen is Naruto’s favorite restaurant',
+      'Kurama is the Nine-Tailed Fox',
+    ],
+    correctAnswer: 'Kakashi was born with both Sharingan eyes',
+  },
+  {
+    sig: 'lore:dn_lie',
+    kind: 'lore_torture',
+    difficulty: 'hard',
+    animeTitle: 'Death Note',
+    prompt: 'Spot the LIE: Three of these Death Note facts are TRUE. Which one is FAKE?',
+    clues: ['Remember L’s actual canon full name from Volume 13.', 'His surname is Lawliet, not his first name being Liam.', 'L’s real full name is literally "L Lawliet"!'],
+    options: [
+      'L’s real name is revealed as "Liam Lawliet"',
+      'Ryuk drops the Death Note out of pure boredom',
+      'Light’s father Soichiro leads the Kira Task Force',
+      'Misa Amane makes the Shinigami Eye deal twice',
+    ],
+    correctAnswer: 'L’s real name is revealed as "Liam Lawliet"',
   },
 ];
 
@@ -1047,13 +1314,32 @@ function buildOptionsForTitle(targetTitle: string, poolTitles: string[]): string
   return [targetTitle, ...others].sort(() => Math.random() - 0.5);
 }
 
+const NON_ANIME_FORMATS = new Set([
+  'MANGA',
+  'MANHWA',
+  'MANHUA',
+  'NOVEL',
+  'LIGHT_NOVEL',
+  'ONE_SHOT',
+  'ONESHOT',
+  'DOUJIN',
+]);
+
+function isStrictAnime(a: Anime | undefined | null): a is Anime {
+  if (!a) return false;
+  if ((a.mediaType ?? 'ANIME') !== 'ANIME') return false;
+  const fmt = (a.format ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (fmt && NON_ANIME_FORMATS.has(fmt)) return false;
+  return true;
+}
+
 /**
  * Generates an interactive 4x4 Anime Jeopardy Board across
  * OP/ED Blitz (3s–12s), Cursed Visual Crop, 3-Clue Riddles, and Studio & Year Trivia.
  */
 export function buildJeopardyBoard(catalogInput?: Anime[]): JeopardyCategory[] {
   const storeCatalog = (catalogInput ?? animeStore.all()).filter(
-    (a) => (a.mediaType ?? 'ANIME') === 'ANIME' && a.cover && a.title
+    (a) => isStrictAnime(a) && a.cover && a.title
   );
   const fallbackTitles = ICONIC_THEMES.map((t) => t.anime);
   const allTitles = Array.from(
@@ -1280,18 +1566,18 @@ export function buildNextInfiniteQuestion(opts: {
   const wantedDiff = opts.difficulty && opts.difficulty !== 'all' ? opts.difficulty : null;
   const allCatalog = animeStore
     .all()
-    .filter((a) => a.cover && a.title && a.title.length <= 52);
+    .filter((a) => isStrictAnime(a) && a.cover && a.title && a.title.length <= 52);
 
   const listItems: Anime[] = opts.entries
     ? Object.values(opts.entries)
         .map((e) => animeStore.get(e.animeId))
-        .filter((a): a is Anime => Boolean(a && a.cover && a.title))
+        .filter((a): a is Anime => isStrictAnime(a) && Boolean(a.cover && a.title))
     : [];
 
   const pool =
     opts.scope === 'mylist' && listItems.length >= 2
       ? listItems
-      : allCatalog.filter((a) => (opts.mediaType ? a.mediaType === opts.mediaType : true));
+      : allCatalog;
 
   const fallbackTitles = ICONIC_THEMES.map((t) => t.anime);
   const distractorTitles = Array.from(
