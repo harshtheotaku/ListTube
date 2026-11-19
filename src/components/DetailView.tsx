@@ -602,7 +602,7 @@ export const DetailView: React.FC<DetailViewProps> = ({
         </span>
       </div>
 
-      <div className="mx-auto max-w-[1380px] px-4 pt-0 sm:px-6 sm:pt-4 lg:px-8">
+      <div className="w-full max-w-none px-4 pt-0 sm:px-4 sm:pt-3 lg:px-5">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_410px]">
           {/* Left Column */}
           <div className={`min-w-0 space-y-4 ${theaterMode ? 'lg:col-span-2' : ''}`}>

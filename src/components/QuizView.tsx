@@ -814,10 +814,10 @@ export const QuizView: React.FC<QuizViewProps> = ({
     <div
       role="region"
       aria-label="OP and ED Music Quiz"
-      className="mx-auto flex min-h-[calc(100dvh-56px)] max-w-5xl flex-col justify-start gap-3.5 bg-[#0F0F0F] px-3.5 pb-28 pt-3.5 text-white sm:px-6 lg:justify-center lg:gap-4 lg:px-8 lg:pb-10 lg:pt-5"
+      className="flex min-h-[calc(100dvh-56px)] w-full max-w-none flex-col justify-start gap-2.5 bg-[#0F0F0F] px-0 pb-28 pt-2.5 text-white sm:gap-3.5 sm:px-4 lg:justify-center lg:gap-4 lg:px-6 lg:pb-10 lg:pt-4"
     >
       {/* Apple-Minimal Top Bar: Segmented Mode Switch + Compact Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-0">
         <div className="inline-flex rounded-full border border-white/[0.08] bg-[#161618] p-1">
           <button
             type="button"
@@ -930,7 +930,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
       {/* Compact Single-Row Apple Score Strip */}
       <div
         aria-label="Quiz Points Scoreboard"
-        className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/[0.08] bg-[#161618] px-4 py-2.5"
+        className="flex flex-wrap items-center justify-between gap-2 rounded-none border-y border-white/[0.08] bg-[#161618] px-3.5 py-2.5 sm:rounded-2xl sm:border-x sm:px-4"
       >
         <div className="flex items-center gap-5 sm:gap-7">
           <div className="flex items-baseline gap-1.5">
@@ -1000,7 +1000,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
       {pageMode === 'infinite_3s' ? (
         <div
           key={currentQ.id}
-          className="lt-view-enter rounded-3xl border border-white/[0.08] bg-[#161618] p-4 sm:p-6"
+          className="lt-view-enter rounded-none border-y border-white/[0.08] bg-[#161618] px-3.5 py-4 sm:rounded-3xl sm:border-x sm:p-6"
         >
           {/* Minimal Question Meta Row */}
           <div className="mb-4 flex items-center justify-between gap-2">
@@ -1232,7 +1232,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
       ) : activeCell ? (
         <div
           key={activeCell.id}
-          className="lt-view-enter space-y-4 rounded-3xl border border-white/[0.08] bg-[#161618] p-4 sm:p-6"
+          className="lt-view-enter space-y-4 rounded-none border-y border-white/[0.08] bg-[#161618] px-3.5 py-4 sm:rounded-3xl sm:border-x sm:p-6"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <button
@@ -1363,7 +1363,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
       ) : (
         <div
           key="jeopardy-board"
-          className="lt-view-enter space-y-3.5 rounded-3xl border border-white/[0.08] bg-[#161618] p-4 sm:p-5"
+          className="lt-view-enter space-y-3.5 rounded-none border-y border-white/[0.08] bg-[#161618] px-3 py-4 sm:rounded-3xl sm:border-x sm:p-5"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">

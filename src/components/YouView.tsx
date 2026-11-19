@@ -298,10 +298,10 @@ export const YouView: React.FC<YouViewProps> = ({
   const maxScoreCount = Math.max(1, ...Object.values(activeStats.scoreDist));
 
   return (
-    <div className="mx-auto min-h-screen max-w-4xl space-y-5 bg-[#0F0F0F] px-4 pb-24 pt-4 text-white sm:px-6 lg:px-8 lg:pb-16">
+    <div className="min-h-screen w-full max-w-none space-y-5 bg-[#0F0F0F] px-3 pb-24 pt-0 text-white sm:px-4 sm:pt-4 lg:px-6 lg:pb-16">
       {/* YouTube Channel Banner + Header */}
       <div className="space-y-4">
-        <div className="relative h-28 w-full overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-[#221114] via-[#18181B] to-[#121826] sm:h-40">
+        <div className="relative -mx-3 h-28 w-[calc(100%+1.5rem)] overflow-hidden rounded-none border-b border-white/[0.08] bg-gradient-to-r from-[#221114] via-[#18181B] to-[#121826] sm:mx-0 sm:h-40 sm:w-full sm:rounded-2xl sm:border">
           {profileData.bannerUrl && (
             <img
               src={profileData.bannerUrl}

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Building2, Gamepad2, Menu, Search, Settings, Star, User, Users, X } from 'lucide-react';
+import { ArrowLeft, Building2, Menu, Search, Settings, Star, User, Users, X } from 'lucide-react';
 import {
   Anime,
   FavoriteCharacterItem,
@@ -28,7 +28,7 @@ interface TopBarProps {
   onOpenEntity?: (target: EntityRouteTarget) => void;
   onOpenUser?: (userIdOrHandle: string) => void;
   onOpenTrackers?: () => void;
-  onOpenQuiz?: () => void;
+  onOpenYou?: () => void;
   onOpenSettings?: () => void;
   onToggleSidebar?: () => void;
   activeTab?: AppTab;
@@ -44,7 +44,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenAnime,
   onOpenEntity,
   onOpenUser,
-  onOpenQuiz,
+  onOpenYou,
   onOpenSettings,
   onToggleSidebar,
   activeTab,
@@ -176,24 +176,8 @@ export const TopBar: React.FC<TopBarProps> = ({
               </button>
             </div>
 
-            {/* YouTube-Clean Right: Direct Quiz Arena Nav + Search + Direct Settings Page Gear */}
-            <div className="flex shrink-0 items-center gap-1.5">
-              {onOpenQuiz && (
-                <button
-                  type="button"
-                  onClick={onOpenQuiz}
-                  aria-label="Open Quiz Arena"
-                  title="Anime Quiz & Jeopardy"
-                  className={`lt-btn-apple flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[12.5px] font-semibold tracking-tight ${
-                    activeTab === 'quiz'
-                      ? 'bg-white text-black'
-                      : 'border border-white/[0.12] bg-white/[0.08] text-white/90 hover:bg-white/[0.15] hover:text-white'
-                  }`}
-                >
-                  <Gamepad2 className="h-3.5 w-3.5" />
-                  <span>Quiz</span>
-                </button>
-              )}
+            {/* Apple-Minimal Right Corner: Search + Settings + You */}
+            <div className="flex shrink-0 items-center gap-1">
               <button
                 type="button"
                 onClick={() => {
@@ -203,7 +187,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 aria-label="Open search"
                 className="lt-press flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-white/[0.1]"
               >
-                <Search className="h-[21px] w-[21px]" />
+                <Search className="h-[20px] w-[20px]" />
               </button>
               {onOpenSettings && (
                 <button
@@ -211,9 +195,28 @@ export const TopBar: React.FC<TopBarProps> = ({
                   onClick={onOpenSettings}
                   aria-label="Open settings"
                   title="Settings"
-                  className="lt-press flex h-10 w-10 items-center justify-center rounded-full text-[#CCCCCC] transition hover:bg-white/[0.1] hover:text-white"
+                  className={`lt-press flex h-10 w-10 items-center justify-center rounded-full transition ${
+                    activeTab === 'settings'
+                      ? 'bg-white text-black'
+                      : 'text-[#CCCCCC] hover:bg-white/[0.1] hover:text-white'
+                  }`}
                 >
                   <Settings className="h-[19px] w-[19px]" />
+                </button>
+              )}
+              {onOpenYou && (
+                <button
+                  type="button"
+                  onClick={onOpenYou}
+                  aria-label="Open You"
+                  title="You"
+                  className={`lt-press flex h-9 w-9 items-center justify-center rounded-full border transition ${
+                    activeTab === 'you'
+                      ? 'border-white bg-white text-black'
+                      : 'border-white/[0.14] bg-white/[0.08] text-white hover:bg-white/[0.16]'
+                  }`}
+                >
+                  <User className="h-[17px] w-[17px]" />
                 </button>
               )}
             </div>

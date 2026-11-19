@@ -955,7 +955,7 @@ export const App: React.FC = () => {
         onOpenEntity={openEntity}
         onOpenUser={openPublicUser}
         onOpenTrackers={() => setTrackersOpen(true)}
-        onOpenQuiz={() => navigate('quiz')}
+        onOpenYou={() => navigate('you')}
         onOpenSettings={() => navigate('settings')}
         activeTab={tab}
         onToggleSidebar={() => {

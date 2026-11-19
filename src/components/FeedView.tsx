@@ -197,7 +197,7 @@ export const FeedView: React.FC<FeedViewProps> = ({
   const followingSet = useMemo(() => new Set(followingIds), [followingIds]);
 
   return (
-    <div className="mx-auto min-h-screen max-w-4xl space-y-5 bg-[#0F0F0F] px-4 pb-24 pt-5 text-white sm:px-6 lg:px-8 lg:pb-16">
+    <div className="min-h-screen w-full max-w-none space-y-5 bg-[#0F0F0F] px-3 pb-24 pt-4 text-white sm:px-4 lg:px-6 lg:pb-16">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-[21px] font-black tracking-tight text-white">

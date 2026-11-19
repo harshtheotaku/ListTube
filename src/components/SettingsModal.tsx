@@ -560,7 +560,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           {/* Section Body */}
-          <div className={pageMode ? 'flex-1 space-y-4 p-4 sm:p-6 lg:px-10' : 'flex-1 space-y-4 overflow-y-auto p-5 sm:px-6'}>
+          <div className={pageMode ? 'flex-1 space-y-3.5 px-2.5 py-3 sm:p-5 lg:px-6' : 'flex-1 space-y-4 overflow-y-auto p-5 sm:px-6'}>
             {matchingCategories && (
               <div className="space-y-2.5">
                 {matchingCategories.length === 0 ? (

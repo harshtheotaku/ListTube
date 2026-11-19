@@ -436,8 +436,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <>
       {/* Zero-Login Onboarding Banner (Compact on mobile so feed cards appear above the fold) */}
       {showOnboarding && (
-        <section className="mx-4 sm:mx-6 lg:mx-8">
-          <div className="relative overflow-hidden rounded-2xl border border-white/[0.1] bg-gradient-to-br from-[#FF0000]/15 via-[#181818] to-[#121212] p-3.5 shadow-xl sm:p-5">
+        <section className="mx-0 sm:mx-4 lg:mx-5">
+          <div className="relative overflow-hidden rounded-none border-y border-white/[0.1] bg-gradient-to-br from-[#FF0000]/15 via-[#181818] to-[#121212] p-3.5 shadow-xl sm:rounded-2xl sm:border-x sm:p-5">
             <button
               type="button"
               onClick={dismissOnboarding}
@@ -497,7 +497,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
       {/* Main YouTube Feed Grid */}
       {settings.showHomeForYou && (
-        <section className="px-4 sm:px-6 lg:px-8">
+        <section className="px-4 sm:px-4 lg:px-5">
           {loading ? (
             <GridSkeleton count={8} mediaType={mediaType} />
           ) : error ? (
